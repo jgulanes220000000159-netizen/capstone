@@ -43,14 +43,14 @@ class TFLiteDetector {
 
   Future<void> loadModel() async {
     try {
-      final labelData = await rootBundle.loadString('assets/labels.txt');
+      final labelData = await rootBundle.loadString('assets/labelsv2.txt');
       _labels =
           labelData
               .split('\n')
               .map((e) => e.trim())
               .where((e) => e.isNotEmpty)
               .toList();
-      _interpreter = await Interpreter.fromAsset('assets/v19.tflite');
+      _interpreter = await Interpreter.fromAsset('assets/v21.tflite');
       print('✅ Model loaded with ${_labels.length} labels');
     } catch (e) {
       print('❌ Failed to load model: $e');
@@ -83,7 +83,7 @@ class TFLiteDetector {
       final inputShape = [1, inputSize, inputSize, 3];
       final outputShape = [
         1,
-        10, // 4 bbox + 1 obj + 6 class scores
+        11, // 4 bbox + 1 obj + 6 class scores
         3549,
       ];
 
@@ -102,7 +102,7 @@ class TFLiteDetector {
         var maxConf = 0.0;
         var maxClass = 0;
 
-        for (var c = 5; c < 10; c++) {
+        for (var c = 5; c < 11; c++) {
           final conf = outputData[c][i];
           if (conf > maxConf) {
             maxConf = conf;

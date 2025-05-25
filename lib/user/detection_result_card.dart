@@ -38,8 +38,7 @@ class DetectionResultCard extends StatelessWidget {
 
   IconData _getSeverityIcon() {
     if (percentage != null) {
-      if (percentage! > 0.8) return Icons.warning_amber_rounded;
-      if (percentage! > 0.5) return Icons.warning_rounded;
+      if (percentage! > 0.01) return Icons.warning_rounded;
       return Icons.info_outline;
     }
     return Icons.info_outline;
@@ -339,7 +338,7 @@ class DetectionResultCard extends StatelessWidget {
                     child: Icon(
                       isHealthy ? Icons.check_circle : _getSeverityIcon(),
                       color: diseaseColor,
-                      size: 24,
+                      size: 18,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -357,7 +356,7 @@ class DetectionResultCard extends StatelessWidget {
                                 color: Colors.black87,
                               ),
                             ),
-                            if (count != null && count! > 1) ...[
+                            if (count != null) ...[
                               const SizedBox(width: 8),
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -381,16 +380,36 @@ class DetectionResultCard extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 4),
-                        if (percentage != null)
+                        if (percentage != null) ...[
                           Text(
-                            result.label.toLowerCase() == 'tip_burn'
-                                ? 'Unknown: ${(percentage! * 100).toStringAsFixed(1)}%'
-                                : 'Percentage: ${(percentage! * 100).toStringAsFixed(1)}%',
+                            'Percentage of Total Leaves',
                             style: TextStyle(
                               fontSize: 14,
                               color: Colors.grey[700],
                             ),
                           ),
+                          const SizedBox(height: 4),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: LinearProgressIndicator(
+                              value: percentage,
+                              backgroundColor: diseaseColor.withOpacity(0.1),
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                diseaseColor,
+                              ),
+                              minHeight: 8,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${(percentage! * 100).toStringAsFixed(1)}%',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: diseaseColor,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -408,7 +427,7 @@ class DetectionResultCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      isHealthy
+                      isHealthy || result.label.toLowerCase() == 'tip_burn'
                           ? Icons.info_outline
                           : Icons.medical_services_outlined,
                       color: diseaseColor,
@@ -416,9 +435,7 @@ class DetectionResultCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      isHealthy
-                          ? 'View Status'
-                          : result.label.toLowerCase() == 'tip_burn'
+                      isHealthy || result.label.toLowerCase() == 'tip_burn'
                           ? 'N/A'
                           : 'See Recommendation',
                       style: TextStyle(

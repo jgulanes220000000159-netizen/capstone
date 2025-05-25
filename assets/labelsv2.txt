@@ -1,5 +1,5 @@
 anthracnose
-b_spot
+backterial_blackspot
 dieback
 healthy
 powdery_mildew

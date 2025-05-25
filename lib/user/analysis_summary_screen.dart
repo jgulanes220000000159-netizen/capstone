@@ -228,11 +228,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Center(
-                      child: Icon(
-                        isHealthy ? Icons.check_circle : Icons.local_florist,
-                        size: 16,
-                        color: color,
-                      ),
+                      child: Icon(Icons.check_circle, size: 16, color: color),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -314,15 +310,17 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      isHealthy
+                      isHealthy || disease.toLowerCase() == 'tip_burn'
                           ? Icons.info_outline
                           : Icons.medical_services_outlined,
                       color: color,
-                      size: 20,
+                      size: disease.toLowerCase() == 'tip_burn' ? 18 : 20,
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      isHealthy ? 'View Status' : 'See Recommendation',
+                      isHealthy || disease.toLowerCase() == 'tip_burn'
+                          ? 'N/A'
+                          : 'See Recommendation',
                       style: TextStyle(
                         color: color,
                         fontWeight: FontWeight.bold,
