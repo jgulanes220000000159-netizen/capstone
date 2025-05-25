@@ -1420,7 +1420,7 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Total Detections',
+                              'Total leaf conditions detected',
                               style: TextStyle(
                                 color: Colors.grey[600],
                                 fontSize: 14,

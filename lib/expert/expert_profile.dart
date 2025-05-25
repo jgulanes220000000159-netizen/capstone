@@ -74,65 +74,55 @@ class _ExpertProfileState extends State<ExpertProfile> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Users Under Care',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Users Under Care',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.close),
+                                onPressed: () => Navigator.pop(context),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          // Search Bar
+                          TextField(
+                            decoration: InputDecoration(
+                              hintText: 'Search users...',
+                              prefixIcon: const Icon(Icons.search),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
                               ),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.close),
-                              onPressed: () => Navigator.pop(context),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        // Search Bar
-                        TextField(
-                          decoration: InputDecoration(
-                            hintText: 'Search users...',
-                            prefixIcon: const Icon(Icons.search),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
+                            onChanged: (value) {
+                              setState(() {
+                                searchQuery = value.toLowerCase();
+                              });
+                            },
                           ),
-                          onChanged: (value) {
-                            setState(() {
-                              searchQuery = value.toLowerCase();
-                            });
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        Container(
-                          constraints: const BoxConstraints(maxHeight: 300),
-                          child: ListView.builder(
-                            shrinkWrap: true,
-                            itemCount:
-                                users.where((user) {
-                                  if (searchQuery.isEmpty) return true;
-                                  return user['name']!.toLowerCase().contains(
-                                        searchQuery,
-                                      ) ||
-                                      user['email']!.toLowerCase().contains(
-                                        searchQuery,
-                                      );
-                                }).length,
-                            itemBuilder: (context, index) {
-                              final filteredUsers =
+                          const SizedBox(height: 16),
+                          Container(
+                            constraints: const BoxConstraints(maxHeight: 300),
+                            child: ListView.builder(
+                              shrinkWrap: true,
+                              itemCount:
                                   users.where((user) {
                                     if (searchQuery.isEmpty) return true;
                                     return user['name']!.toLowerCase().contains(
@@ -141,26 +131,40 @@ class _ExpertProfileState extends State<ExpertProfile> {
                                         user['email']!.toLowerCase().contains(
                                           searchQuery,
                                         );
-                                  }).toList();
+                                  }).length,
+                              itemBuilder: (context, index) {
+                                final filteredUsers =
+                                    users.where((user) {
+                                      if (searchQuery.isEmpty) return true;
+                                      return user['name']!
+                                              .toLowerCase()
+                                              .contains(searchQuery) ||
+                                          user['email']!.toLowerCase().contains(
+                                            searchQuery,
+                                          );
+                                    }).toList();
 
-                              final user = filteredUsers[index];
-                              return ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: Colors.green.withOpacity(
-                                    0.2,
+                                final user = filteredUsers[index];
+                                return ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: Colors.green.withOpacity(
+                                      0.2,
+                                    ),
+                                    child: Text(
+                                      user['name']![0],
+                                      style: const TextStyle(
+                                        color: Colors.green,
+                                      ),
+                                    ),
                                   ),
-                                  child: Text(
-                                    user['name']![0],
-                                    style: const TextStyle(color: Colors.green),
-                                  ),
-                                ),
-                                title: Text(user['name']!),
-                                subtitle: Text(user['email']!),
-                              );
-                            },
+                                  title: Text(user['name']!),
+                                  subtitle: Text(user['email']!),
+                                );
+                              },
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
