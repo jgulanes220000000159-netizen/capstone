@@ -36,6 +36,7 @@ flutter:
     - assets/labels.txt
     - assets/v21.tflite
     - assets/labelsv2.txt
+    - assets/v24.tflite
     - assets/logo.png
     - assets/diseases/anthracnose.jpg
     - assets/diseases/powdery_mildew.jpg

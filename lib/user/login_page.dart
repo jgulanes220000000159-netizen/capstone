@@ -118,7 +118,7 @@ class _LoginPageState extends State<LoginPage> {
                               Text(
                                 'Mango',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: Color.fromARGB(255, 255, 255, 255),
                                   fontSize: 28,
                                   fontWeight: FontWeight.bold,
                                 ),

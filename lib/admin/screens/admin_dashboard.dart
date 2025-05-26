@@ -41,6 +41,37 @@ class _AdminDashboardState extends State<AdminDashboard> {
     {'date': '2024-03-07', 'count': 68},
   ];
 
+  List<Map<String, dynamic>> activities = [
+    {
+      'icon': Icons.person_add,
+      'action': 'Accepted new user registration',
+      'user': 'John Doe',
+      'time': '2 hours ago',
+      'color': Colors.green,
+    },
+    {
+      'icon': Icons.verified_user,
+      'action': 'Verified expert account',
+      'user': 'Dr. Smith',
+      'time': '3 hours ago',
+      'color': Colors.blue,
+    },
+    {
+      'icon': Icons.block,
+      'action': 'Rejected user registration',
+      'user': 'Jane Smith',
+      'time': '5 hours ago',
+      'color': Colors.red,
+    },
+    {
+      'icon': Icons.edit,
+      'action': 'Updated user permissions',
+      'user': 'Mike Johnson',
+      'time': '1 day ago',
+      'color': Colors.orange,
+    },
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -433,40 +464,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     ListView.separated(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: 4,
+                      itemCount: activities.length,
                       separatorBuilder: (context, index) => const Divider(),
                       itemBuilder: (context, index) {
-                        final activities = [
-                          {
-                            'icon': Icons.person_add,
-                            'action': 'Accepted new user registration',
-                            'user': 'John Doe',
-                            'time': '2 hours ago',
-                            'color': Colors.green,
-                          },
-                          {
-                            'icon': Icons.verified_user,
-                            'action': 'Verified expert account',
-                            'user': 'Dr. Smith',
-                            'time': '3 hours ago',
-                            'color': Colors.blue,
-                          },
-                          {
-                            'icon': Icons.block,
-                            'action': 'Rejected user registration',
-                            'user': 'Jane Smith',
-                            'time': '5 hours ago',
-                            'color': Colors.red,
-                          },
-                          {
-                            'icon': Icons.edit,
-                            'action': 'Updated user permissions',
-                            'user': 'Mike Johnson',
-                            'time': '1 day ago',
-                            'color': Colors.orange,
-                          },
-                        ];
-
                         final activity = activities[index];
                         return ListTile(
                           leading: CircleAvatar(
@@ -480,11 +480,65 @@ class _AdminDashboardState extends State<AdminDashboard> {
                           subtitle: Text(
                             '${activity['user']} • ${activity['time']}',
                           ),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.more_vert),
-                            onPressed: () {
-                              // Show more options
+                          trailing: PopupMenuButton<String>(
+                            onSelected: (value) {
+                              if (value == 'details') {
+                                showDialog(
+                                  context: context,
+                                  builder:
+                                      (context) => AlertDialog(
+                                        title: const Text('Activity Details'),
+                                        content: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Action: ${activity['action']}',
+                                            ),
+                                            Text('User: ${activity['user']}'),
+                                            Text('Time: ${activity['time']}'),
+                                          ],
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed:
+                                                () => Navigator.pop(context),
+                                            child: const Text('Close'),
+                                          ),
+                                        ],
+                                      ),
+                                );
+                              } else if (value == 'delete') {
+                                // Remove the activity from the list
+                                setState(() {
+                                  activities.removeAt(index);
+                                });
+                              }
                             },
+                            itemBuilder:
+                                (context) => [
+                                  const PopupMenuItem(
+                                    value: 'details',
+                                    child: ListTile(
+                                      leading: Icon(Icons.info_outline),
+                                      title: Text('View Details'),
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'delete',
+                                    child: ListTile(
+                                      leading: Icon(
+                                        Icons.delete_outline,
+                                        color: Colors.red,
+                                      ),
+                                      title: Text(
+                                        'Delete/Remove',
+                                        style: TextStyle(color: Colors.red),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                           ),
                         );
                       },

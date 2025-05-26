@@ -21,9 +21,9 @@ class DetectionResult {
 class TFLiteDetector {
   Interpreter? _interpreter;
   List<String> _labels = [];
-  static const double confidenceThreshold = 0.5;
-  static const double nmsThreshold = 0.5;
-  static const int inputSize = 416;
+  static const double confidenceThreshold = 0.1;
+  static const double nmsThreshold = 0.1;
+  static const int inputSize = 640;
 
   img.Image letterbox(img.Image src, int targetW, int targetH) {
     final srcW = src.width;
@@ -50,7 +50,7 @@ class TFLiteDetector {
               .map((e) => e.trim())
               .where((e) => e.isNotEmpty)
               .toList();
-      _interpreter = await Interpreter.fromAsset('assets/v21.tflite');
+      _interpreter = await Interpreter.fromAsset('assets/v24.tflite');
       print('✅ Model loaded with ${_labels.length} labels');
     } catch (e) {
       print('❌ Failed to load model: $e');
@@ -84,7 +84,7 @@ class TFLiteDetector {
       final outputShape = [
         1,
         11, // 4 bbox + 1 obj + 6 class scores
-        3549,
+        8400,
       ];
 
       final output = List.filled(
