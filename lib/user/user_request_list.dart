@@ -412,7 +412,7 @@ class _UserRequestListState extends State<UserRequestList> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      status.toUpperCase(),
+                      _formatStatusLabel(status),
                       style: TextStyle(
                         color:
                             status == 'completed'
@@ -450,6 +450,18 @@ class _UserRequestListState extends State<UserRequestList> {
         ),
       ),
     );
+  }
+
+  String _formatStatusLabel(String status) {
+    switch (status) {
+      case 'pending_review':
+        return 'Pending';
+      case 'completed':
+        return 'Completed';
+      default:
+        return status[0].toUpperCase() +
+            status.substring(1).replaceAll('_', ' ');
+    }
   }
 
   Widget _buildStatItem(String label, String value, IconData icon) {
