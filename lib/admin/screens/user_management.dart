@@ -580,27 +580,47 @@ class _UserManagementState extends State<UserManagement> {
                                                                   String
                                                                 >(
                                                                   value: role,
-                                                                  items:
-                                                                      [
-                                                                            'user',
-                                                                            'expert',
-                                                                          ]
-                                                                          .map(
+                                                                  items: [
+                                                                    DropdownMenuItem(
+                                                                      value:
+                                                                          'user',
+                                                                      child: Text(
+                                                                        'User',
+                                                                      ),
+                                                                    ),
+                                                                    DropdownMenuItem(
+                                                                      value:
+                                                                          'expert',
+                                                                      enabled:
+                                                                          !UserStore.users.any(
                                                                             (
-                                                                              r,
-                                                                            ) => DropdownMenuItem(
-                                                                              value:
-                                                                                  r,
-                                                                              child: Text(
-                                                                                r[0]
-                                                                                        .toUpperCase() +
-                                                                                    r.substring(
-                                                                                      1,
-                                                                                    ),
-                                                                              ),
-                                                                            ),
-                                                                          )
-                                                                          .toList(),
+                                                                              u,
+                                                                            ) =>
+                                                                                u['role'] ==
+                                                                                    'expert' &&
+                                                                                u !=
+                                                                                    user,
+                                                                          ),
+                                                                      child: Text(
+                                                                        'Expert',
+                                                                        style:
+                                                                            UserStore.users.any(
+                                                                                  (
+                                                                                    u,
+                                                                                  ) =>
+                                                                                      u['role'] ==
+                                                                                          'expert' &&
+                                                                                      u !=
+                                                                                          user,
+                                                                                )
+                                                                                ? const TextStyle(
+                                                                                  color:
+                                                                                      Colors.grey,
+                                                                                )
+                                                                                : null,
+                                                                      ),
+                                                                    ),
+                                                                  ],
                                                                   onChanged: (
                                                                     value,
                                                                   ) {
@@ -638,7 +658,9 @@ class _UserManagementState extends State<UserManagement> {
                                                                     Expanded(
                                                                       child: ElevatedButton.icon(
                                                                         onPressed: () {
-                                                                          showDialog(
+                                                                          final confirm = showDialog<
+                                                                            bool
+                                                                          >(
                                                                             context:
                                                                                 context,
                                                                             builder:
@@ -649,65 +671,64 @@ class _UserManagementState extends State<UserManagement> {
                                                                                     'Delete User',
                                                                                   ),
                                                                                   content: Text(
-                                                                                    'Are you sure you want to delete ${user['name']}?',
+                                                                                    'Are you sure you want to delete \'${user['name']}\'? This action cannot be undone.',
                                                                                   ),
                                                                                   actions: [
                                                                                     TextButton(
                                                                                       onPressed:
                                                                                           () => Navigator.pop(
                                                                                             context,
+                                                                                            false,
                                                                                           ),
                                                                                       child: const Text(
                                                                                         'Cancel',
                                                                                       ),
                                                                                     ),
                                                                                     TextButton(
-                                                                                      onPressed: () {
-                                                                                        setState(
-                                                                                          () {
-                                                                                            UserStore.users.remove(
-                                                                                              user,
-                                                                                            );
-                                                                                          },
-                                                                                        );
-                                                                                        Navigator.pop(
-                                                                                          context,
-                                                                                        );
-                                                                                        Navigator.pop(
-                                                                                          context,
-                                                                                          {
-                                                                                            'deleted':
-                                                                                                true,
-                                                                                          },
-                                                                                        );
-                                                                                        ScaffoldMessenger.of(
-                                                                                          context,
-                                                                                        ).showSnackBar(
-                                                                                          SnackBar(
-                                                                                            content: Text(
-                                                                                              '${user['name']} has been deleted',
-                                                                                            ),
-                                                                                            backgroundColor:
-                                                                                                Colors.red,
+                                                                                      onPressed:
+                                                                                          () => Navigator.pop(
+                                                                                            context,
+                                                                                            true,
                                                                                           ),
-                                                                                        );
-                                                                                      },
                                                                                       child: const Text(
                                                                                         'Delete',
+                                                                                        style: TextStyle(
+                                                                                          color:
+                                                                                              Colors.red,
+                                                                                        ),
                                                                                       ),
                                                                                     ),
                                                                                   ],
                                                                                 ),
                                                                           );
+                                                                          if (confirm ==
+                                                                              true) {
+                                                                            setState(() {
+                                                                              UserStore.users.remove(
+                                                                                user,
+                                                                              );
+                                                                            });
+                                                                            ScaffoldMessenger.of(
+                                                                              context,
+                                                                            ).showSnackBar(
+                                                                              SnackBar(
+                                                                                content: Text(
+                                                                                  '${user['name']} has been deleted',
+                                                                                ),
+                                                                                backgroundColor:
+                                                                                    Colors.red,
+                                                                              ),
+                                                                            );
+                                                                          }
                                                                         },
                                                                         icon: const Icon(
                                                                           Icons
-                                                                              .delete_outline,
+                                                                              .delete,
                                                                           color:
                                                                               Colors.red,
                                                                         ),
                                                                         label: const Text(
-                                                                          'Delete user',
+                                                                          'Delete User',
                                                                           style: TextStyle(
                                                                             color:
                                                                                 Colors.red,
@@ -841,6 +862,73 @@ class _UserManagementState extends State<UserManagement> {
                                                 }
                                               },
                                             ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.delete,
+                                              color: Colors.red,
+                                            ),
+                                            tooltip: 'Delete User',
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            onPressed: () async {
+                                              final confirm = await showDialog<
+                                                bool
+                                              >(
+                                                context: context,
+                                                builder:
+                                                    (context) => AlertDialog(
+                                                      title: const Text(
+                                                        'Delete User',
+                                                      ),
+                                                      content: Text(
+                                                        'Are you sure you want to delete \"${user['name']}\"? This action cannot be undone.',
+                                                      ),
+                                                      actions: [
+                                                        TextButton(
+                                                          onPressed:
+                                                              () =>
+                                                                  Navigator.pop(
+                                                                    context,
+                                                                    false,
+                                                                  ),
+                                                          child: const Text(
+                                                            'Cancel',
+                                                          ),
+                                                        ),
+                                                        TextButton(
+                                                          onPressed:
+                                                              () =>
+                                                                  Navigator.pop(
+                                                                    context,
+                                                                    true,
+                                                                  ),
+                                                          child: const Text(
+                                                            'Delete',
+                                                            style: TextStyle(
+                                                              color: Colors.red,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                              );
+                                              if (confirm == true) {
+                                                setState(() {
+                                                  UserStore.users.remove(user);
+                                                });
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      '${user['name']} has been deleted',
+                                                    ),
+                                                    backgroundColor: Colors.red,
+                                                  ),
+                                                );
+                                              }
+                                            },
                                           ),
                                         ],
                                       ),
