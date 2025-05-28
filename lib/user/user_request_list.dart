@@ -491,7 +491,7 @@ class UserRequestDetail extends StatefulWidget {
 }
 
 class _UserRequestDetailState extends State<UserRequestDetail> {
-  bool _showBoundingBoxes = true;
+  bool _showBoundingBoxes = false;
 
   @override
   Widget build(BuildContext context) {

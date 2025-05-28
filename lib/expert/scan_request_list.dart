@@ -164,7 +164,8 @@ class _ScanRequestListState extends State<ScanRequestList>
                 mainDisease['name'] ??
                 'unknown')
             : 'unknown';
-    final isCompleted = request['status'] == 'reviewed';
+    final isCompleted =
+        request['status'] == 'reviewed' || request['status'] == 'completed';
     final userName = request['userName']?.toString() ?? '(No Name)';
     final submittedAt = request['submittedAt'] ?? '';
     String? reviewedAt;

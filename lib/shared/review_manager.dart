@@ -62,6 +62,44 @@ class ReviewManager {
         'reviewedAt': '2024-06-20T12:00:00',
       },
     },
+    // Completed review for Maria Santos
+    {
+      'id': 'review_003',
+      'userId': 'user_003',
+      'userName': 'Maria Santos',
+      'status': 'reviewed',
+      'submittedAt': '2024-06-10T09:15:00',
+      'images': [
+        {'path': 'assets/sample3.jpg', 'detections': []},
+      ],
+      'diseaseSummary': [
+        {'disease': 'Bacterial Blackspot', 'averageConfidence': 0.88},
+      ],
+      'notes': 'Sample notes for Maria Santos.',
+      'expertReview': {
+        'comment': 'Confirmed Bacterial Blackspot.',
+        'severityAssessment': {
+          'level': 'medium',
+          'confidence': 0.88,
+          'notes': 'Expert assessment based on image analysis',
+        },
+        'treatmentPlan': {
+          'recommendations': [
+            {
+              'treatment': 'Apply copper-based bactericide',
+              'dosage': '2g/L',
+              'frequency': 'Every 10 days',
+              'precautions': 'Avoid during rain',
+            },
+          ],
+          'preventiveMeasures': [
+            'Remove infected leaves',
+            'Improve air circulation',
+          ],
+        },
+        'reviewedAt': '2024-06-11T10:00:00',
+      },
+    },
   ];
   final _uuid = const Uuid();
   final String _boxName = 'reviews';

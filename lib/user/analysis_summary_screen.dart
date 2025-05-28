@@ -125,6 +125,12 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
           const SnackBar(
             content: Text('Analysis sent for review successfully!'),
             backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.only(bottom: 70, left: 16, right: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(12)),
+            ),
+            duration: Duration(seconds: 2),
           ),
         );
         Navigator.of(context).popUntil((route) => route.isFirst);
@@ -135,6 +141,12 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
           SnackBar(
             content: Text('Error sending for review: $e'),
             backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.only(bottom: 70, left: 16, right: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(12)),
+            ),
+            duration: Duration(seconds: 2),
           ),
         );
       }
