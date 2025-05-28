@@ -53,9 +53,10 @@ class _LoginPageState extends State<LoginPage> {
             MaterialPageRoute(builder: (context) => const ExpertDashboard()),
           );
         } else if (userRole == 'user') {
-          Navigator.pushReplacement(
+          Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(builder: (context) => const HomePage()),
+            (route) => false,
           );
         } else {
           setState(() {
