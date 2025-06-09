@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'login_page.dart';
 import '../admin/models/user_store.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({Key? key}) : super(key: key);
@@ -18,39 +20,72 @@ class _RegisterPageState extends State<RegisterPage> {
   final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
 
-  void _handleRegister() {
+  void _handleRegister() async {
     setState(() {
       _isLoading = true;
     });
 
-    // Simulate network delay
-    Future.delayed(const Duration(seconds: 1), () {
+    try {
+      // Create user with Firebase Auth
+      UserCredential userCredential = await FirebaseAuth.instance
+          .createUserWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
+      final user = userCredential.user;
+      if (user != null) {
+        // Save user profile to Firestore
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'userId': user.uid,
+          'fullName': _fullNameController.text.trim(),
+          'address': _addressController.text.trim(),
+          'phoneNumber': _phoneController.text.trim(),
+          'email': _emailController.text.trim(),
+          'role': 'farmer',
+          'status': 'pending',
+          'imageProfile': '',
+          'createdAt': DateTime.now(),
+        });
+      }
       setState(() {
         _isLoading = false;
       });
-      // Add new user to UserStore
-      UserStore.users.add({
-        'id': 'USER_${UserStore.users.length + 1}'.padLeft(3, '0'),
-        'name': _fullNameController.text,
-        'email': _emailController.text,
-        'status': 'pending',
-        'role': 'user',
-        'registeredAt': DateTime.now().toString().substring(0, 16),
-        'lastActive': DateTime.now().toString().substring(0, 16),
-      });
-      // Show success message
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Account created successfully!'),
+          content: Text(
+            'Account created successfully! Awaiting admin approval.',
+          ),
           backgroundColor: Colors.green,
         ),
       );
-      // Navigate to login page
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const LoginPage()),
       );
-    });
+    } on FirebaseAuthException catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      String message = 'Registration failed.';
+      if (e.code == 'email-already-in-use') {
+        message = 'Email already in use.';
+      } else if (e.code == 'weak-password') {
+        message = 'Password is too weak.';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.red),
+      );
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('An error occurred. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override

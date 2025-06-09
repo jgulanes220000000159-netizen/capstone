@@ -392,6 +392,10 @@ class _HomePageState extends State<HomePage> {
                   ),
                   label: 'My Requests',
                 ),
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.show_chart),
+                  label: 'Progress',
+                ),
               ],
             ),
           ],

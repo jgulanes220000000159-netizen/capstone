@@ -6,9 +6,11 @@ import 'user/register_page.dart';
 import 'expert/expert_dashboard.dart';
 import 'test_account.dart';
 import 'admin/screens/admin_login.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   await Hive.initFlutter();
   await Hive.openBox('reviews'); // Open a box for review/request data
   runApp(const CapstoneApp());
