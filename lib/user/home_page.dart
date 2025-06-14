@@ -346,6 +346,7 @@ class _HomePageState extends State<HomePage> {
                 });
               },
               selectedItemColor: Colors.green,
+              unselectedItemColor: Colors.grey,
               items: [
                 const BottomNavigationBarItem(
                   icon: Icon(Icons.home),
