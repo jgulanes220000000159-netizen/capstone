@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import '../routes.dart';
 import '../about_app_page.dart';
+import '../user/login_page.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class ExpertProfile extends StatefulWidget {
   const ExpertProfile({Key? key}) : super(key: key);
@@ -16,6 +20,92 @@ class _ExpertProfileState extends State<ExpertProfile> {
   final ImagePicker _picker = ImagePicker();
   bool _notificationsEnabled = true;
 
+  // User data variables
+  String _userName = 'Loading...';
+  String _userRole = 'Expert';
+  String _userEmail = '';
+  String _userPhone = '';
+  String _userAddress = '';
+  String? _profileImageUrl;
+  int _completedReviews = 0;
+  int _farmersUnderCare = 0;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // Fetch user profile from Firestore
+        final userDoc =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .get();
+
+        if (userDoc.exists) {
+          final data = userDoc.data() as Map<String, dynamic>;
+          setState(() {
+            _userName = data['fullName'] ?? 'Unknown Expert';
+            _userRole = data['role'] ?? 'Expert';
+            _userEmail = data['email'] ?? '';
+            _userPhone = data['phoneNumber'] ?? '';
+            _userAddress = data['address'] ?? '';
+            _profileImageUrl = data['imageProfile'];
+            _isLoading = false;
+          });
+
+          // Load expert statistics
+          _loadExpertStats(user.uid);
+        }
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadExpertStats(String userId) async {
+    try {
+      // Count completed reviews
+      final reviewsQuery =
+          await FirebaseFirestore.instance
+              .collection('scan_requests')
+              .where('expertId', isEqualTo: userId)
+              .where('status', isEqualTo: 'completed')
+              .get();
+
+      // Count unique farmers under care
+      final farmersQuery =
+          await FirebaseFirestore.instance
+              .collection('scan_requests')
+              .where('expertId', isEqualTo: userId)
+              .get();
+
+      Set<String> uniqueFarmers = {};
+      for (var doc in farmersQuery.docs) {
+        final data = doc.data();
+        if (data['userId'] != null) {
+          uniqueFarmers.add(data['userId']);
+        }
+      }
+
+      setState(() {
+        _completedReviews = reviewsQuery.docs.length;
+        _farmersUnderCare = uniqueFarmers.length;
+      });
+    } catch (e) {
+      print('Error loading expert stats: $e');
+    }
+  }
+
   Future<void> _pickProfileImage() async {
     final XFile? pickedFile = await _picker.pickImage(
       source: ImageSource.gallery,
@@ -25,6 +115,44 @@ class _ExpertProfileState extends State<ExpertProfile> {
       setState(() {
         _profileImage = File(pickedFile.path);
       });
+
+      // Upload to Firebase Storage
+      await _uploadProfileImage(pickedFile.path);
+    }
+  }
+
+  Future<void> _uploadProfileImage(String imagePath) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final file = File(imagePath);
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('profile_images')
+            .child('${user.uid}.jpg');
+
+        await ref.putFile(file);
+        final url = await ref.getDownloadURL();
+
+        // Update Firestore with new image URL
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({'imageProfile': url});
+
+        setState(() {
+          _profileImageUrl = url;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile image updated successfully!')),
+        );
+      }
+    } catch (e) {
+      print('Error uploading profile image: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update profile image')),
+      );
     }
   }
 
@@ -221,16 +349,16 @@ class _ExpertProfileState extends State<ExpertProfile> {
 
   void _showEditProfileDialog(BuildContext context) {
     final TextEditingController nameController = TextEditingController(
-      text: 'Dr. John Smith',
+      text: _userName,
     );
     final TextEditingController emailController = TextEditingController(
-      text: 'john.smith@example.com',
+      text: _userEmail,
     );
     final TextEditingController phoneController = TextEditingController(
-      text: '+63 912 345 6789',
+      text: _userPhone,
     );
     final TextEditingController addressController = TextEditingController(
-      text: '123 Expert Street, Manila, Philippines',
+      text: _userAddress,
     );
 
     showDialog(
@@ -311,15 +439,43 @@ class _ExpertProfileState extends State<ExpertProfile> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: () {
-                          // TODO: Implement save functionality
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Profile updated successfully'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
+                        onPressed: () async {
+                          try {
+                            final user = FirebaseAuth.instance.currentUser;
+                            if (user != null) {
+                              await FirebaseFirestore.instance
+                                  .collection('users')
+                                  .doc(user.uid)
+                                  .update({
+                                    'fullName': nameController.text.trim(),
+                                    'phoneNumber': phoneController.text.trim(),
+                                    'address': addressController.text.trim(),
+                                  });
+
+                              // Update local state
+                              setState(() {
+                                _userName = nameController.text.trim();
+                                _userPhone = phoneController.text.trim();
+                                _userAddress = addressController.text.trim();
+                              });
+
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Profile updated successfully'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            print('Error updating profile: $e');
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Failed to update profile'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green,
@@ -430,28 +586,65 @@ class _ExpertProfileState extends State<ExpertProfile> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         final current = currentPasswordController.text;
                         final newPass = newPasswordController.text;
                         final confirm = confirmPasswordController.text;
+
                         if (current.isEmpty ||
                             newPass.isEmpty ||
                             confirm.isEmpty) {
                           errorNotifier.value = 'All fields are required.';
                           return;
                         }
+
                         if (newPass != confirm) {
                           errorNotifier.value = 'New passwords do not match.';
                           return;
                         }
-                        // TODO: Implement actual password change logic
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Password changed successfully!'),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
+
+                        if (newPass.length < 6) {
+                          errorNotifier.value =
+                              'New password must be at least 6 characters.';
+                          return;
+                        }
+
+                        try {
+                          final user = FirebaseAuth.instance.currentUser;
+                          if (user != null && user.email != null) {
+                            // Re-authenticate user with current password
+                            final credential = EmailAuthProvider.credential(
+                              email: user.email!,
+                              password: current,
+                            );
+                            await user.reauthenticateWithCredential(credential);
+
+                            // Update password
+                            await user.updatePassword(newPass);
+
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Password changed successfully!'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } on FirebaseAuthException catch (e) {
+                          String errorMessage =
+                              'An error occurred while changing password.';
+                          if (e.code == 'wrong-password') {
+                            errorMessage = 'Current password is incorrect.';
+                          } else if (e.code == 'weak-password') {
+                            errorMessage = 'New password is too weak.';
+                          } else if (e.code == 'requires-recent-login') {
+                            errorMessage =
+                                'Please log out and log in again before changing password.';
+                          }
+                          errorNotifier.value = errorMessage;
+                        } catch (e) {
+                          errorNotifier.value = 'An unexpected error occurred.';
+                        }
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.green,
@@ -509,6 +702,22 @@ class _ExpertProfileState extends State<ExpertProfile> {
                                   fit: BoxFit.cover,
                                 ),
                               )
+                              : _profileImageUrl != null
+                              ? ClipOval(
+                                child: Image.network(
+                                  _profileImageUrl!,
+                                  width: 140,
+                                  height: 140,
+                                  fit: BoxFit.cover,
+                                  errorBuilder:
+                                      (context, error, stackTrace) =>
+                                          const Icon(
+                                            Icons.person,
+                                            size: 90,
+                                            color: Colors.green,
+                                          ),
+                                ),
+                              )
                               : const Icon(
                                 Icons.person,
                                 size: 90,
@@ -548,9 +757,9 @@ class _ExpertProfileState extends State<ExpertProfile> {
                 ),
                 const SizedBox(height: 16),
                 // Expert Name
-                const Text(
-                  'Dr. John Smith',
-                  style: TextStyle(
+                Text(
+                  _isLoading ? 'Loading...' : _userName,
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -567,9 +776,9 @@ class _ExpertProfileState extends State<ExpertProfile> {
                     color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text(
-                    'Plant Disease Expert',
-                    style: TextStyle(color: Colors.white, fontSize: 14),
+                  child: Text(
+                    _userRole,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -590,17 +799,17 @@ class _ExpertProfileState extends State<ExpertProfile> {
                           );
                         },
                         child: Column(
-                          children: const [
+                          children: [
                             Text(
-                              '156',
-                              style: TextStyle(
+                              _completedReviews.toString(),
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            SizedBox(height: 4),
-                            Text(
+                            const SizedBox(height: 4),
+                            const Text(
                               'Completed Reviews',
                               textAlign: TextAlign.center,
                               style: TextStyle(
@@ -620,17 +829,17 @@ class _ExpertProfileState extends State<ExpertProfile> {
                       GestureDetector(
                         onTap: () => _showUsersList(context),
                         child: Column(
-                          children: const [
+                          children: [
                             Text(
-                              '42',
-                              style: TextStyle(
+                              _farmersUnderCare.toString(),
+                              style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            SizedBox(height: 4),
-                            Text(
+                            const SizedBox(height: 4),
+                            const Text(
                               'Farmers Under Care',
                               textAlign: TextAlign.center,
                               style: TextStyle(
@@ -715,7 +924,15 @@ class _ExpertProfileState extends State<ExpertProfile> {
                           ),
                     );
                     if (shouldLogout == true) {
-                      Routes.navigateToLogin(context);
+                      // Sign out from Firebase
+                      await FirebaseAuth.instance.signOut();
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const LoginPage(),
+                        ),
+                        (route) => false,
+                      );
                     }
                   },
                 ),

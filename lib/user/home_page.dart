@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'camera_page.dart';
 import 'detection_carousel_screen.dart';
 import 'disease_details_page.dart';
@@ -20,6 +22,10 @@ class _HomePageState extends State<HomePage> {
   int _selectedIndex = 0;
   final ReviewManager _reviewManager = ReviewManager();
 
+  // User data variables
+  String _userName = 'Loading...';
+  bool _isLoading = true;
+
   final List<Widget> _pages = [
     // Home
     Container(), // Placeholder for home content
@@ -33,6 +39,61 @@ class _HomePageState extends State<HomePage> {
       _reviewManager.pendingReviews
           .where((r) => r['status'] == 'pending')
           .length;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      print('Current user: ${user?.email}');
+      print('Current user UID: ${user?.uid}');
+
+      if (user != null) {
+        // Fetch user profile from Firestore
+        final userDoc =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .get();
+
+        print('User document exists: ${userDoc.exists}');
+
+        if (userDoc.exists) {
+          final data = userDoc.data() as Map<String, dynamic>;
+          print('User data: $data');
+          print('Full name from data: ${data['fullName']}');
+
+          setState(() {
+            _userName = data['fullName'] ?? 'Farmer';
+            _isLoading = false;
+          });
+          print('Set user name to: $_userName');
+        } else {
+          print('User document does not exist');
+          setState(() {
+            _userName = 'Farmer';
+            _isLoading = false;
+          });
+        }
+      } else {
+        print('No current user');
+        setState(() {
+          _userName = 'Farmer';
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+      setState(() {
+        _userName = 'Farmer';
+        _isLoading = false;
+      });
+    }
+  }
 
   // Disease information
   final Map<String, Map<String, dynamic>> diseaseInfo = {
@@ -261,13 +322,18 @@ class _HomePageState extends State<HomePage> {
                               ),
                               child: Align(
                                 alignment: Alignment.centerLeft,
-                                child: Text(
-                                  'Good day, Farmer 1',
-                                  style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green[700],
-                                  ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Good day, $_userName',
+                                      style: TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green[700],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),

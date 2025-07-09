@@ -6,6 +6,10 @@ import '../test_account.dart';
 import '../admin/models/admin_user.dart';
 import '../admin/screens/admin_dashboard.dart';
 import '../admin/screens/admin_login.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:mailer/mailer.dart';
+import 'package:mailer/smtp_server.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -21,55 +25,236 @@ class _LoginPageState extends State<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
 
-  void _handleLogin() {
+  // Store verification codes in memory (for testing)
+  final Map<String, Map<String, dynamic>> _verificationCodes = {};
+
+  Future<void> _sendVerificationEmail(String email, String code) async {
+    try {
+      // Configure your email settings here
+      // You can use Gmail, Outlook, or any SMTP server
+
+      // For Gmail (you'll need to enable "Less secure app access" or use App Password)
+      final smtpServer = gmail('your-email@gmail.com', 'your-app-password');
+
+      // For Outlook
+      // final smtpServer = SmtpServer('smtp-mail.outlook.com', username: 'your-email@outlook.com', password: 'your-password');
+
+      // Create the email message
+      final message =
+          Message()
+            ..from = Address('your-email@gmail.com', 'MangoSense App')
+            ..recipients.add(email)
+            ..subject = 'Password Reset Verification Code'
+            ..html = '''
+          <h2>Password Reset Verification</h2>
+          <p>You requested a password reset for your MangoSense account.</p>
+          <p>Your verification code is: <strong style="font-size: 24px; color: #4CAF50;">$code</strong></p>
+          <p>This code will expire in 15 minutes.</p>
+          <p>If you didn't request this, please ignore this email.</p>
+          <br>
+          <p>Best regards,<br>MangoSense Team</p>
+        ''';
+
+      // Send the email
+      final sendReport = await send(message, smtpServer);
+      print('Message sent: ' + sendReport.toString());
+    } catch (e) {
+      print('Error sending email: $e');
+      // For now, we'll show the code in console for testing
+      print('Verification code for $email: $code');
+      throw Exception(
+        'Failed to send verification email. Please check your email settings.',
+      );
+    }
+  }
+
+  void _handleLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
       });
 
-      Future.delayed(const Duration(seconds: 1), () {
-        final userRole = TestAccounts.validateCredentials(
-          _emailController.text,
-          _passwordController.text,
-        );
+      try {
+        final email = _emailController.text.trim();
+        final password = _passwordController.text.trim();
 
-        if (userRole == 'admin') {
-          final adminUser = AdminUser(
-            id: 'ADMIN_001',
-            username: 'admin',
-            email: 'admin@example.com',
-            role: 'super_admin',
-            lastLogin: DateTime.now(),
-          );
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => AdminDashboard(adminUser: adminUser),
-            ),
-          );
-        } else if (userRole == 'expert') {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const ExpertDashboard()),
-          );
-        } else if (userRole == 'user') {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (context) => const HomePage()),
-            (route) => false,
-          );
-        } else {
+        // First, check if the email exists in Firestore
+        final usersQuery =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .where('email', isEqualTo: email)
+                .limit(1)
+                .get();
+
+        if (usersQuery.docs.isEmpty) {
           setState(() {
             _isLoading = false;
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Invalid email or password'),
-              backgroundColor: Colors.red,
+            SnackBar(
+              content: Text(
+                'Email address "$email" is not registered. Please check your email or create a new account.',
+              ),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 4),
             ),
           );
+          return;
         }
-      });
+
+        // Email exists, now try to sign in
+        UserCredential userCredential = await FirebaseAuth.instance
+            .signInWithEmailAndPassword(email: email, password: password);
+
+        final user = userCredential.user;
+        if (user != null) {
+          // Fetch user profile from Firestore
+          DocumentSnapshot userDoc =
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .get();
+
+          if (userDoc.exists) {
+            final data = userDoc.data() as Map<String, dynamic>;
+            final role = data['role'];
+            final status = data['status'];
+
+            // Debug: Print user data to console
+            print('User data: $data');
+            print('Role: $role, Status: $status');
+
+            if (status != 'active') {
+              setState(() {
+                _isLoading = false;
+              });
+              String roleText = role == 'expert' ? 'expert' : 'farmer';
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Your $roleText account is currently ${status ?? 'inactive'}. Please contact support for assistance.',
+                  ),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            } else if (role == 'farmer') {
+              // Navigate to HomePage for farmer
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const HomePage()),
+                (route) => false,
+              );
+            } else if (role == 'expert') {
+              // Navigate to ExpertDashboard for expert
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ExpertDashboard(),
+                ),
+                (route) => false,
+              );
+            } else if (role == 'admin') {
+              setState(() {
+                _isLoading = false;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Admin accounts should use the admin login portal.',
+                  ),
+                  backgroundColor: Colors.orange,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            } else {
+              setState(() {
+                _isLoading = false;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Unknown user role: ${role ?? 'undefined'}. Please contact support.',
+                  ),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            }
+          } else {
+            setState(() {
+              _isLoading = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'User profile not found. Please contact support.',
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } on FirebaseAuthException catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+
+        String message;
+        Color backgroundColor;
+
+        switch (e.code) {
+          case 'wrong-password':
+            message =
+                'Incorrect password. Please check your password and try again.';
+            backgroundColor = Colors.red;
+            break;
+          case 'user-not-found':
+            message =
+                'Email address not found. Please check your email or create a new account.';
+            backgroundColor = Colors.orange;
+            break;
+          case 'invalid-email':
+            message = 'Please enter a valid email address.';
+            backgroundColor = Colors.orange;
+            break;
+          case 'user-disabled':
+            message = 'This account has been disabled. Please contact support.';
+            backgroundColor = Colors.red;
+            break;
+          case 'too-many-requests':
+            message = 'Too many failed login attempts. Please try again later.';
+            backgroundColor = Colors.orange;
+            break;
+          case 'network-request-failed':
+            message =
+                'Network error. Please check your internet connection and try again.';
+            backgroundColor = Colors.orange;
+            break;
+          default:
+            message = 'Login failed. Please try again.';
+            backgroundColor = Colors.red;
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: backgroundColor,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } catch (e) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('An unexpected error occurred: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
@@ -226,9 +411,7 @@ class _LoginPageState extends State<LoginPage> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton(
-                        onPressed: () {
-                          // TODO: Implement forgot password
-                        },
+                        onPressed: () => _showForgotPasswordDialog(context),
                         child: const Text(
                           'Forgot Password?',
                           style: TextStyle(color: Colors.white70),
@@ -328,6 +511,175 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ),
       ),
+    );
+  }
+
+  void _showForgotPasswordDialog(BuildContext context) {
+    final TextEditingController emailController = TextEditingController();
+    final ValueNotifier<String?> errorNotifier = ValueNotifier<String?>(null);
+    final ValueNotifier<bool> isLoadingNotifier = ValueNotifier<bool>(false);
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Reset Password',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Enter your email address and we\'ll send you a link to reset your password.',
+                    style: TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'Email Address',
+                      prefixIcon: Icon(Icons.email),
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ValueListenableBuilder<String?>(
+                    valueListenable: errorNotifier,
+                    builder:
+                        (context, error, child) =>
+                            error == null
+                                ? const SizedBox.shrink()
+                                : Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Text(
+                                    error,
+                                    style: const TextStyle(color: Colors.red),
+                                  ),
+                                ),
+                  ),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: isLoadingNotifier,
+                      builder:
+                          (context, isLoading, child) => ElevatedButton(
+                            onPressed:
+                                isLoading
+                                    ? null
+                                    : () async {
+                                      final email = emailController.text.trim();
+
+                                      if (email.isEmpty) {
+                                        errorNotifier.value =
+                                            'Please enter your email address.';
+                                        return;
+                                      }
+
+                                      if (!RegExp(
+                                        r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                                      ).hasMatch(email)) {
+                                        errorNotifier.value =
+                                            'Please enter a valid email address.';
+                                        return;
+                                      }
+
+                                      isLoadingNotifier.value = true;
+                                      errorNotifier.value = null;
+
+                                      try {
+                                        await FirebaseAuth.instance
+                                            .sendPasswordResetEmail(
+                                              email: email,
+                                            );
+
+                                        Navigator.pop(context);
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Password reset link sent to $email',
+                                            ),
+                                            backgroundColor: Colors.green,
+                                          ),
+                                        );
+                                      } on FirebaseAuthException catch (e) {
+                                        String errorMessage =
+                                            'An error occurred while sending reset email.';
+                                        if (e.code == 'user-not-found') {
+                                          errorMessage =
+                                              'No account found with this email address.';
+                                        } else if (e.code == 'invalid-email') {
+                                          errorMessage =
+                                              'Please enter a valid email address.';
+                                        } else if (e.code ==
+                                            'too-many-requests') {
+                                          errorMessage =
+                                              'Too many requests. Please try again later.';
+                                        }
+                                        errorNotifier.value = errorMessage;
+                                      } catch (e) {
+                                        errorNotifier.value =
+                                            'An unexpected error occurred.';
+                                      } finally {
+                                        isLoadingNotifier.value = false;
+                                      }
+                                    },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child:
+                                isLoading
+                                    ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                      ),
+                                    )
+                                    : const Text(
+                                      'Send Reset Link',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
     );
   }
 }

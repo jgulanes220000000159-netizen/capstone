@@ -4,6 +4,9 @@ import 'edit_profile_page.dart';
 import '../about_app_page.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({Key? key}) : super(key: key);
@@ -17,6 +20,98 @@ class _ProfilePageState extends State<ProfilePage> {
   final ImagePicker _picker = ImagePicker();
   bool _notificationsEnabled = true;
 
+  // User data variables
+  String _userName = 'Loading...';
+  String _userRole = 'Farmer';
+  String _userEmail = '';
+  String _userPhone = '';
+  String _userAddress = '';
+  String? _profileImageUrl;
+  int _scanCount = 0;
+  int _diseaseCount = 0;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // Fetch user profile from Firestore
+        final userDoc =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .get();
+
+        if (userDoc.exists) {
+          final data = userDoc.data() as Map<String, dynamic>;
+          setState(() {
+            _userName = data['fullName'] ?? 'Unknown User';
+            _userRole = data['role'] ?? 'Farmer';
+            _userEmail = data['email'] ?? '';
+            _userPhone = data['phoneNumber'] ?? '';
+            _userAddress = data['address'] ?? '';
+            _profileImageUrl = data['imageProfile'];
+            _isLoading = false;
+          });
+
+          // Load user statistics
+          _loadUserStats(user.uid);
+        }
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadUserStats(String userId) async {
+    try {
+      // Count user's scan requests
+      final scanQuery =
+          await FirebaseFirestore.instance
+              .collection('scan_requests')
+              .where('userId', isEqualTo: userId)
+              .get();
+
+      // Count unique diseases detected
+      final diseaseQuery =
+          await FirebaseFirestore.instance
+              .collection('scan_requests')
+              .where('userId', isEqualTo: userId)
+              .where('status', isEqualTo: 'completed')
+              .get();
+
+      int uniqueDiseases = 0;
+      Set<String> diseases = {};
+
+      for (var doc in diseaseQuery.docs) {
+        final data = doc.data();
+        if (data['diseaseSummary'] != null) {
+          for (var disease in data['diseaseSummary']) {
+            if (disease['name'] != null && disease['name'] != 'Healthy') {
+              diseases.add(disease['name']);
+            }
+          }
+        }
+      }
+
+      setState(() {
+        _scanCount = scanQuery.docs.length;
+        _diseaseCount = diseases.length;
+      });
+    } catch (e) {
+      print('Error loading user stats: $e');
+    }
+  }
+
   Future<void> _pickProfileImage() async {
     final XFile? pickedFile = await _picker.pickImage(
       source: ImageSource.gallery,
@@ -26,6 +121,44 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         _profileImage = File(pickedFile.path);
       });
+
+      // Upload to Firebase Storage
+      await _uploadProfileImage(pickedFile.path);
+    }
+  }
+
+  Future<void> _uploadProfileImage(String imagePath) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final file = File(imagePath);
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('profile_images')
+            .child('${user.uid}.jpg');
+
+        await ref.putFile(file);
+        final url = await ref.getDownloadURL();
+
+        // Update Firestore with new image URL
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({'imageProfile': url});
+
+        setState(() {
+          _profileImageUrl = url;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile image updated successfully!')),
+        );
+      }
+    } catch (e) {
+      print('Error uploading profile image: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update profile image')),
+      );
     }
   }
 
@@ -94,6 +227,22 @@ class _ProfilePageState extends State<ProfilePage> {
                                     fit: BoxFit.cover,
                                   ),
                                 )
+                                : _profileImageUrl != null
+                                ? ClipOval(
+                                  child: Image.network(
+                                    _profileImageUrl!,
+                                    width: 120,
+                                    height: 120,
+                                    fit: BoxFit.cover,
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            const Icon(
+                                              Icons.person,
+                                              size: 70,
+                                              color: Colors.green,
+                                            ),
+                                  ),
+                                )
                                 : const Icon(
                                   Icons.person,
                                   size: 70,
@@ -123,9 +272,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   const SizedBox(height: 16),
                   // User Name
-                  const Text(
-                    'Guest User',
-                    style: TextStyle(
+                  Text(
+                    _isLoading ? 'Loading...' : _userName,
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -142,9 +291,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Text(
-                      'Farmer',
-                      style: TextStyle(color: Colors.white, fontSize: 14),
+                    child: Text(
+                      _userRole,
+                      style: const TextStyle(color: Colors.white, fontSize: 14),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -160,7 +309,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               const SnackBar(content: Text('Scans clicked!')),
                             );
                           },
-                          child: _buildStat('Scans', '23'),
+                          child: _buildStat('Scans', _scanCount.toString()),
                         ),
                         Container(
                           height: 40,
@@ -175,7 +324,10 @@ class _ProfilePageState extends State<ProfilePage> {
                               ),
                             );
                           },
-                          child: _buildStat('Diseases\nDetected', '4'),
+                          child: _buildStat(
+                            'Diseases\nDetected',
+                            _diseaseCount.toString(),
+                          ),
                         ),
                       ],
                     ),
@@ -257,6 +409,8 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                       );
                       if (shouldLogout == true) {
+                        // Sign out from Firebase
+                        await FirebaseAuth.instance.signOut();
                         Navigator.pushAndRemoveUntil(
                           context,
                           MaterialPageRoute(
@@ -355,6 +509,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final TextEditingController confirmPasswordController =
         TextEditingController();
     final ValueNotifier<String?> errorNotifier = ValueNotifier<String?>(null);
+    final ValueNotifier<bool> isLoadingNotifier = ValueNotifier<bool>(false);
 
     showDialog(
       context: context,
@@ -432,44 +587,125 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        final current = currentPasswordController.text;
-                        final newPass = newPasswordController.text;
-                        final confirm = confirmPasswordController.text;
-                        if (current.isEmpty ||
-                            newPass.isEmpty ||
-                            confirm.isEmpty) {
-                          errorNotifier.value = 'All fields are required.';
-                          return;
-                        }
-                        if (newPass != confirm) {
-                          errorNotifier.value = 'New passwords do not match.';
-                          return;
-                        }
-                        // TODO: Implement actual password change logic
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Password changed successfully!'),
-                            backgroundColor: Colors.green,
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: isLoadingNotifier,
+                      builder:
+                          (context, isLoading, child) => ElevatedButton(
+                            onPressed:
+                                isLoading
+                                    ? null
+                                    : () async {
+                                      final current =
+                                          currentPasswordController.text;
+                                      final newPass =
+                                          newPasswordController.text;
+                                      final confirm =
+                                          confirmPasswordController.text;
+
+                                      if (current.isEmpty ||
+                                          newPass.isEmpty ||
+                                          confirm.isEmpty) {
+                                        errorNotifier.value =
+                                            'All fields are required.';
+                                        return;
+                                      }
+
+                                      if (newPass != confirm) {
+                                        errorNotifier.value =
+                                            'New passwords do not match.';
+                                        return;
+                                      }
+
+                                      if (newPass.length < 6) {
+                                        errorNotifier.value =
+                                            'New password must be at least 6 characters.';
+                                        return;
+                                      }
+
+                                      isLoadingNotifier.value = true;
+                                      errorNotifier.value = null;
+
+                                      try {
+                                        final user =
+                                            FirebaseAuth.instance.currentUser;
+                                        if (user != null &&
+                                            user.email != null) {
+                                          // Re-authenticate user with current password
+                                          final credential =
+                                              EmailAuthProvider.credential(
+                                                email: user.email!,
+                                                password: current,
+                                              );
+                                          await user
+                                              .reauthenticateWithCredential(
+                                                credential,
+                                              );
+
+                                          // Update password
+                                          await user.updatePassword(newPass);
+
+                                          Navigator.pop(context);
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'Password changed successfully!',
+                                              ),
+                                              backgroundColor: Colors.green,
+                                            ),
+                                          );
+                                        }
+                                      } on FirebaseAuthException catch (e) {
+                                        String errorMessage =
+                                            'An error occurred while changing password.';
+                                        if (e.code == 'wrong-password') {
+                                          errorMessage =
+                                              'Current password is incorrect.';
+                                        } else if (e.code == 'weak-password') {
+                                          errorMessage =
+                                              'New password is too weak.';
+                                        } else if (e.code ==
+                                            'requires-recent-login') {
+                                          errorMessage =
+                                              'Please log out and log in again before changing password.';
+                                        }
+                                        errorNotifier.value = errorMessage;
+                                      } catch (e) {
+                                        errorNotifier.value =
+                                            'An unexpected error occurred.';
+                                      } finally {
+                                        isLoadingNotifier.value = false;
+                                      }
+                                    },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child:
+                                isLoading
+                                    ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                      ),
+                                    )
+                                    : const Text(
+                                      'Change Password',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                           ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text(
-                        'Change Password',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
                     ),
                   ),
                 ],

@@ -24,6 +24,7 @@ dependencies:
   firebase_auth: ^4.17.4
   cloud_firestore: ^4.15.4
   firebase_storage: ^11.6.5
+  mailer: ^6.0.1
 
 dev_dependencies:
   flutter_test:

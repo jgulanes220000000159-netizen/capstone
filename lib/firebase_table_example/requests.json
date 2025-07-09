@@ -8,7 +8,7 @@
       "submittedAt": "2024-06-10 09:15",
       "images": [
         {
-          "path": "/storage/emulated/0/Android/data/com.example.capstone/files/Pictures/IMG_20240610_090000.jpg",
+          "path": "https://your-s3-bucket.s3.amazonaws.com/users/USER_001/requests/REQ_001/IMG_20240610_090000.jpg",
           "detections": [
             {
               "label": "Anthracnose",
@@ -33,7 +33,7 @@
           ]
         },
         {
-          "path": "/storage/emulated/0/Android/data/com.example.capstone/files/Pictures/IMG_20240610_090100.jpg",
+          "path": "https://your-s3-bucket.s3.amazonaws.com/users/USER_001/requests/REQ_001/IMG_20240610_090100.jpg",
           "detections": [
             {
               "label": "Powdery Mildew",
@@ -51,21 +51,15 @@
       "diseaseSummary": [
         {
           "name": "Anthracnose",
-          "count": 1,
-          "averageConfidence": 0.89,
-          "severity": "medium"
+          "count": 1
         },
         {
           "name": "Powdery Mildew",
-          "count": 1,
-          "averageConfidence": 0.92,
-          "severity": "high"
+          "count": 1
         },
         {
           "name": "Healthy",
-          "count": 1,
-          "averageConfidence": 0.85,
-          "severity": "low"
+          "count": 1
         }
       ],
       "expertReview": {
