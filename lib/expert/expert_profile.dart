@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:hive/hive.dart';
 
 class ExpertProfile extends StatefulWidget {
   const ExpertProfile({Key? key}) : super(key: key);
@@ -28,7 +29,6 @@ class _ExpertProfileState extends State<ExpertProfile> {
   String _userAddress = '';
   String? _profileImageUrl;
   int _completedReviews = 0;
-  int _farmersUnderCare = 0;
   bool _isLoading = true;
 
   @override
@@ -39,6 +39,20 @@ class _ExpertProfileState extends State<ExpertProfile> {
 
   Future<void> _loadUserData() async {
     try {
+      final userBox = await Hive.openBox('userBox');
+      final localProfile = userBox.get('userProfile');
+      if (localProfile != null) {
+        setState(() {
+          _userName = localProfile['fullName'] ?? 'Unknown Expert';
+          _userRole = localProfile['role'] ?? 'Expert';
+          _userEmail = localProfile['email'] ?? '';
+          _userPhone = localProfile['phoneNumber'] ?? '';
+          _userAddress = localProfile['address'] ?? '';
+          _profileImageUrl = localProfile['imageProfile'];
+          _isLoading = false;
+        });
+        return;
+      }
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
         // Fetch user profile from Firestore
@@ -82,24 +96,8 @@ class _ExpertProfileState extends State<ExpertProfile> {
               .where('status', isEqualTo: 'completed')
               .get();
 
-      // Count unique farmers under care
-      final farmersQuery =
-          await FirebaseFirestore.instance
-              .collection('scan_requests')
-              .where('expertId', isEqualTo: userId)
-              .get();
-
-      Set<String> uniqueFarmers = {};
-      for (var doc in farmersQuery.docs) {
-        final data = doc.data();
-        if (data['userId'] != null) {
-          uniqueFarmers.add(data['userId']);
-        }
-      }
-
       setState(() {
         _completedReviews = reviewsQuery.docs.length;
-        _farmersUnderCare = uniqueFarmers.length;
       });
     } catch (e) {
       print('Error loading expert stats: $e');
@@ -180,148 +178,6 @@ class _ExpertProfileState extends State<ExpertProfile> {
           ),
         ],
       ),
-    );
-  }
-
-  void _showUsersList(BuildContext context) {
-    final List<Map<String, String>> users = [
-      {'name': 'Maria Santos', 'email': 'maria.santos@example.com'},
-      {'name': 'Juan Dela Cruz', 'email': 'juan.delacruz@example.com'},
-      {'name': 'Lourdes Reyes', 'email': 'lourdes.reyes@example.com'},
-      {'name': 'Antonio Flores', 'email': 'antonio.flores@example.com'},
-      {'name': 'Carmen Torres', 'email': 'carmen.torres@example.com'},
-    ];
-
-    String searchQuery = '';
-
-    showDialog(
-      context: context,
-      builder:
-          (context) => StatefulBuilder(
-            builder:
-                (context, setState) => Dialog(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: SingleChildScrollView(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'Users Under Care',
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.close),
-                                onPressed: () => Navigator.pop(context),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Total: '
-                                // Show filtered count if searching, else show all
-                                +
-                                users
-                                    .where((user) {
-                                      if (searchQuery.isEmpty) return true;
-                                      return user['name']!
-                                              .toLowerCase()
-                                              .contains(searchQuery) ||
-                                          user['email']!.toLowerCase().contains(
-                                            searchQuery,
-                                          );
-                                    })
-                                    .length
-                                    .toString() +
-                                ' user(s)',
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.green,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          // Search Bar
-                          TextField(
-                            decoration: InputDecoration(
-                              hintText: 'Search users...',
-                              prefixIcon: const Icon(Icons.search),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                            ),
-                            onChanged: (value) {
-                              setState(() {
-                                searchQuery = value.toLowerCase();
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          Container(
-                            constraints: const BoxConstraints(maxHeight: 300),
-                            child: ListView.builder(
-                              shrinkWrap: true,
-                              itemCount:
-                                  users.where((user) {
-                                    if (searchQuery.isEmpty) return true;
-                                    return user['name']!.toLowerCase().contains(
-                                          searchQuery,
-                                        ) ||
-                                        user['email']!.toLowerCase().contains(
-                                          searchQuery,
-                                        );
-                                  }).length,
-                              itemBuilder: (context, index) {
-                                final filteredUsers =
-                                    users.where((user) {
-                                      if (searchQuery.isEmpty) return true;
-                                      return user['name']!
-                                              .toLowerCase()
-                                              .contains(searchQuery) ||
-                                          user['email']!.toLowerCase().contains(
-                                            searchQuery,
-                                          );
-                                    }).toList();
-
-                                final user = filteredUsers[index];
-                                return ListTile(
-                                  leading: CircleAvatar(
-                                    backgroundColor: Colors.green.withOpacity(
-                                      0.2,
-                                    ),
-                                    child: Text(
-                                      user['name']![0],
-                                      style: const TextStyle(
-                                        color: Colors.green,
-                                      ),
-                                    ),
-                                  ),
-                                  title: Text(user['name']!),
-                                  subtitle: Text(user['email']!),
-                                );
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-          ),
     );
   }
 
@@ -821,36 +677,7 @@ class _ExpertProfileState extends State<ExpertProfile> {
                           ],
                         ),
                       ),
-                      Container(
-                        height: 40,
-                        width: 1,
-                        color: Colors.white.withOpacity(0.3),
-                      ),
-                      GestureDetector(
-                        onTap: () => _showUsersList(context),
-                        child: Column(
-                          children: [
-                            Text(
-                              _farmersUnderCare.toString(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'Farmers Under Care',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      // REMOVE divider and Farmers Under Care stat
                     ],
                   ),
                 ),
@@ -926,6 +753,9 @@ class _ExpertProfileState extends State<ExpertProfile> {
                     if (shouldLogout == true) {
                       // Sign out from Firebase
                       await FirebaseAuth.instance.signOut();
+                      // Clear Hive userBox
+                      final userBox = await Hive.openBox('userBox');
+                      await userBox.clear();
                       Navigator.pushAndRemoveUntil(
                         context,
                         MaterialPageRoute(

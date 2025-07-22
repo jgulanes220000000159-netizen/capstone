@@ -25,6 +25,7 @@ dependencies:
   cloud_firestore: ^4.15.4
   firebase_storage: ^11.6.5
   mailer: ^6.0.1
+  easy_localization: ^3.0.1
 
 dev_dependencies:
   flutter_test:
@@ -51,6 +52,9 @@ flutter:
     - assets/diseases/tip_burn.jpg
     - assets/diseases/healthy.jpg
     - assets/diseases/
+    - assets/lang/en.json
+    - assets/lang/tl.json
+    - assets/lang/bs.json
     # Add any other image or asset files here
     # - assets/images/your_image.jpg
 

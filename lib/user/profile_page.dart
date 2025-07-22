@@ -7,6 +7,8 @@ import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:hive/hive.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({Key? key}) : super(key: key);
@@ -39,15 +41,28 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _loadUserData() async {
     try {
+      final userBox = await Hive.openBox('userBox');
+      final localProfile = userBox.get('userProfile');
+      if (localProfile != null) {
+        setState(() {
+          _userName = localProfile['fullName'] ?? 'Unknown User';
+          _userRole = localProfile['role'] ?? 'Farmer';
+          _userEmail = localProfile['email'] ?? '';
+          _userPhone = localProfile['phoneNumber'] ?? '';
+          _userAddress = localProfile['address'] ?? '';
+          _profileImageUrl = localProfile['imageProfile'];
+          _isLoading = false;
+        });
+        return;
+      }
+      // If not found locally, try Firestore (online)
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
-        // Fetch user profile from Firestore
         final userDoc =
             await FirebaseFirestore.instance
                 .collection('users')
                 .doc(user.uid)
                 .get();
-
         if (userDoc.exists) {
           final data = userDoc.data() as Map<String, dynamic>;
           setState(() {
@@ -59,9 +74,6 @@ class _ProfilePageState extends State<ProfilePage> {
             _profileImageUrl = data['imageProfile'];
             _isLoading = false;
           });
-
-          // Load user statistics
-          _loadUserStats(user.uid);
         }
       }
     } catch (e) {
@@ -190,9 +202,12 @@ class _ProfilePageState extends State<ProfilePage> {
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
         backgroundColor: Colors.green,
-        title: const Text(
-          'Profile',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Text(
+          tr('profile'),
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         elevation: 0,
       ),
@@ -273,7 +288,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   const SizedBox(height: 16),
                   // User Name
                   Text(
-                    _isLoading ? 'Loading...' : _userName,
+                    _isLoading ? tr('loading') : _userName,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 24,
@@ -292,7 +307,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      _userRole,
+                      tr(_userRole.toLowerCase()),
                       style: const TextStyle(color: Colors.white, fontSize: 14),
                     ),
                   ),
@@ -309,7 +324,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               const SnackBar(content: Text('Scans clicked!')),
                             );
                           },
-                          child: _buildStat('Scans', _scanCount.toString()),
+                          child: _buildStat(tr('scans'), _scanCount.toString()),
                         ),
                         Container(
                           height: 40,
@@ -325,7 +340,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             );
                           },
                           child: _buildStat(
-                            'Diseases\nDetected',
+                            tr('diseases_detected'),
                             _diseaseCount.toString(),
                           ),
                         ),
@@ -353,7 +368,7 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Column(
                 children: [
                   _buildProfileOption(
-                    title: 'Edit Profile',
+                    title: tr('edit_profile'),
                     icon: Icons.edit,
                     onTap: () {
                       Navigator.push(
@@ -365,7 +380,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     },
                   ),
                   _buildProfileOption(
-                    title: 'About App',
+                    title: tr('about_app'),
                     icon: Icons.info,
                     onTap: () {
                       Navigator.push(
@@ -377,12 +392,12 @@ class _ProfilePageState extends State<ProfilePage> {
                     },
                   ),
                   _buildProfileOption(
-                    title: 'Change Password',
+                    title: tr('change_password'),
                     icon: Icons.lock,
                     onTap: () => _showChangePasswordDialog(context),
                   ),
                   _buildProfileOption(
-                    title: 'Log Out',
+                    title: tr('log_out'),
                     icon: Icons.logout,
                     showDivider: false,
                     onTap: () async {
@@ -390,20 +405,18 @@ class _ProfilePageState extends State<ProfilePage> {
                         context: context,
                         builder:
                             (context) => AlertDialog(
-                              title: const Text('Confirm Logout'),
-                              content: const Text(
-                                'Are you sure you want to logout?',
-                              ),
+                              title: Text(tr('confirm_logout')),
+                              content: Text(tr('are_you_sure_logout')),
                               actions: [
                                 TextButton(
                                   onPressed:
                                       () => Navigator.of(context).pop(false),
-                                  child: const Text('Cancel'),
+                                  child: Text(tr('cancel')),
                                 ),
                                 TextButton(
                                   onPressed:
                                       () => Navigator.of(context).pop(true),
-                                  child: const Text('Logout'),
+                                  child: Text(tr('logout')),
                                 ),
                               ],
                             ),
@@ -411,6 +424,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       if (shouldLogout == true) {
                         // Sign out from Firebase
                         await FirebaseAuth.instance.signOut();
+                        // Clear Hive userBox
+                        final userBox = await Hive.openBox('userBox');
+                        await userBox.clear();
                         Navigator.pushAndRemoveUntil(
                           context,
                           MaterialPageRoute(
@@ -443,15 +459,60 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 8, bottom: 4),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8, bottom: 4),
                     child: Text(
-                      'Preferences',
-                      style: TextStyle(
+                      tr('preferences'),
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: Colors.green,
                       ),
+                    ),
+                  ),
+                  // Language Picker
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          tr('choose_language'),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        DropdownButton<Locale>(
+                          value: context.locale,
+                          onChanged: (Locale? locale) async {
+                            if (locale != null) {
+                              context.setLocale(locale);
+                              final settingsBox = await Hive.openBox(
+                                'settings',
+                              );
+                              await settingsBox.put(
+                                'locale_code',
+                                locale.languageCode,
+                              );
+                            }
+                          },
+                          items: const [
+                            DropdownMenuItem(
+                              value: Locale('en'),
+                              child: Text('English'),
+                            ),
+                            DropdownMenuItem(
+                              value: Locale('bs'),
+                              child: Text('Bisaya'),
+                            ),
+                            DropdownMenuItem(
+                              value: Locale('tl'),
+                              child: Text('Tagalog'),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
                   SwitchListTile(
@@ -462,7 +523,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       });
                       // TODO: Save this preference persistently if needed
                     },
-                    title: const Text('Enable Notifications'),
+                    title: Text(tr('enable_notifications')),
                     secondary: const Icon(
                       Icons.notifications,
                       color: Colors.green,
@@ -527,9 +588,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'Change Password',
-                        style: TextStyle(
+                      Text(
+                        tr('change_password'),
+                        style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
@@ -544,30 +605,30 @@ class _ProfilePageState extends State<ProfilePage> {
                   TextField(
                     controller: currentPasswordController,
                     obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Current Password',
-                      prefixIcon: Icon(Icons.lock_outline),
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: tr('current_password'),
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: newPasswordController,
                     obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'New Password',
-                      prefixIcon: Icon(Icons.lock),
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: tr('new_password'),
+                      prefixIcon: const Icon(Icons.lock),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: confirmPasswordController,
                     obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Confirm New Password',
-                      prefixIcon: Icon(Icons.lock),
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      labelText: tr('confirm_new_password'),
+                      prefixIcon: const Icon(Icons.lock),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -605,20 +666,23 @@ class _ProfilePageState extends State<ProfilePage> {
                                       if (current.isEmpty ||
                                           newPass.isEmpty ||
                                           confirm.isEmpty) {
-                                        errorNotifier.value =
-                                            'All fields are required.';
+                                        errorNotifier.value = tr(
+                                          'all_fields_required',
+                                        );
                                         return;
                                       }
 
                                       if (newPass != confirm) {
-                                        errorNotifier.value =
-                                            'New passwords do not match.';
+                                        errorNotifier.value = tr(
+                                          'new_passwords_do_not_match',
+                                        );
                                         return;
                                       }
 
                                       if (newPass.length < 6) {
-                                        errorNotifier.value =
-                                            'New password must be at least 6 characters.';
+                                        errorNotifier.value = tr(
+                                          'new_password_min_length',
+                                        );
                                         return;
                                       }
 
@@ -648,32 +712,39 @@ class _ProfilePageState extends State<ProfilePage> {
                                           ScaffoldMessenger.of(
                                             context,
                                           ).showSnackBar(
-                                            const SnackBar(
+                                            SnackBar(
                                               content: Text(
-                                                'Password changed successfully!',
+                                                tr(
+                                                  'password_changed_successfully',
+                                                ),
                                               ),
                                               backgroundColor: Colors.green,
                                             ),
                                           );
                                         }
                                       } on FirebaseAuthException catch (e) {
-                                        String errorMessage =
-                                            'An error occurred while changing password.';
+                                        String errorMessage = tr(
+                                          'error_changing_password',
+                                        );
                                         if (e.code == 'wrong-password') {
-                                          errorMessage =
-                                              'Current password is incorrect.';
+                                          errorMessage = tr(
+                                            'current_password_incorrect',
+                                          );
                                         } else if (e.code == 'weak-password') {
-                                          errorMessage =
-                                              'New password is too weak.';
+                                          errorMessage = tr(
+                                            'new_password_too_weak',
+                                          );
                                         } else if (e.code ==
                                             'requires-recent-login') {
-                                          errorMessage =
-                                              'Please log out and log in again before changing password.';
+                                          errorMessage = tr(
+                                            'please_relogin_change_password',
+                                          );
                                         }
                                         errorNotifier.value = errorMessage;
                                       } catch (e) {
-                                        errorNotifier.value =
-                                            'An unexpected error occurred.';
+                                        errorNotifier.value = tr(
+                                          'unexpected_error_occurred',
+                                        );
                                       } finally {
                                         isLoadingNotifier.value = false;
                                       }
@@ -698,9 +769,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                             ),
                                       ),
                                     )
-                                    : const Text(
-                                      'Change Password',
-                                      style: TextStyle(
+                                    : Text(
+                                      tr('change_password'),
+                                      style: const TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
                                       ),

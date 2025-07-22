@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'detection_carousel_screen.dart';
 import 'camera_page.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 class ScanPage extends StatelessWidget {
   const ScanPage({Key? key}) : super(key: key);
@@ -30,9 +31,9 @@ class ScanPage extends StatelessWidget {
     if (images != null && images.isNotEmpty) {
       if (images.length > 5) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Maximum 5 images can be selected'),
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Text(tr('maximum_images')),
+            duration: const Duration(seconds: 2),
           ),
         );
         return;
@@ -57,9 +58,9 @@ class ScanPage extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
-              'Scan',
-              style: TextStyle(
+            Text(
+              tr('scan'),
+              style: const TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.bold,
                 color: Colors.green,
@@ -71,7 +72,10 @@ class ScanPage extends StatelessWidget {
             ElevatedButton.icon(
               onPressed: () => _takePicture(context),
               icon: const Icon(Icons.camera_alt, size: 32),
-              label: const Text('Take Photo', style: TextStyle(fontSize: 20)),
+              label: Text(
+                tr('take_photo'),
+                style: const TextStyle(fontSize: 20),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
@@ -85,9 +89,9 @@ class ScanPage extends StatelessWidget {
             ElevatedButton.icon(
               onPressed: () => _selectFromGallery(context),
               icon: const Icon(Icons.photo_library, size: 32),
-              label: const Text(
-                'Select from Gallery',
-                style: TextStyle(fontSize: 20),
+              label: Text(
+                tr('select_from_gallery'),
+                style: const TextStyle(fontSize: 20),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,

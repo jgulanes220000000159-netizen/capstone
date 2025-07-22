@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mailer/mailer.dart';
 import 'package:mailer/smtp_server.dart';
+import 'package:hive/hive.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -132,13 +133,25 @@ class _LoginPageState extends State<LoginPage> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    'Your $roleText account is currently ${status ?? 'inactive'}. Please contact support for assistance.',
+                    'Your $roleText account is currently  [38;5;9m${status ?? 'inactive'} [0m. Please contact support for assistance.',
                   ),
                   backgroundColor: Colors.red,
                   duration: const Duration(seconds: 4),
                 ),
               );
             } else if (role == 'farmer') {
+              // Save login state and user info to Hive
+              final userBox = await Hive.openBox('userBox');
+              await userBox.put('isLoggedIn', true);
+              await userBox.put('userProfile', {
+                'fullName': data['fullName'] ?? '',
+                'email': data['email'] ?? '',
+                'phoneNumber': data['phoneNumber'] ?? '',
+                'address': data['address'] ?? '',
+                'role': data['role'] ?? '',
+                'imageProfile': data['imageProfile'] ?? '',
+                'userId': user.uid,
+              });
               // Navigate to HomePage for farmer
               Navigator.pushAndRemoveUntil(
                 context,
@@ -146,6 +159,18 @@ class _LoginPageState extends State<LoginPage> {
                 (route) => false,
               );
             } else if (role == 'expert') {
+              // Save login state and expert info to Hive
+              final userBox = await Hive.openBox('userBox');
+              await userBox.put('isLoggedIn', true);
+              await userBox.put('userProfile', {
+                'fullName': data['fullName'] ?? '',
+                'email': data['email'] ?? '',
+                'phoneNumber': data['phoneNumber'] ?? '',
+                'address': data['address'] ?? '',
+                'role': data['role'] ?? '',
+                'imageProfile': data['imageProfile'] ?? '',
+                'userId': user.uid,
+              });
               // Navigate to ExpertDashboard for expert
               Navigator.pushAndRemoveUntil(
                 context,

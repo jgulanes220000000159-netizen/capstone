@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'scan_request_list.dart';
 import 'expert_profile.dart';
+import 'package:hive/hive.dart';
+import 'disease_editor.dart';
 
 class ExpertDashboard extends StatefulWidget {
   const ExpertDashboard({Key? key}) : super(key: key);
@@ -18,7 +20,11 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
   String _userName = 'Loading...';
   bool _isLoading = true;
 
-  final List<Widget> _pages = [const ScanRequestList(), const ExpertProfile()];
+  final List<Widget> _pages = [
+    const ScanRequestList(),
+    const DiseaseEditor(),
+    const ExpertProfile(),
+  ];
 
   @override
   void initState() {
@@ -28,6 +34,15 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
 
   Future<void> _loadUserData() async {
     try {
+      final userBox = await Hive.openBox('userBox');
+      final localProfile = userBox.get('userProfile');
+      if (localProfile != null) {
+        setState(() {
+          _userName = localProfile['fullName'] ?? 'Expert';
+          _isLoading = false;
+        });
+        return;
+      }
       final user = FirebaseAuth.instance.currentUser;
       print('Expert - Current user: ${user?.email}');
       print('Expert - Current user UID: ${user?.uid}');
@@ -115,6 +130,10 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
           BottomNavigationBarItem(
             icon: Icon(Icons.list_alt),
             label: 'Requests',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.edit_note),
+            label: 'Diseases',
           ),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 class AboutAppPage extends StatelessWidget {
   const AboutAppPage({Key? key}) : super(key: key);
@@ -10,9 +11,12 @@ class AboutAppPage extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
-          'About App',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Text(
+          tr('about_app'),
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -43,20 +47,20 @@ class AboutAppPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      const Row(
+                      Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            'Mango',
-                            style: TextStyle(
+                            'mango',
+                            style: const TextStyle(
                               color: Colors.white,
                               fontSize: 32,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           Text(
-                            'Sense',
-                            style: TextStyle(
+                            'sense',
+                            style: const TextStyle(
                               color: Colors.yellow,
                               fontSize: 32,
                               fontWeight: FontWeight.bold,
@@ -69,9 +73,9 @@ class AboutAppPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 40),
                 // App Description
-                const Text(
-                  'About MangoSense',
-                  style: TextStyle(
+                Text(
+                  tr('about_mangosense'),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -79,7 +83,7 @@ class AboutAppPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'MangoSense is a cutting-edge mobile application designed to help farmers and agricultural experts identify and manage mango plant diseases. Using advanced machine learning technology, the app provides accurate disease detection and expert recommendations for treatment.',
+                  tr('about_mangosense_desc'),
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.9),
                     fontSize: 16,
@@ -88,9 +92,9 @@ class AboutAppPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 32),
                 // Features
-                const Text(
-                  'Key Features',
-                  style: TextStyle(
+                Text(
+                  tr('key_features'),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -99,33 +103,29 @@ class AboutAppPage extends StatelessWidget {
                 const SizedBox(height: 16),
                 _buildFeatureItem(
                   icon: Icons.camera_alt,
-                  title: 'Disease Detection',
-                  description:
-                      'Instantly identify mango plant diseases using your device\'s camera',
+                  title: tr('disease_detection'),
+                  description: tr('disease_detection_desc'),
                 ),
                 _buildFeatureItem(
                   icon: Icons.medical_services,
-                  title: 'Expert Analysis',
-                  description:
-                      'Get professional diagnosis and treatment recommendations',
+                  title: tr('expert_analysis'),
+                  description: tr('expert_analysis_desc'),
                 ),
                 _buildFeatureItem(
                   icon: Icons.history,
-                  title: 'Scan History',
-                  description:
-                      'Keep track of all your previous scans and their results',
+                  title: tr('scan_history'),
+                  description: tr('scan_history_desc'),
                 ),
                 _buildFeatureItem(
                   icon: Icons.notifications,
-                  title: 'Real-time Updates',
-                  description:
-                      'Receive notifications about scan results and expert reviews',
+                  title: tr('real_time_updates'),
+                  description: tr('real_time_updates_desc'),
                 ),
                 const SizedBox(height: 32),
                 // Version Info
                 Center(
                   child: Text(
-                    'Version 1.0.0',
+                    tr('version', args: ['1.0.0']),
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.7),
                       fontSize: 14,

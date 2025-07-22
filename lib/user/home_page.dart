@@ -9,6 +9,8 @@ import 'profile_page.dart';
 import 'user_request_list.dart';
 import 'scan_page.dart';
 import '../shared/review_manager.dart';
+import 'package:hive/hive.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -26,6 +28,9 @@ class _HomePageState extends State<HomePage> {
   String _userName = 'Loading...';
   bool _isLoading = true;
 
+  // Disease information (now loaded from Firestore and cached in Hive)
+  Map<String, Map<String, dynamic>> _diseaseInfo = {};
+
   final List<Widget> _pages = [
     // Home
     Container(), // Placeholder for home content
@@ -33,6 +38,10 @@ class _HomePageState extends State<HomePage> {
     const ScanPage(),
     // My Requests
     const UserRequestTabbedList(),
+    // Progress (empty page)
+    Center(
+      child: Text('Progress Page Coming Soon', style: TextStyle(fontSize: 20)),
+    ),
   ];
 
   int get _pendingCount =>
@@ -44,43 +53,40 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _loadUserData();
+    _loadDiseaseInfo();
   }
 
   Future<void> _loadUserData() async {
     try {
+      final userBox = await Hive.openBox('userBox');
+      final localProfile = userBox.get('userProfile');
+      if (localProfile != null) {
+        setState(() {
+          _userName = localProfile['fullName'] ?? 'Farmer';
+          _isLoading = false;
+        });
+        return;
+      }
       final user = FirebaseAuth.instance.currentUser;
-      print('Current user: ${user?.email}');
-      print('Current user UID: ${user?.uid}');
-
       if (user != null) {
-        // Fetch user profile from Firestore
         final userDoc =
             await FirebaseFirestore.instance
                 .collection('users')
                 .doc(user.uid)
                 .get();
-
-        print('User document exists: ${userDoc.exists}');
-
         if (userDoc.exists) {
           final data = userDoc.data() as Map<String, dynamic>;
-          print('User data: $data');
-          print('Full name from data: ${data['fullName']}');
-
           setState(() {
             _userName = data['fullName'] ?? 'Farmer';
             _isLoading = false;
           });
-          print('Set user name to: $_userName');
         } else {
-          print('User document does not exist');
           setState(() {
             _userName = 'Farmer';
             _isLoading = false;
           });
         }
       } else {
-        print('No current user');
         setState(() {
           _userName = 'Farmer';
           _isLoading = false;
@@ -95,70 +101,46 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Disease information
-  final Map<String, Map<String, dynamic>> diseaseInfo = {
-    'Anthracnose': {
-      'scientificName': 'Colletotrichum gloeosporioides',
-      'symptoms': [
-        'Irregular black or brown spots that expand and merge, leading to necrosis and leaf drop (Li et al., 2024).',
-      ],
-      'treatments': [
-        'Apply copper-based fungicides like copper oxychloride or Mancozeb during wet and humid conditions to prevent spore germination.',
-        'Prune mango trees regularly to improve air circulation and reduce humidity around foliage.',
-        'Remove and burn infected leaves to limit reinfection cycles.',
-      ],
-    },
-    'Powdery Mildew': {
-      'scientificName': 'Oidium mangiferae',
-      'symptoms': [
-        'A white, powdery fungal coating forms on young mango leaves, leading to distortion, yellowing, and reduced photosynthesis (Nasir, 2016).',
-      ],
-      'treatments': [
-        'Use sulfur-based or systemic fungicides like tebuconazole at the first sign of infection and repeat at 10–14-day intervals.',
-        'Avoid overhead irrigation which increases humidity and spore spread on leaf surfaces.',
-        'Remove heavily infected leaves to reduce fungal load.',
-      ],
-    },
-    'Dieback': {
-      'scientificName': 'Lasiodiplodia theobromae',
-      'symptoms': [
-        'Browning of leaf tips, followed by downward necrosis and eventual branch dieback (Ploetz, 2003).',
-      ],
-      'treatments': [
-        'Prune affected twigs at least 10 cm below the last symptom to halt pathogen progression.',
-        'Apply systemic fungicides such as carbendazim to protect surrounding healthy leaves.',
-        'Maintain plant vigor through balanced nutrition and irrigation to resist infection.',
-      ],
-    },
-    'Bacterial black spot': {
-      'scientificName': 'Xanthomonas campestris pv. mangiferaeindicae',
-      'symptoms': [
-        'Angular black lesions with yellow halos often appear along veins and can lead to early leaf drop (Ploetz, 2003).',
-      ],
-      'treatments': [
-        'Apply copper hydroxide or copper oxychloride sprays to suppress bacterial activity on the leaf surface.',
-        'Remove and properly dispose of infected leaves to reduce inoculum sources.',
-        'Avoid causing wounds on leaves during handling, as these can be entry points for bacteria.',
-      ],
-    },
-    'Healthy': {
-      'scientificName': '',
-      'symptoms': ['N/A'],
-      'treatments': ['N/A'],
-    },
-    'Tip Burn': {
-      'scientificName': 'Physiological / Nutritional Leaf Disorder',
-      'symptoms': [
-        'The tips and edges of leaves turn brown and dry, often due to non-pathogenic causes such as nutrient imbalance or salt injury (Gardening Know How, n.d.).',
-      ],
-      'treatments': [
-        'Ensure consistent, deep watering to avoid drought stress that can worsen tip burn symptoms.',
-        'Avoid excessive use of nitrogen-rich or saline fertilizers which may lead to root toxicity and leaf damage.',
-        'Supplement calcium or potassium via foliar feeding if nutrient deficiency is suspected.',
-        'Conduct regular soil testing to detect salinity or imbalance that might affect leaf health.',
-      ],
-    },
-  };
+  Future<void> _loadDiseaseInfo() async {
+    final diseaseBox = await Hive.openBox('diseaseBox');
+    // Try to load from local storage first
+    final localDiseaseInfo = diseaseBox.get('diseaseInfo');
+    if (localDiseaseInfo != null && localDiseaseInfo is Map) {
+      setState(() {
+        _diseaseInfo = Map<String, Map<String, dynamic>>.from(
+          (localDiseaseInfo as Map).map(
+            (k, v) =>
+                MapEntry(k as String, Map<String, dynamic>.from(v as Map)),
+          ),
+        );
+      });
+    }
+    // Always try to fetch latest from Firestore
+    try {
+      final snapshot =
+          await FirebaseFirestore.instance.collection('diseases').get();
+      final Map<String, Map<String, dynamic>> fetched = {};
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final name = data['name'] ?? '';
+        if (name.isNotEmpty) {
+          fetched[name] = {
+            'scientificName': data['scientificName'] ?? '',
+            'symptoms': List<String>.from(data['symptoms'] ?? []),
+            'treatments': List<String>.from(data['treatments'] ?? []),
+          };
+        }
+      }
+      if (fetched.isNotEmpty) {
+        setState(() {
+          _diseaseInfo = fetched;
+        });
+        await diseaseBox.put('diseaseInfo', fetched);
+      }
+    } catch (e) {
+      print('Error fetching disease info: $e');
+    }
+  }
 
   Future<void> _selectFromGallery(BuildContext context) async {
     final List<XFile>? images = await _picker.pickMultiImage();
@@ -194,10 +176,10 @@ class _HomePageState extends State<HomePage> {
             (context) => DiseaseDetailsPage(
               name: name,
               imagePath: imagePath,
-              scientificName: diseaseInfo[name]?['scientificName'] ?? '',
+              scientificName: _diseaseInfo[name]?['scientificName'] ?? '',
               details: {
-                'Symptoms': diseaseInfo[name]?['symptoms'] ?? [],
-                'Treatments': diseaseInfo[name]?['treatments'] ?? [],
+                'Symptoms': _diseaseInfo[name]?['symptoms'] ?? [],
+                'Treatments': _diseaseInfo[name]?['treatments'] ?? [],
               },
             ),
       ),
@@ -326,7 +308,10 @@ class _HomePageState extends State<HomePage> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      'Good day, $_userName',
+                                      tr(
+                                        'good_day',
+                                        namedArgs: {'name': _userName},
+                                      ),
                                       style: TextStyle(
                                         fontSize: 24,
                                         fontWeight: FontWeight.bold,
@@ -346,7 +331,7 @@ class _HomePageState extends State<HomePage> {
                               child: Align(
                                 alignment: Alignment.centerLeft,
                                 child: Text(
-                                  'Diseases',
+                                  tr('diseases'),
                                   style: TextStyle(
                                     fontSize: 20,
                                     fontWeight: FontWeight.w600,
@@ -370,17 +355,19 @@ class _HomePageState extends State<HomePage> {
                               'assets/diseases/dieback.jpg',
                             ),
                             _buildDiseaseCard(
-                              'Powdery Mildew',
+                              'Powdery mildew',
                               'assets/diseases/powdery_mildew3.jpg',
                             ),
                             const SizedBox(height: 16),
-                            const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 16),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
                               child: Align(
                                 alignment: Alignment.centerLeft,
                                 child: Text(
-                                  'None Disease',
-                                  style: TextStyle(
+                                  tr('none_disease'),
+                                  style: const TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -388,7 +375,7 @@ class _HomePageState extends State<HomePage> {
                               ),
                             ),
                             _buildDiseaseCard(
-                              'Healthy',
+                              tr('healthy'),
                               'assets/diseases/healthy.jpg',
                             ),
                             const SizedBox(height: 16),
@@ -414,13 +401,13 @@ class _HomePageState extends State<HomePage> {
               selectedItemColor: Colors.green,
               unselectedItemColor: Colors.grey,
               items: [
-                const BottomNavigationBarItem(
-                  icon: Icon(Icons.home),
-                  label: 'Home',
+                BottomNavigationBarItem(
+                  icon: const Icon(Icons.home),
+                  label: tr('home'),
                 ),
-                const BottomNavigationBarItem(
-                  icon: Icon(Icons.camera_alt),
-                  label: 'Scan',
+                BottomNavigationBarItem(
+                  icon: const Icon(Icons.camera_alt),
+                  label: tr('scan'),
                 ),
                 BottomNavigationBarItem(
                   icon: Stack(
@@ -457,11 +444,11 @@ class _HomePageState extends State<HomePage> {
                         ),
                     ],
                   ),
-                  label: 'My Requests',
+                  label: tr('my_requests'),
                 ),
-                const BottomNavigationBarItem(
-                  icon: Icon(Icons.show_chart),
-                  label: 'Progress',
+                BottomNavigationBarItem(
+                  icon: const Icon(Icons.show_chart),
+                  label: tr('progress'),
                 ),
               ],
             ),

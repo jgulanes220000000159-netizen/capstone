@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../shared/review_manager.dart';
 import 'dart:io';
+import 'package:easy_localization/easy_localization.dart';
 
 final List<Map<String, dynamic>> userRequests = [
   {
@@ -1286,7 +1287,7 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
           TextField(
             controller: _searchController,
             decoration: InputDecoration(
-              hintText: 'Search',
+              hintText: tr('search'),
               prefixIcon: const Icon(Icons.search, color: Colors.grey),
               suffixIcon:
                   _searchQuery.isNotEmpty
@@ -1318,7 +1319,7 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
             child: Text(
-              'Try searching for: "Anthracnose", "2024-06-10"',
+              tr('try_searching_for'),
               style: TextStyle(
                 fontSize: 12,
                 color: Colors.grey[600],
@@ -1348,7 +1349,7 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
             indicatorColor: Colors.white,
             labelColor: Colors.white,
             unselectedLabelColor: Colors.white70,
-            tabs: const [Tab(text: 'Pending'), Tab(text: 'Completed')],
+            tabs: [Tab(text: tr('pending')), Tab(text: tr('completed'))],
           ),
         ),
         Expanded(
