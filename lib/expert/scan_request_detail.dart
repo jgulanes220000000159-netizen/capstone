@@ -178,7 +178,7 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
           itemCount: images.length,
           itemBuilder: (context, index) {
             final image = images[index];
-            final imagePath = image['path'] as String;
+            final imagePath = image['path'];
             final detections =
                 (image['detections'] as List<dynamic>?)
                     ?.where(
@@ -211,7 +211,10 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                                   imagePath,
                                   fit: BoxFit.contain,
                                 ),
-                                if (_showBoundingBoxes && detections.isNotEmpty)
+                                if (_showBoundingBoxes &&
+                                    detections.isNotEmpty &&
+                                    imagePath is String &&
+                                    imagePath.isNotEmpty)
                                   FutureBuilder<Size>(
                                     future: _getImageSize(
                                       FileImage(File(imagePath)),
@@ -272,7 +275,10 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                     borderRadius: BorderRadius.circular(12),
                     child: _buildImageWidget(imagePath, fit: BoxFit.cover),
                   ),
-                  if (_showBoundingBoxes && detections.isNotEmpty)
+                  if (_showBoundingBoxes &&
+                      detections.isNotEmpty &&
+                      imagePath is String &&
+                      imagePath.isNotEmpty)
                     FutureBuilder<Size>(
                       future: _getImageSize(FileImage(File(imagePath))),
                       builder: (context, snapshot) {
@@ -380,30 +386,38 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
     );
   }
 
-  Widget _buildImageWidget(String path, {BoxFit fit = BoxFit.cover}) {
-    if (path.startsWith('/') || path.contains(':')) {
-      // File path
-      return Image.file(
-        File(path),
-        fit: fit,
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
-            color: Colors.grey[200],
-            child: const Icon(Icons.image_not_supported),
-          );
-        },
-      );
+  Widget _buildImageWidget(dynamic path, {BoxFit fit = BoxFit.cover}) {
+    if (path is String && path.isNotEmpty) {
+      if (path.startsWith('/') || path.contains(':')) {
+        // File path
+        return Image.file(
+          File(path),
+          fit: fit,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              color: Colors.grey[200],
+              child: const Icon(Icons.image_not_supported),
+            );
+          },
+        );
+      } else {
+        // Asset path
+        return Image.asset(
+          path,
+          fit: fit,
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              color: Colors.grey[200],
+              child: const Icon(Icons.image_not_supported),
+            );
+          },
+        );
+      }
     } else {
-      // Asset path
-      return Image.asset(
-        path,
-        fit: fit,
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
-            color: Colors.grey[200],
-            child: const Icon(Icons.image_not_supported),
-          );
-        },
+      // Null or not a string
+      return Container(
+        color: Colors.grey[200],
+        child: const Icon(Icons.image_not_supported),
       );
     }
   }

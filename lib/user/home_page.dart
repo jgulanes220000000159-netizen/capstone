@@ -11,6 +11,7 @@ import 'scan_page.dart';
 import '../shared/review_manager.dart';
 import 'package:hive/hive.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'tracking_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -38,10 +39,8 @@ class _HomePageState extends State<HomePage> {
     const ScanPage(),
     // My Requests
     const UserRequestTabbedList(),
-    // Progress (empty page)
-    Center(
-      child: Text('Progress Page Coming Soon', style: TextStyle(fontSize: 20)),
-    ),
+    // Tracking (new page)
+    const TrackingPage(),
   ];
 
   int get _pendingCount =>
@@ -448,7 +447,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 BottomNavigationBarItem(
                   icon: const Icon(Icons.show_chart),
-                  label: tr('progress'),
+                  label: tr('tracking'),
                 ),
               ],
             ),

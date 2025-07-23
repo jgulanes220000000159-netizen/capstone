@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../shared/review_manager.dart';
 import 'dart:io';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hive/hive.dart';
 
 final List<Map<String, dynamic>> userRequests = [
   {
@@ -341,13 +344,27 @@ class _UserRequestListState extends State<UserRequestList> {
   }
 
   Widget _buildRequestCard(Map<String, dynamic> request) {
-    final mainDisease = request['diseaseSummary'][0]['name'];
-    final status = request['status'];
-    final submittedAt = request['submittedAt'];
-    final reviewedAt = request['reviewedAt'];
+    final diseaseSummary = (request['diseaseSummary'] as List?) ?? [];
+    final mainDisease =
+        (diseaseSummary.isNotEmpty && diseaseSummary[0]['name'] != null)
+            ? diseaseSummary[0]['name'] as String
+            : 'Unknown';
+    final status = request['status']?.toString() ?? 'pending';
+    final submittedAt = request['submittedAt']?.toString() ?? '';
+    final reviewedAt = request['reviewedAt']?.toString() ?? '';
     final isCompleted = status == 'completed';
-    final totalImages = request['images']?.length ?? 0;
-    final totalDetections = request['diseaseSummary']?.length ?? 0;
+    final images = (request['images'] as List?) ?? [];
+    final totalImages = images.length;
+    final totalDetections = diseaseSummary.length;
+    // Use both 'imagePath' and 'path' fields, prefer imagePath
+    final imagePath =
+        images.isNotEmpty
+            ? (images[0]['imagePath'] ?? images[0]['path'] ?? '')
+            : '';
+    print('Loading image: $imagePath');
+    if (imagePath.isNotEmpty) {
+      print('File exists: ${File(imagePath).existsSync()}');
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -372,11 +389,7 @@ class _UserRequestListState extends State<UserRequestList> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: _buildImageWidget(
-                      request['images'][0]['path'],
-                      width: 80,
-                      height: 80,
-                    ),
+                    child: _buildImageWidget(imagePath, width: 80, height: 80),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -664,7 +677,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                       itemCount: images.length,
                       itemBuilder: (context, idx) {
                         final img = images[idx];
-                        final imgPath = img['path'] ?? '';
+                        final imgPath = img['imagePath'] ?? img['path'] ?? '';
                         final detections = (img['detections'] as List?) ?? [];
                         return GestureDetector(
                           onTap: () {
@@ -1209,10 +1222,25 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
   String _searchQuery = '';
   final ReviewManager _reviewManager = ReviewManager();
 
+  List<Map<String, dynamic>> _pendingRequests = [];
+  bool _pendingLoaded = false;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _loadPendingRequests();
+  }
+
+  Future<void> _loadPendingRequests() async {
+    try {
+      _pendingRequests = await fetchAndCachePendingRequests();
+    } catch (e) {
+      _pendingRequests = await getCachedPendingRequests();
+    }
+    setState(() {
+      _pendingLoaded = true;
+    });
   }
 
   @override
@@ -1265,6 +1293,28 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
       'expertReview': review['expertReview'],
       'notes': review['notes'],
     };
+  }
+
+  // Add Firestore + Hive sync helpers
+  Future<List<Map<String, dynamic>>> fetchAndCachePendingRequests() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final userId = user?.uid ?? 'unknown';
+    final query =
+        await FirebaseFirestore.instance
+            .collection('scan_requests')
+            .where('userId', isEqualTo: userId)
+            .where('status', isEqualTo: 'pending')
+            .get();
+    final pendingRequests = query.docs.map((doc) => doc.data()).toList();
+    final box = await Hive.openBox('pendingRequestsBox');
+    await box.put('pending', pendingRequests);
+    return pendingRequests;
+  }
+
+  Future<List<Map<String, dynamic>>> getCachedPendingRequests() async {
+    final box = await Hive.openBox('pendingRequestsBox');
+    final cached = box.get('pending', defaultValue: []);
+    return List<Map<String, dynamic>>.from(cached);
   }
 
   Widget _buildSearchBar() {
@@ -1334,7 +1384,10 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
 
   @override
   Widget build(BuildContext context) {
-    final pending = _filterRequests(_getPendingRequests());
+    if (!_pendingLoaded) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final pending = _filterRequests(_pendingRequests);
     final completed = _filterRequests(
       userRequests.where((r) => r['status'] == 'completed').toList(),
     );
@@ -1414,7 +1467,26 @@ Widget _buildImageWidget(
   double? height,
   BoxFit fit = BoxFit.cover,
 }) {
-  if (_isFilePath(path)) {
+  print('Attempting to display image: $path');
+  if (path.isEmpty) {
+    return Container(
+      width: width,
+      height: height,
+      color: Colors.grey[200],
+      child: const Icon(Icons.broken_image, size: 40, color: Colors.grey),
+    );
+  }
+  if (path.startsWith('http')) {
+    return Image.network(
+      path,
+      width: width,
+      height: height,
+      fit: fit,
+      errorBuilder:
+          (context, error, stackTrace) =>
+              const Icon(Icons.broken_image, size: 40, color: Colors.grey),
+    );
+  } else if (_isFilePath(path)) {
     return Image.file(
       File(path),
       width: width,

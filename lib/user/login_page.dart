@@ -11,6 +11,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mailer/mailer.dart';
 import 'package:mailer/smtp_server.dart';
 import 'package:hive/hive.dart';
+import '../expert/scan_request_list.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -172,12 +173,11 @@ class _LoginPageState extends State<LoginPage> {
                 'userId': user.uid,
               });
               // Navigate to ExpertDashboard for expert
-              Navigator.pushAndRemoveUntil(
+              Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
                   builder: (context) => const ExpertDashboard(),
                 ),
-                (route) => false,
               );
             } else if (role == 'admin') {
               setState(() {

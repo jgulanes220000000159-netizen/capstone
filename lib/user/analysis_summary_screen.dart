@@ -7,6 +7,9 @@ import 'detection_carousel_screen.dart';
 import '../shared/review_manager.dart';
 import '../shared/user_profile.dart';
 import 'detection_result_card.dart';
+import 'package:hive/hive.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class AnalysisSummaryScreen extends StatefulWidget {
   final Map<int, List<DetectionResult>> allResults;
@@ -67,12 +70,15 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
   }
 
   Future<void> _sendForExternalReview() async {
+    print('DEBUG: _sendForExternalReview called');
     setState(() {
       _isSubmitting = true;
     });
 
     try {
       final _userProfile = UserProfile();
+      final user = FirebaseAuth.instance.currentUser;
+      final userId = user?.uid ?? 'unknown';
       final _reviewManager = ReviewManager();
 
       // Convert detection results to the format expected by ReviewManager
@@ -111,14 +117,66 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
             };
           }).toList();
 
-      // Submit the review
-      await _reviewManager.submitForReview(
-        userId: _userProfile.userName,
-        imagePaths: widget.imagePaths,
-        detections: detections,
-        diseaseCounts: diseaseCounts,
-        notes: 'Analysis summary from user',
-      );
+      // --- Also add to tracking (history) ---
+      final box = await Hive.openBox('trackingBox');
+      final List sessions = box.get('scans', defaultValue: []);
+      final now = DateTime.now().toIso8601String();
+      final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
+      final List<Map<String, dynamic>> images = [];
+      for (int i = 0; i < widget.imagePaths.length; i++) {
+        final results = widget.allResults[i] ?? [];
+        List<Map<String, dynamic>> resultList = [];
+        if (results.isNotEmpty) {
+          for (var result in results) {
+            resultList.add({
+              'disease': result.label,
+              'confidence': result.confidence,
+              'boundingBox':
+                  result.boundingBox != null
+                      ? {
+                        'left': result.boundingBox.left,
+                        'top': result.boundingBox.top,
+                        'right': result.boundingBox.right,
+                        'bottom': result.boundingBox.bottom,
+                      }
+                      : null,
+            });
+          }
+        } else {
+          resultList.add({'disease': 'Unknown', 'confidence': null});
+        }
+        images.add({'imagePath': widget.imagePaths[i], 'results': resultList});
+      }
+      sessions.add({
+        'sessionId': sessionId,
+        'date': now,
+        'images': images,
+        'source': 'expert_review',
+      });
+      await box.put('scans', sessions);
+      print('DEBUG: sessions after add (review): ' + sessions.toString());
+      // --- Upload to Firestore scan_requests collection ---
+      // Get full name from Hive userBox
+      final userBox = await Hive.openBox('userBox');
+      final userProfile = userBox.get('userProfile');
+      final fullName = userProfile?['fullName'] ?? 'Unknown';
+      await FirebaseFirestore.instance
+          .collection('scan_requests')
+          .doc(sessionId)
+          .set({
+            'id': sessionId,
+            'userId': userId,
+            'userName': fullName,
+            'status': 'pending',
+            'submittedAt': now,
+            'images': images,
+            'diseaseSummary':
+                diseaseCounts
+                    .map((e) => {'name': e['name'], 'count': e['count']})
+                    .toList(),
+            // No expertReview yet
+          });
+      // --- End add to tracking ---
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -771,6 +829,95 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     );
   }
 
+  // Add this method to handle 'Add to Tracking' logic
+  Future<void> _addToTracking() async {
+    print('DEBUG: _addToTracking called');
+    setState(() {
+      _isSubmitting = true;
+    });
+    try {
+      final _userProfile = UserProfile();
+      final user = FirebaseAuth.instance.currentUser;
+      final userId = user?.uid ?? 'unknown';
+      final box = await Hive.openBox('trackingBox');
+      final List sessions = box.get('scans', defaultValue: []);
+      final now = DateTime.now().toIso8601String();
+      final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
+      final List<Map<String, dynamic>> images = [];
+      for (int i = 0; i < widget.imagePaths.length; i++) {
+        final results = widget.allResults[i] ?? [];
+        List<Map<String, dynamic>> resultList = [];
+        if (results.isNotEmpty) {
+          for (var result in results) {
+            resultList.add({
+              'disease': result.label,
+              'confidence': result.confidence,
+            });
+          }
+        } else {
+          resultList.add({'disease': 'Unknown', 'confidence': null});
+        }
+        images.add({'imagePath': widget.imagePaths[i], 'results': resultList});
+      }
+      sessions.add({
+        'sessionId': sessionId,
+        'date': now,
+        'images': images,
+        'source': 'tracking',
+      });
+      await box.put('scans', sessions);
+      print('DEBUG: sessions after add: ' + sessions.toString());
+      // --- Upload to Firestore tracking collection ---
+      await FirebaseFirestore.instance
+          .collection('tracking')
+          .doc(sessionId)
+          .set({
+            'sessionId': sessionId,
+            'date': now,
+            'images': images,
+            'source': 'tracking',
+            'userId': userId,
+          });
+      // --- End upload to Firestore ---
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Analysis added to tracking!'),
+            backgroundColor: Colors.blue,
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.only(bottom: 70, left: 16, right: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(12)),
+            ),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error adding to tracking: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: EdgeInsets.only(bottom: 70, left: 16, right: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(Radius.circular(12)),
+            ),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final diseaseCounts = _getOverallDiseaseCount();
@@ -942,21 +1089,44 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                     ),
                   ],
                 ),
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton.icon(
-                    onPressed: _sendForExternalReview,
-                    icon: const Icon(Icons.send),
-                    label: const Text('Send for Review'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          onPressed: _addToTracking,
+                          icon: const Icon(Icons.save),
+                          label: const Text('Add to Tracking'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey[700],
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: SizedBox(
+                        height: 50,
+                        child: ElevatedButton.icon(
+                          onPressed: _sendForExternalReview,
+                          icon: const Icon(Icons.send),
+                          label: const Text('Send for Review'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               )
               : null,

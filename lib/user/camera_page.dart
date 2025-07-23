@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'detection_carousel_screen.dart';
+import 'package:path_provider/path_provider.dart';
 
 class CameraPage extends StatefulWidget {
   final String? initialPhoto;
@@ -23,6 +24,16 @@ class _CameraPageState extends State<CameraPage> {
     _capturedImages = widget.initialPhoto != null ? [widget.initialPhoto!] : [];
   }
 
+  Future<String> saveImagePermanently(
+    String originalPath,
+    String filename,
+  ) async {
+    final directory = await getApplicationDocumentsDirectory();
+    final newPath = '${directory.path}/$filename';
+    final newFile = await File(originalPath).copy(newPath);
+    return newFile.path;
+  }
+
   Future<void> _takePicture() async {
     if (_capturedImages.length >= 5) {
       ScaffoldMessenger.of(
@@ -38,8 +49,11 @@ class _CameraPageState extends State<CameraPage> {
       );
 
       if (photo != null) {
+        // Save to persistent directory
+        final filename = 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final persistentPath = await saveImagePermanently(photo.path, filename);
         setState(() {
-          _capturedImages.add(photo.path);
+          _capturedImages.add(persistentPath);
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -85,6 +99,39 @@ class _CameraPageState extends State<CameraPage> {
       _capturedImages.clear();
       _isProcessing = false;
     });
+  }
+
+  Future<void> _selectFromGallery() async {
+    final List<XFile>? images = await _picker.pickMultiImage();
+    if (images != null && images.isNotEmpty) {
+      if (images.length > 5) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Maximum 5 images can be selected'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+        return;
+      }
+      // Save all selected images to persistent directory
+      List<String> persistentPaths = [];
+      for (var img in images) {
+        final filename =
+            'gallery_${DateTime.now().millisecondsSinceEpoch}_${img.name}';
+        final persistentPath = await saveImagePermanently(img.path, filename);
+        persistentPaths.add(persistentPath);
+      }
+      setState(() {
+        _capturedImages.addAll(persistentPaths);
+      });
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder:
+              (context) => DetectionCarouselScreen(imagePaths: persistentPaths),
+        ),
+      );
+    }
   }
 
   Widget _buildPhotoGrid() {

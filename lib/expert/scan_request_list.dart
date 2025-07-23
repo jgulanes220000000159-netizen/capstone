@@ -3,6 +3,7 @@ import 'scan_request_detail.dart';
 import '../shared/review_manager.dart';
 import 'dart:io';
 import '../user/user_request_list.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ScanRequestList extends StatefulWidget {
   const ScanRequestList({Key? key}) : super(key: key);
@@ -16,14 +17,33 @@ class _ScanRequestListState extends State<ScanRequestList>
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  final ReviewManager _reviewManager = ReviewManager();
   bool _isLoading = true;
+  List<Map<String, dynamic>> _pendingRequests = [];
+  List<Map<String, dynamic>> _completedRequests = [];
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _fetchRequests();
+  }
+
+  Future<void> _fetchRequests() async {
+    setState(() => _isLoading = true);
+    final pendingQuery =
+        await FirebaseFirestore.instance
+            .collection('scan_requests')
+            .where('status', whereIn: ['pending', 'pending_review'])
+            .get();
+    final completedQuery =
+        await FirebaseFirestore.instance
+            .collection('scan_requests')
+            .where('status', whereIn: ['reviewed', 'completed'])
+            .get();
     setState(() {
+      _pendingRequests = pendingQuery.docs.map((doc) => doc.data()).toList();
+      _completedRequests =
+          completedQuery.docs.map((doc) => doc.data()).toList();
       _isLoading = false;
     });
   }
@@ -33,33 +53,6 @@ class _ScanRequestListState extends State<ScanRequestList>
     _tabController.dispose();
     _searchController.dispose();
     super.dispose();
-  }
-
-  List<Map<String, dynamic>> get _pendingRequests {
-    return _reviewManager.pendingReviews
-        .where((request) => request['status'] == 'pending')
-        .toList();
-  }
-
-  List<Map<String, dynamic>> get _completedRequests {
-    // Combine expert's completed requests with user's completed requests
-    final expertCompleted =
-        _reviewManager.pendingReviews
-            .where((request) => request['status'] == 'reviewed')
-            .toList();
-    final userCompleted =
-        userRequests
-            .where((request) => request['status'] == 'completed')
-            .toList();
-    // Optionally, avoid duplicates by requestId
-    final allCompleted = <String, Map<String, dynamic>>{};
-    for (final req in expertCompleted) {
-      allCompleted[req['requestId'] ?? req['id'] ?? ''] = req;
-    }
-    for (final req in userCompleted) {
-      allCompleted[req['requestId'] ?? req['id'] ?? ''] = req;
-    }
-    return allCompleted.values.toList();
   }
 
   List<Map<String, dynamic>> _filterRequests(
@@ -305,60 +298,80 @@ class _ScanRequestListState extends State<ScanRequestList>
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      print('Loading requests from Firestore...');
+      return const Center(child: CircularProgressIndicator());
+    }
+    print(
+      'Building ScanRequestList with ${_pendingRequests.length} pending and ${_completedRequests.length} completed',
+    );
     final filteredPending = _filterRequests(_pendingRequests);
     final filteredCompleted = _filterRequests(_completedRequests);
 
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return Column(
-      children: [
-        _buildSearchBar(),
-        Container(
-          color: Colors.green,
-          child: TabBar(
-            controller: _tabController,
-            indicatorColor: Colors.white,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            tabs: const [Tab(text: 'Pending'), Tab(text: 'Completed')],
-          ),
-        ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              // Pending Requests
-              filteredPending.isEmpty
-                  ? _buildEmptyState(
-                    _searchQuery.isNotEmpty
-                        ? 'No pending requests found for "$_searchQuery"'
-                        : 'No pending requests',
-                  )
-                  : ListView.builder(
-                    itemCount: filteredPending.length,
-                    itemBuilder: (context, index) {
-                      return _buildRequestCard(filteredPending[index]);
-                    },
+    return Scaffold(
+      backgroundColor: Colors.grey[50],
+      body: Column(
+        children: [
+          _buildSearchBar(),
+          Container(
+            color: Colors.green,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TabBar(
+                    controller: _tabController,
+                    indicatorColor: Colors.white,
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.white70,
+                    tabs: const [Tab(text: 'Pending'), Tab(text: 'Completed')],
                   ),
-              // Completed Requests
-              filteredCompleted.isEmpty
-                  ? _buildEmptyState(
-                    _searchQuery.isNotEmpty
-                        ? 'No completed requests found for "$_searchQuery"'
-                        : 'No completed requests',
-                  )
-                  : ListView.builder(
-                    itemCount: filteredCompleted.length,
-                    itemBuilder: (context, index) {
-                      return _buildRequestCard(filteredCompleted[index]);
-                    },
-                  ),
-            ],
+                ),
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Colors.white),
+                  tooltip: 'Refresh',
+                  onPressed: () {
+                    print('Manual refresh triggered');
+                    _fetchRequests();
+                  },
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                // Pending Requests
+                filteredPending.isEmpty
+                    ? _buildEmptyState(
+                      _searchQuery.isNotEmpty
+                          ? 'No pending requests found for "$_searchQuery"'
+                          : 'No pending requests',
+                    )
+                    : ListView.builder(
+                      itemCount: filteredPending.length,
+                      itemBuilder: (context, index) {
+                        return _buildRequestCard(filteredPending[index]);
+                      },
+                    ),
+                // Completed Requests
+                filteredCompleted.isEmpty
+                    ? _buildEmptyState(
+                      _searchQuery.isNotEmpty
+                          ? 'No completed requests found for "$_searchQuery"'
+                          : 'No completed requests',
+                    )
+                    : ListView.builder(
+                      itemCount: filteredCompleted.length,
+                      itemBuilder: (context, index) {
+                        return _buildRequestCard(filteredCompleted[index]);
+                      },
+                    ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
