@@ -5,6 +5,8 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hive/hive.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/intl.dart';
 
 final List<Map<String, dynamic>> userRequests = [
   {
@@ -333,11 +335,27 @@ class UserRequestList extends StatefulWidget {
 class _UserRequestListState extends State<UserRequestList> {
   @override
   Widget build(BuildContext context) {
+    // Sort requests by submittedAt descending (most recent first)
+    final sortedRequests = [...widget.requests];
+    sortedRequests.sort((a, b) {
+      final dateA =
+          a['submittedAt'] != null && a['submittedAt'].toString().isNotEmpty
+              ? DateTime.tryParse(a['submittedAt'].toString())
+              : null;
+      final dateB =
+          b['submittedAt'] != null && b['submittedAt'].toString().isNotEmpty
+              ? DateTime.tryParse(b['submittedAt'].toString())
+              : null;
+      if (dateA == null && dateB == null) return 0;
+      if (dateA == null) return 1;
+      if (dateB == null) return -1;
+      return dateB.compareTo(dateA); // Descending
+    });
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: widget.requests.length,
+      itemCount: sortedRequests.length,
       itemBuilder: (context, index) {
-        final request = widget.requests[index];
+        final request = sortedRequests[index];
         return _buildRequestCard(request);
       },
     );
@@ -351,19 +369,30 @@ class _UserRequestListState extends State<UserRequestList> {
             : 'Unknown';
     final status = request['status']?.toString() ?? 'pending';
     final submittedAt = request['submittedAt']?.toString() ?? '';
+    // Format date
+    final formattedDate =
+        submittedAt.isNotEmpty && DateTime.tryParse(submittedAt) != null
+            ? DateFormat(
+              'MMM d, yyyy – h:mma',
+            ).format(DateTime.parse(submittedAt))
+            : submittedAt;
     final reviewedAt = request['reviewedAt']?.toString() ?? '';
     final isCompleted = status == 'completed';
     final images = (request['images'] as List?) ?? [];
     final totalImages = images.length;
     final totalDetections = diseaseSummary.length;
-    // Use both 'imagePath' and 'path' fields, prefer imagePath
+    // Use imageUrl if present and not empty, else imagePath, else path
+    final imageUrl = images.isNotEmpty ? (images[0]['imageUrl'] ?? '') : '';
     final imagePath =
         images.isNotEmpty
             ? (images[0]['imagePath'] ?? images[0]['path'] ?? '')
             : '';
-    print('Loading image: $imagePath');
-    if (imagePath.isNotEmpty) {
-      print('File exists: ${File(imagePath).existsSync()}');
+    final displayPath = (imageUrl.isNotEmpty) ? imageUrl : imagePath;
+    print('Loading image: $displayPath');
+    if (displayPath.isNotEmpty) {
+      if (_isFilePath(displayPath)) {
+        print('File exists: ${File(displayPath).existsSync()}');
+      }
     }
 
     return Card(
@@ -389,7 +418,11 @@ class _UserRequestListState extends State<UserRequestList> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: _buildImageWidget(imagePath, width: 80, height: 80),
+                    child: _buildImageWidget(
+                      displayPath,
+                      width: 80,
+                      height: 80,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -404,7 +437,7 @@ class _UserRequestListState extends State<UserRequestList> {
                           ),
                         ),
                         Text(
-                          submittedAt,
+                          formattedDate,
                           style: TextStyle(
                             color: Colors.grey[600],
                             fontSize: 12,
@@ -516,6 +549,13 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
             : 'Unknown';
     final status = widget.request['status'] ?? '';
     final submittedAt = widget.request['submittedAt'] ?? '';
+    // Format date
+    final formattedDate =
+        submittedAt.isNotEmpty && DateTime.tryParse(submittedAt) != null
+            ? DateFormat(
+              'MMM d, yyyy – h:mma',
+            ).format(DateTime.parse(submittedAt))
+            : submittedAt;
     final reviewedAt = widget.request['reviewedAt'] ?? '';
     final expertReview = widget.request['expertReview'];
     final expertName = widget.request['expertName'] ?? '';
@@ -590,7 +630,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            submittedAt,
+                            formattedDate,
                             style: const TextStyle(
                               fontSize: 12,
                               color: Colors.grey,
@@ -677,7 +717,10 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                       itemCount: images.length,
                       itemBuilder: (context, idx) {
                         final img = images[idx];
-                        final imgPath = img['imagePath'] ?? img['path'] ?? '';
+                        final imageUrl = img['imageUrl'] ?? '';
+                        final imagePath = img['imagePath'] ?? img['path'] ?? '';
+                        final displayPath =
+                            (imageUrl.isNotEmpty) ? imageUrl : imagePath;
                         final detections = (img['detections'] as List?) ?? [];
                         return GestureDetector(
                           onTap: () {
@@ -698,7 +741,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                               borderRadius:
                                                   BorderRadius.circular(12),
                                               child: _buildImageWidget(
-                                                imgPath,
+                                                displayPath,
                                                 width: imageWidth,
                                                 height: imageHeight,
                                                 fit: BoxFit.contain,
@@ -730,7 +773,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(12),
                                 child: _buildImageWidget(
-                                  imgPath,
+                                  displayPath,
                                   fit: BoxFit.cover,
                                 ),
                               ),
@@ -1222,101 +1265,7 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
   String _searchQuery = '';
   final ReviewManager _reviewManager = ReviewManager();
 
-  List<Map<String, dynamic>> _pendingRequests = [];
-  bool _pendingLoaded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _loadPendingRequests();
-  }
-
-  Future<void> _loadPendingRequests() async {
-    try {
-      _pendingRequests = await fetchAndCachePendingRequests();
-    } catch (e) {
-      _pendingRequests = await getCachedPendingRequests();
-    }
-    setState(() {
-      _pendingLoaded = true;
-    });
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  List<Map<String, dynamic>> _filterRequests(
-    List<Map<String, dynamic>> requests,
-  ) {
-    if (_searchQuery.isEmpty) return requests;
-
-    return requests.where((request) {
-      final diseaseName =
-          request['diseaseSummary'][0]['name']?.toString().toLowerCase() ?? '';
-      final status = request['status']?.toString().toLowerCase() ?? '';
-      final submittedAt =
-          request['submittedAt']?.toString().toLowerCase() ?? '';
-      final query = _searchQuery.toLowerCase();
-
-      return diseaseName.contains(query) ||
-          status.contains(query) ||
-          submittedAt.contains(query);
-    }).toList();
-  }
-
-  List<Map<String, dynamic>> _getPendingRequests() {
-    // Get in-memory pending reviews from ReviewManager
-    final pending =
-        _reviewManager.pendingReviews
-            .where((r) => r['status'] == 'pending')
-            .map((review) => _mapReviewToRequest(review))
-            .toList();
-    return pending;
-  }
-
-  Map<String, dynamic> _mapReviewToRequest(Map<String, dynamic> review) {
-    // Map ReviewManager review to the format expected by the card UI
-    return {
-      'requestId': review['id'],
-      'userId': review['userId'],
-      'userName': review['userName'],
-      'submittedAt': review['submittedAt'],
-      'status':
-          review['status'] == 'pending' ? 'pending_review' : review['status'],
-      'images': review['images'],
-      'diseaseSummary': review['diseaseSummary'],
-      'expertReview': review['expertReview'],
-      'notes': review['notes'],
-    };
-  }
-
-  // Add Firestore + Hive sync helpers
-  Future<List<Map<String, dynamic>>> fetchAndCachePendingRequests() async {
-    final user = FirebaseAuth.instance.currentUser;
-    final userId = user?.uid ?? 'unknown';
-    final query =
-        await FirebaseFirestore.instance
-            .collection('scan_requests')
-            .where('userId', isEqualTo: userId)
-            .where('status', isEqualTo: 'pending')
-            .get();
-    final pendingRequests = query.docs.map((doc) => doc.data()).toList();
-    final box = await Hive.openBox('pendingRequestsBox');
-    await box.put('pending', pendingRequests);
-    return pendingRequests;
-  }
-
-  Future<List<Map<String, dynamic>>> getCachedPendingRequests() async {
-    final box = await Hive.openBox('pendingRequestsBox');
-    final cached = box.get('pending', defaultValue: []);
-    return List<Map<String, dynamic>>.from(cached);
-  }
-
+  // Add missing _buildSearchBar method
   Widget _buildSearchBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -1383,56 +1332,106 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (!_pendingLoaded) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    final pending = _filterRequests(_pendingRequests);
-    final completed = _filterRequests(
-      userRequests.where((r) => r['status'] == 'completed').toList(),
-    );
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
 
-    return Column(
-      children: [
-        _buildSearchBar(),
-        Container(
-          color: Colors.green,
-          child: TabBar(
-            controller: _tabController,
-            indicatorColor: Colors.white,
-            labelColor: Colors.white,
-            unselectedLabelColor: Colors.white70,
-            tabs: [Tab(text: tr('pending')), Tab(text: tr('completed'))],
-          ),
-        ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              pending.isEmpty
-                  ? _buildEmptyState(
-                    _searchQuery.isNotEmpty
-                        ? 'No pending requests found for "$_searchQuery"'
-                        : 'No pending requests',
-                  )
-                  : Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: UserRequestList(requests: pending),
-                  ),
-              completed.isEmpty
-                  ? _buildEmptyState(
-                    _searchQuery.isNotEmpty
-                        ? 'No completed requests found for "$_searchQuery"'
-                        : 'No completed requests',
-                  )
-                  : Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: UserRequestList(requests: completed),
-                  ),
-            ],
-          ),
-        ),
-      ],
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> _filterRequests(
+    List<Map<String, dynamic>> requests,
+  ) {
+    if (_searchQuery.isEmpty) return requests;
+
+    return requests.where((request) {
+      final diseaseName =
+          request['diseaseSummary'][0]['name']?.toString().toLowerCase() ?? '';
+      final status = request['status']?.toString().toLowerCase() ?? '';
+      final submittedAt =
+          request['submittedAt']?.toString().toLowerCase() ?? '';
+      final query = _searchQuery.toLowerCase();
+
+      return diseaseName.contains(query) ||
+          status.contains(query) ||
+          submittedAt.contains(query);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Center(child: Text('Not logged in'));
+    }
+    return StreamBuilder<QuerySnapshot>(
+      stream:
+          FirebaseFirestore.instance
+              .collection('scan_requests')
+              .where('userId', isEqualTo: user.uid)
+              .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final allRequests =
+            snapshot.data!.docs
+                .map((doc) => doc.data() as Map<String, dynamic>)
+                .toList();
+        final pending = _filterRequests(
+          allRequests.where((r) => r['status'] == 'pending').toList(),
+        );
+        final completed = _filterRequests(
+          allRequests.where((r) => r['status'] == 'completed').toList(),
+        );
+        return Column(
+          children: [
+            _buildSearchBar(),
+            Container(
+              color: Colors.green,
+              child: TabBar(
+                controller: _tabController,
+                indicatorColor: Colors.white,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white70,
+                tabs: [Tab(text: tr('pending')), Tab(text: tr('completed'))],
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  pending.isEmpty
+                      ? _buildEmptyState(
+                        _searchQuery.isNotEmpty
+                            ? 'No pending requests found for "$_searchQuery"'
+                            : 'No pending requests',
+                      )
+                      : Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: UserRequestList(requests: pending),
+                      ),
+                  completed.isEmpty
+                      ? _buildEmptyState(
+                        _searchQuery.isNotEmpty
+                            ? 'No completed requests found for "$_searchQuery"'
+                            : 'No completed requests',
+                      )
+                      : Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: UserRequestList(requests: completed),
+                      ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1477,13 +1476,15 @@ Widget _buildImageWidget(
     );
   }
   if (path.startsWith('http')) {
-    return Image.network(
-      path,
+    return CachedNetworkImage(
+      imageUrl: path,
       width: width,
       height: height,
       fit: fit,
-      errorBuilder:
-          (context, error, stackTrace) =>
+      placeholder:
+          (context, url) => const Center(child: CircularProgressIndicator()),
+      errorWidget:
+          (context, url, error) =>
               const Icon(Icons.broken_image, size: 40, color: Colors.grey),
     );
   } else if (_isFilePath(path)) {

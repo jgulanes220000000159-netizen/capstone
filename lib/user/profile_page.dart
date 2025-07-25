@@ -37,6 +37,7 @@ class _ProfilePageState extends State<ProfilePage> {
   void initState() {
     super.initState();
     _loadUserData();
+    _loadTotalScanCount();
   }
 
   Future<void> _loadUserData() async {
@@ -81,6 +82,33 @@ class _ProfilePageState extends State<ProfilePage> {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _loadTotalScanCount() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      final userId = user.uid;
+      // Count all scan_requests
+      final scanReqQuery =
+          await FirebaseFirestore.instance
+              .collection('scan_requests')
+              .where('userId', isEqualTo: userId)
+              .get();
+      int scanReqCount = scanReqQuery.docs.length;
+      // Count all tracking sessions
+      final trackingQuery =
+          await FirebaseFirestore.instance
+              .collection('tracking')
+              .where('userId', isEqualTo: userId)
+              .get();
+      int trackingCount = trackingQuery.docs.length;
+      setState(() {
+        _scanCount = scanReqCount + trackingCount;
+      });
+    } catch (e) {
+      print('Error loading total scan count: $e');
     }
   }
 
@@ -198,6 +226,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
@@ -211,334 +240,380 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         elevation: 0,
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Profile Header
-            Container(
-              color: Colors.green,
-              padding: const EdgeInsets.only(bottom: 24.0),
-              child: Column(
-                children: [
-                  // Profile Picture
-                  Stack(
-                    children: [
-                      Container(
-                        margin: const EdgeInsets.only(top: 16),
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 4),
-                          color: Colors.white,
-                        ),
-                        child:
-                            _profileImage != null
-                                ? ClipOval(
-                                  child: Image.file(
-                                    _profileImage!,
+      body:
+          user == null
+              ? const Center(child: Text('Not logged in'))
+              : StreamBuilder<DocumentSnapshot>(
+                stream:
+                    FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(user.uid)
+                        .snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final data = snapshot.data!.data() as Map<String, dynamic>?;
+                  if (data == null) {
+                    return const Center(child: Text('No user data found'));
+                  }
+                  _userName = data['fullName'] ?? 'Unknown User';
+                  _userRole = data['role'] ?? 'Farmer';
+                  _userEmail = data['email'] ?? '';
+                  _userPhone = data['phoneNumber'] ?? '';
+                  _userAddress = data['address'] ?? '';
+                  _profileImageUrl = data['imageProfile'];
+                  _isLoading = false;
+                  return SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        // Profile Header
+                        Container(
+                          color: Colors.green,
+                          padding: const EdgeInsets.only(bottom: 24.0),
+                          child: Column(
+                            children: [
+                              // Profile Picture
+                              Stack(
+                                children: [
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 16),
                                     width: 120,
                                     height: 120,
-                                    fit: BoxFit.cover,
-                                  ),
-                                )
-                                : _profileImageUrl != null
-                                ? ClipOval(
-                                  child: Image.network(
-                                    _profileImageUrl!,
-                                    width: 120,
-                                    height: 120,
-                                    fit: BoxFit.cover,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            const Icon(
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 4,
+                                      ),
+                                      color: Colors.white,
+                                    ),
+                                    child:
+                                        _profileImage != null
+                                            ? ClipOval(
+                                              child: Image.file(
+                                                _profileImage!,
+                                                width: 120,
+                                                height: 120,
+                                                fit: BoxFit.cover,
+                                              ),
+                                            )
+                                            : _profileImageUrl != null
+                                            ? ClipOval(
+                                              child: Image.network(
+                                                _profileImageUrl!,
+                                                width: 120,
+                                                height: 120,
+                                                fit: BoxFit.cover,
+                                                errorBuilder:
+                                                    (
+                                                      context,
+                                                      error,
+                                                      stackTrace,
+                                                    ) => const Icon(
+                                                      Icons.person,
+                                                      size: 70,
+                                                      color: Colors.green,
+                                                    ),
+                                              ),
+                                            )
+                                            : const Icon(
                                               Icons.person,
                                               size: 70,
                                               color: Colors.green,
                                             ),
                                   ),
-                                )
-                                : const Icon(
-                                  Icons.person,
-                                  size: 70,
+                                  Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: GestureDetector(
+                                      onTap: _pickProfileImage,
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(
+                                          color: Colors.white,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.camera_alt,
+                                          size: 20,
+                                          color: Colors.green,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              // User Name
+                              Text(
+                                _isLoading ? tr('loading') : _userName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              // Role
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  tr(_userRole.toLowerCase()),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              // Stats Row
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 32,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    GestureDetector(
+                                      onTap: () {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Scans clicked!'),
+                                          ),
+                                        );
+                                      },
+                                      child: _buildStat(
+                                        tr('scans'),
+                                        _scanCount.toString(),
+                                      ),
+                                    ),
+                                    // Removed diseases detected stat
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Profile Options
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              _buildProfileOption(
+                                title: tr('edit_profile'),
+                                icon: Icons.edit,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder:
+                                          (context) => const EditProfilePage(),
+                                    ),
+                                  );
+                                },
+                              ),
+                              _buildProfileOption(
+                                title: tr('about_app'),
+                                icon: Icons.info,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder:
+                                          (context) => const AboutAppPage(),
+                                    ),
+                                  );
+                                },
+                              ),
+                              _buildProfileOption(
+                                title: tr('change_password'),
+                                icon: Icons.lock,
+                                onTap: () => _showChangePasswordDialog(context),
+                              ),
+                              _buildProfileOption(
+                                title: tr('log_out'),
+                                icon: Icons.logout,
+                                showDivider: false,
+                                onTap: () async {
+                                  final shouldLogout = await showDialog<bool>(
+                                    context: context,
+                                    builder:
+                                        (context) => AlertDialog(
+                                          title: Text(tr('confirm_logout')),
+                                          content: Text(
+                                            tr('are_you_sure_logout'),
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed:
+                                                  () => Navigator.of(
+                                                    context,
+                                                  ).pop(false),
+                                              child: Text(tr('cancel')),
+                                            ),
+                                            TextButton(
+                                              onPressed:
+                                                  () => Navigator.of(
+                                                    context,
+                                                  ).pop(true),
+                                              child: Text(tr('logout')),
+                                            ),
+                                          ],
+                                        ),
+                                  );
+                                  if (shouldLogout == true) {
+                                    // Sign out from Firebase
+                                    await FirebaseAuth.instance.signOut();
+                                    // Clear Hive userBox
+                                    final userBox = await Hive.openBox(
+                                      'userBox',
+                                    );
+                                    await userBox.clear();
+                                    Navigator.pushAndRemoveUntil(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const LoginPage(),
+                                      ),
+                                      (route) => false,
+                                    );
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Preferences Section
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  top: 8,
+                                  bottom: 4,
+                                ),
+                                child: Text(
+                                  tr('preferences'),
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green,
+                                  ),
+                                ),
+                              ),
+                              // Language Picker
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4.0,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      tr('choose_language'),
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    DropdownButton<Locale>(
+                                      value: context.locale,
+                                      onChanged: (Locale? locale) async {
+                                        if (locale != null) {
+                                          context.setLocale(locale);
+                                          final settingsBox =
+                                              await Hive.openBox('settings');
+                                          await settingsBox.put(
+                                            'locale_code',
+                                            locale.languageCode,
+                                          );
+                                        }
+                                      },
+                                      items: const [
+                                        DropdownMenuItem(
+                                          value: Locale('en'),
+                                          child: Text('English'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: Locale('bs'),
+                                          child: Text('Bisaya'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: Locale('tl'),
+                                          child: Text('Tagalog'),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              SwitchListTile(
+                                value: _notificationsEnabled,
+                                onChanged: (value) {
+                                  setState(() {
+                                    _notificationsEnabled = value;
+                                  });
+                                  // TODO: Save this preference persistently if needed
+                                },
+                                title: Text(tr('enable_notifications')),
+                                secondary: const Icon(
+                                  Icons.notifications,
                                   color: Colors.green,
                                 ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: GestureDetector(
-                          onTap: _pickProfileImage,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              size: 20,
-                              color: Colors.green,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  // User Name
-                  Text(
-                    _isLoading ? tr('loading') : _userName,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  // Role
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      tr(_userRole.toLowerCase()),
-                      style: const TextStyle(color: Colors.white, fontSize: 14),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  // Stats Row
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 32),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        GestureDetector(
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Scans clicked!')),
-                            );
-                          },
-                          child: _buildStat(tr('scans'), _scanCount.toString()),
-                        ),
-                        Container(
-                          height: 40,
-                          width: 1,
-                          color: Colors.white.withOpacity(0.3),
-                        ),
-                        GestureDetector(
-                          onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Diseases Detected clicked!'),
+                                contentPadding: EdgeInsets.zero,
                               ),
-                            );
-                          },
-                          child: _buildStat(
-                            tr('diseases_detected'),
-                            _diseaseCount.toString(),
+                            ],
                           ),
                         ),
+                        const SizedBox(height: 24),
+                        // App Version
+                        const SizedBox(height: 24),
                       ],
                     ),
-                  ),
-                ],
+                  );
+                },
               ),
-            ),
-            const SizedBox(height: 16),
-            // Profile Options
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  _buildProfileOption(
-                    title: tr('edit_profile'),
-                    icon: Icons.edit,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const EditProfilePage(),
-                        ),
-                      );
-                    },
-                  ),
-                  _buildProfileOption(
-                    title: tr('about_app'),
-                    icon: Icons.info,
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const AboutAppPage(),
-                        ),
-                      );
-                    },
-                  ),
-                  _buildProfileOption(
-                    title: tr('change_password'),
-                    icon: Icons.lock,
-                    onTap: () => _showChangePasswordDialog(context),
-                  ),
-                  _buildProfileOption(
-                    title: tr('log_out'),
-                    icon: Icons.logout,
-                    showDivider: false,
-                    onTap: () async {
-                      final shouldLogout = await showDialog<bool>(
-                        context: context,
-                        builder:
-                            (context) => AlertDialog(
-                              title: Text(tr('confirm_logout')),
-                              content: Text(tr('are_you_sure_logout')),
-                              actions: [
-                                TextButton(
-                                  onPressed:
-                                      () => Navigator.of(context).pop(false),
-                                  child: Text(tr('cancel')),
-                                ),
-                                TextButton(
-                                  onPressed:
-                                      () => Navigator.of(context).pop(true),
-                                  child: Text(tr('logout')),
-                                ),
-                              ],
-                            ),
-                      );
-                      if (shouldLogout == true) {
-                        // Sign out from Firebase
-                        await FirebaseAuth.instance.signOut();
-                        // Clear Hive userBox
-                        final userBox = await Hive.openBox('userBox');
-                        await userBox.clear();
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const LoginPage(),
-                          ),
-                          (route) => false,
-                        );
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Preferences Section
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 16),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8, bottom: 4),
-                    child: Text(
-                      tr('preferences'),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ),
-                  // Language Picker
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          tr('choose_language'),
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        DropdownButton<Locale>(
-                          value: context.locale,
-                          onChanged: (Locale? locale) async {
-                            if (locale != null) {
-                              context.setLocale(locale);
-                              final settingsBox = await Hive.openBox(
-                                'settings',
-                              );
-                              await settingsBox.put(
-                                'locale_code',
-                                locale.languageCode,
-                              );
-                            }
-                          },
-                          items: const [
-                            DropdownMenuItem(
-                              value: Locale('en'),
-                              child: Text('English'),
-                            ),
-                            DropdownMenuItem(
-                              value: Locale('bs'),
-                              child: Text('Bisaya'),
-                            ),
-                            DropdownMenuItem(
-                              value: Locale('tl'),
-                              child: Text('Tagalog'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  SwitchListTile(
-                    value: _notificationsEnabled,
-                    onChanged: (value) {
-                      setState(() {
-                        _notificationsEnabled = value;
-                      });
-                      // TODO: Save this preference persistently if needed
-                    },
-                    title: Text(tr('enable_notifications')),
-                    secondary: const Icon(
-                      Icons.notifications,
-                      color: Colors.green,
-                    ),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-            // App Version
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
     );
   }
 

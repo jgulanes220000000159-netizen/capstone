@@ -194,6 +194,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
     return Scaffold(
       backgroundColor: Colors.green,
       appBar: AppBar(
@@ -208,152 +209,183 @@ class _EditProfilePageState extends State<EditProfilePage> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 20),
-                // Profile Picture
-                Center(
-                  child: Stack(
-                    children: [
-                      Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 4),
-                          color: Colors.white,
-                        ),
-                        child:
-                            _isLoadingData
-                                ? const CircularProgressIndicator(
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
+      body:
+          user == null
+              ? const Center(child: Text('Not logged in'))
+              : StreamBuilder<DocumentSnapshot>(
+                stream:
+                    FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(user.uid)
+                        .snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final data = snapshot.data!.data() as Map<String, dynamic>?;
+                  if (data == null) {
+                    return const Center(child: Text('No user data found'));
+                  }
+                  _fullNameController.text = data['fullName'] ?? '';
+                  _addressController.text = data['address'] ?? '';
+                  _phoneController.text = data['phoneNumber'] ?? '';
+                  _emailController.text = data['email'] ?? '';
+                  _profileImageUrl = data['imageProfile'];
+                  _isLoadingData = false;
+                  return SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 20),
+                          // Profile Picture
+                          Center(
+                            child: Stack(
+                              children: [
+                                Container(
+                                  width: 120,
+                                  height: 120,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 4,
+                                    ),
+                                    color: Colors.white,
                                   ),
-                                )
-                                : _profileImage != null
-                                ? ClipOval(
-                                  child: Image.file(
-                                    _profileImage!,
-                                    width: 120,
-                                    height: 120,
-                                    fit: BoxFit.cover,
-                                  ),
-                                )
-                                : _profileImageUrl != null &&
-                                    _profileImageUrl!.isNotEmpty
-                                ? ClipOval(
-                                  child: Image.network(
-                                    _profileImageUrl!,
-                                    width: 120,
-                                    height: 120,
-                                    fit: BoxFit.cover,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            const Icon(
-                                              Icons.person,
-                                              size: 70,
-                                              color: Colors.green,
+                                  child:
+                                      _isLoadingData
+                                          ? const CircularProgressIndicator(
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                                  Colors.white,
+                                                ),
+                                          )
+                                          : _profileImage != null
+                                          ? ClipOval(
+                                            child: Image.file(
+                                              _profileImage!,
+                                              width: 120,
+                                              height: 120,
+                                              fit: BoxFit.cover,
                                             ),
-                                  ),
-                                )
-                                : const Icon(
-                                  Icons.person,
-                                  size: 70,
-                                  color: Colors.green,
+                                          )
+                                          : _profileImageUrl != null &&
+                                              _profileImageUrl!.isNotEmpty
+                                          ? ClipOval(
+                                            child: Image.network(
+                                              _profileImageUrl!,
+                                              width: 120,
+                                              height: 120,
+                                              fit: BoxFit.cover,
+                                              errorBuilder:
+                                                  (
+                                                    context,
+                                                    error,
+                                                    stackTrace,
+                                                  ) => const Icon(
+                                                    Icons.person,
+                                                    size: 70,
+                                                    color: Colors.green,
+                                                  ),
+                                            ),
+                                          )
+                                          : const Icon(
+                                            Icons.person,
+                                            size: 70,
+                                            color: Colors.green,
+                                          ),
                                 ),
-                      ),
-                      Positioned(
-                        bottom: 0,
-                        right: 0,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                          ),
-                          child: IconButton(
-                            icon: const Icon(
-                              Icons.camera_alt,
-                              size: 20,
-                              color: Colors.green,
+                                Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.camera_alt,
+                                        size: 20,
+                                        color: Colors.green,
+                                      ),
+                                      onPressed: _pickProfileImage,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
-                            onPressed: _pickProfileImage,
                           ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 30),
-                // Form Fields
-                _buildTextField(
-                  label: 'Full Name',
-                  controller: _fullNameController,
-                  prefixIcon: Icons.person,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  label: 'Address',
-                  controller: _addressController,
-                  prefixIcon: Icons.home,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  label: 'Phone Number',
-                  controller: _phoneController,
-                  prefixIcon: Icons.phone,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  label: 'Email',
-                  controller: _emailController,
-                  prefixIcon: Icons.email,
-                ),
-                const SizedBox(height: 30),
-                // Save Button
-                SizedBox(
-                  width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _handleSave,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                          const SizedBox(height: 30),
+                          // Form Fields
+                          _buildTextField(
+                            label: 'Full Name',
+                            controller: _fullNameController,
+                            prefixIcon: Icons.person,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildTextField(
+                            label: 'Address',
+                            controller: _addressController,
+                            prefixIcon: Icons.home,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildTextField(
+                            label: 'Phone Number',
+                            controller: _phoneController,
+                            prefixIcon: Icons.phone,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildTextField(
+                            label: 'Email',
+                            controller: _emailController,
+                            prefixIcon: Icons.email,
+                          ),
+                          const SizedBox(height: 30),
+                          // Save Button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 55,
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _handleSave,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child:
+                                  _isLoading
+                                      ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                              AlwaysStoppedAnimation<Color>(
+                                                Colors.green,
+                                              ),
+                                        ),
+                                      )
+                                      : const Text(
+                                        'Save Changes',
+                                        style: TextStyle(
+                                          color: Colors.green,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    child:
-                        _isLoading
-                            ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.green,
-                                ),
-                              ),
-                            )
-                            : const Text(
-                              'Save Changes',
-                              style: TextStyle(
-                                color: Colors.green,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+                  );
+                },
+              ),
     );
   }
 }

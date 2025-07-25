@@ -4,6 +4,7 @@ import 'dart:async';
 import '../shared/review_manager.dart';
 import '../user/detection_painter.dart';
 import '../user/tflite_detector.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ScanRequestDetail extends StatefulWidget {
   final Map<String, dynamic> request;
@@ -178,6 +179,7 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
           itemCount: images.length,
           itemBuilder: (context, index) {
             final image = images[index];
+            final imageUrl = image['imageUrl'];
             final imagePath = image['path'];
             final detections =
                 (image['detections'] as List<dynamic>?)
@@ -208,7 +210,7 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                               fit: StackFit.expand,
                               children: [
                                 _buildImageWidget(
-                                  imagePath,
+                                  imageUrl ?? imagePath,
                                   fit: BoxFit.contain,
                                 ),
                                 if (_showBoundingBoxes &&
@@ -273,7 +275,10 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: _buildImageWidget(imagePath, fit: BoxFit.cover),
+                    child: _buildImageWidget(
+                      imageUrl ?? imagePath,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                   if (_showBoundingBoxes &&
                       detections.isNotEmpty &&
@@ -388,7 +393,22 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
 
   Widget _buildImageWidget(dynamic path, {BoxFit fit = BoxFit.cover}) {
     if (path is String && path.isNotEmpty) {
-      if (path.startsWith('/') || path.contains(':')) {
+      if (path.startsWith('http')) {
+        // Supabase public URL
+        return CachedNetworkImage(
+          imageUrl: path,
+          fit: fit,
+          placeholder:
+              (context, url) =>
+                  const Center(child: CircularProgressIndicator()),
+          errorWidget: (context, url, error) {
+            return Container(
+              color: Colors.grey[200],
+              child: const Icon(Icons.image_not_supported),
+            );
+          },
+        );
+      } else if (path.startsWith('/') || path.contains(':')) {
         // File path
         return Image.file(
           File(path),

@@ -4,6 +4,8 @@ import '../shared/review_manager.dart';
 import 'dart:io';
 import '../user/user_request_list.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:intl/intl.dart';
 
 class ScanRequestList extends StatefulWidget {
   const ScanRequestList({Key? key}) : super(key: key);
@@ -161,11 +163,29 @@ class _ScanRequestListState extends State<ScanRequestList>
         request['status'] == 'reviewed' || request['status'] == 'completed';
     final userName = request['userName']?.toString() ?? '(No Name)';
     final submittedAt = request['submittedAt'] ?? '';
+    // Format date
+    final formattedDate =
+        submittedAt.toString().isNotEmpty &&
+                DateTime.tryParse(submittedAt.toString()) != null
+            ? DateFormat(
+              'MMM d, yyyy – h:mma',
+            ).format(DateTime.parse(submittedAt.toString()))
+            : submittedAt.toString();
     String? reviewedAt;
     if (isCompleted) {
       final expertReview = request['expertReview'] as Map<String, dynamic>?;
       reviewedAt = expertReview?['reviewedAt'] as String? ?? '';
     }
+
+    // Use imageUrl if present and not empty, else path if not empty
+    String? imageUrl = request['images']?[0]?['imageUrl'];
+    String? imagePath = request['images']?[0]?['path'];
+    String? displayPath =
+        (imageUrl != null && imageUrl.isNotEmpty)
+            ? imageUrl
+            : (imagePath != null && imagePath.isNotEmpty)
+            ? imagePath
+            : null;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -209,8 +229,8 @@ class _ScanRequestListState extends State<ScanRequestList>
                   width: 80,
                   height: 80,
                   child:
-                      request['images']?[0]?['path'] != null
-                          ? _buildImageWidget(request['images'][0]['path'])
+                      displayPath != null && displayPath.isNotEmpty
+                          ? _buildImageWidget(displayPath)
                           : Container(
                             color: Colors.grey[200],
                             child: const Icon(Icons.image_not_supported),
@@ -263,7 +283,7 @@ class _ScanRequestListState extends State<ScanRequestList>
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
-                            'Sent: $submittedAt',
+                            'Sent: $formattedDate',
                             style: const TextStyle(
                               fontSize: 11,
                               color: Colors.grey,
@@ -298,80 +318,108 @@ class _ScanRequestListState extends State<ScanRequestList>
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      print('Loading requests from Firestore...');
-      return const Center(child: CircularProgressIndicator());
-    }
-    print(
-      'Building ScanRequestList with ${_pendingRequests.length} pending and ${_completedRequests.length} completed',
-    );
-    final filteredPending = _filterRequests(_pendingRequests);
-    final filteredCompleted = _filterRequests(_completedRequests);
-
-    return Scaffold(
-      backgroundColor: Colors.grey[50],
-      body: Column(
-        children: [
-          _buildSearchBar(),
-          Container(
-            color: Colors.green,
-            child: Row(
-              children: [
-                Expanded(
-                  child: TabBar(
-                    controller: _tabController,
-                    indicatorColor: Colors.white,
-                    labelColor: Colors.white,
-                    unselectedLabelColor: Colors.white70,
-                    tabs: const [Tab(text: 'Pending'), Tab(text: 'Completed')],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh, color: Colors.white),
-                  tooltip: 'Refresh',
-                  onPressed: () {
-                    print('Manual refresh triggered');
-                    _fetchRequests();
-                  },
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                // Pending Requests
-                filteredPending.isEmpty
-                    ? _buildEmptyState(
-                      _searchQuery.isNotEmpty
-                          ? 'No pending requests found for "$_searchQuery"'
-                          : 'No pending requests',
-                    )
-                    : ListView.builder(
-                      itemCount: filteredPending.length,
-                      itemBuilder: (context, index) {
-                        return _buildRequestCard(filteredPending[index]);
-                      },
+    return StreamBuilder<QuerySnapshot>(
+      stream:
+          FirebaseFirestore.instance.collection('scan_requests').snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final allRequests =
+            snapshot.data!.docs
+                .map((doc) => doc.data() as Map<String, dynamic>)
+                .toList();
+        // Sort by submittedAt descending
+        allRequests.sort((a, b) {
+          final dateA =
+              a['submittedAt'] != null && a['submittedAt'].toString().isNotEmpty
+                  ? DateTime.tryParse(a['submittedAt'].toString())
+                  : null;
+          final dateB =
+              b['submittedAt'] != null && b['submittedAt'].toString().isNotEmpty
+                  ? DateTime.tryParse(b['submittedAt'].toString())
+                  : null;
+          if (dateA == null && dateB == null) return 0;
+          if (dateA == null) return 1;
+          if (dateB == null) return -1;
+          return dateB.compareTo(dateA); // Descending
+        });
+        final filteredPending = _filterRequests(
+          allRequests
+              .where(
+                (r) =>
+                    r['status'] == 'pending' || r['status'] == 'pending_review',
+              )
+              .toList(),
+        );
+        final filteredCompleted = _filterRequests(
+          allRequests
+              .where(
+                (r) => r['status'] == 'reviewed' || r['status'] == 'completed',
+              )
+              .toList(),
+        );
+        return Scaffold(
+          backgroundColor: Colors.grey[50],
+          body: Column(
+            children: [
+              _buildSearchBar(),
+              Container(
+                color: Colors.green,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TabBar(
+                        controller: _tabController,
+                        indicatorColor: Colors.white,
+                        labelColor: Colors.white,
+                        unselectedLabelColor: Colors.white70,
+                        tabs: const [
+                          Tab(text: 'Pending'),
+                          Tab(text: 'Completed'),
+                        ],
+                      ),
                     ),
-                // Completed Requests
-                filteredCompleted.isEmpty
-                    ? _buildEmptyState(
-                      _searchQuery.isNotEmpty
-                          ? 'No completed requests found for "$_searchQuery"'
-                          : 'No completed requests',
-                    )
-                    : ListView.builder(
-                      itemCount: filteredCompleted.length,
-                      itemBuilder: (context, index) {
-                        return _buildRequestCard(filteredCompleted[index]);
-                      },
-                    ),
-              ],
-            ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    // Pending Requests
+                    filteredPending.isEmpty
+                        ? _buildEmptyState(
+                          _searchQuery.isNotEmpty
+                              ? 'No pending requests found for "$_searchQuery"'
+                              : 'No pending requests',
+                        )
+                        : ListView.builder(
+                          itemCount: filteredPending.length,
+                          itemBuilder: (context, index) {
+                            return _buildRequestCard(filteredPending[index]);
+                          },
+                        ),
+                    // Completed Requests
+                    filteredCompleted.isEmpty
+                        ? _buildEmptyState(
+                          _searchQuery.isNotEmpty
+                              ? 'No completed requests found for "$_searchQuery"'
+                              : 'No completed requests',
+                        )
+                        : ListView.builder(
+                          itemCount: filteredCompleted.length,
+                          itemBuilder: (context, index) {
+                            return _buildRequestCard(filteredCompleted[index]);
+                          },
+                        ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -400,7 +448,21 @@ class _ScanRequestListState extends State<ScanRequestList>
   }
 
   Widget _buildImageWidget(String path) {
-    if (path.startsWith('/') || path.contains(':')) {
+    if (path.startsWith('http')) {
+      // Supabase public URL
+      return CachedNetworkImage(
+        imageUrl: path,
+        fit: BoxFit.cover,
+        placeholder:
+            (context, url) => const Center(child: CircularProgressIndicator()),
+        errorWidget: (context, url, error) {
+          return Container(
+            color: Colors.grey[200],
+            child: const Icon(Icons.image_not_supported),
+          );
+        },
+      );
+    } else if (path.startsWith('/') || path.contains(':')) {
       // File path
       return Image.file(
         File(path),

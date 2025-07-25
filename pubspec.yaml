@@ -10,6 +10,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_dotenv: ^5.1.0
   camera: ^0.10.5+5
   tflite_flutter: ^0.10.1
   path_provider: ^2.1.1
@@ -24,8 +25,16 @@ dependencies:
   firebase_auth: ^4.17.4
   cloud_firestore: ^4.15.4
   firebase_storage: ^11.6.5
+  supabase_flutter: ^2.5.8
+  cached_network_image: ^3.3.1
   mailer: ^6.0.1
   easy_localization: ^3.0.1
+  firebase_messaging: ^14.7.4
+  flutter_local_notifications:
+    git:
+      url: https://github.com/SherwenCabanilla/flutter_local_notifications.git
+      path: flutter_local_notifications
+      ref: master
 
 dev_dependencies:
   flutter_test:

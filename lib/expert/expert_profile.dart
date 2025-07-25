@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:hive/hive.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class ExpertProfile extends StatefulWidget {
   const ExpertProfile({Key? key}) : super(key: key);
@@ -35,6 +36,7 @@ class _ExpertProfileState extends State<ExpertProfile> {
   void initState() {
     super.initState();
     _loadUserData();
+    _saveFcmTokenToFirestore();
   }
 
   Future<void> _loadUserData() async {
@@ -151,6 +153,19 @@ class _ExpertProfileState extends State<ExpertProfile> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to update profile image')),
       );
+    }
+  }
+
+  Future<void> _saveFcmTokenToFirestore() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      String? token = await FirebaseMessaging.instance.getToken();
+      if (token != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({'fcmToken': token});
+      }
     }
   }
 
@@ -527,330 +542,395 @@ class _ExpertProfileState extends State<ExpertProfile> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          // Profile Header
-          Container(
-            color: Colors.green,
-            padding: const EdgeInsets.only(bottom: 24.0),
-            child: Column(
-              children: [
-                // Profile Picture
-                Stack(
-                  children: [
-                    Container(
-                      margin: const EdgeInsets.only(top: 16),
-                      width: 140,
-                      height: 140,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 4),
-                        color: Colors.white,
-                      ),
-                      child:
-                          _profileImage != null
-                              ? ClipOval(
-                                child: Image.file(
-                                  _profileImage!,
-                                  width: 140,
-                                  height: 140,
-                                  fit: BoxFit.cover,
-                                ),
-                              )
-                              : _profileImageUrl != null
-                              ? ClipOval(
-                                child: Image.network(
-                                  _profileImageUrl!,
-                                  width: 140,
-                                  height: 140,
-                                  fit: BoxFit.cover,
-                                  errorBuilder:
-                                      (context, error, stackTrace) =>
-                                          const Icon(
-                                            Icons.person,
-                                            size: 90,
+    final user = FirebaseAuth.instance.currentUser;
+    return Scaffold(
+      body:
+          user == null
+              ? const Center(child: Text('Not logged in'))
+              : StreamBuilder<DocumentSnapshot>(
+                stream:
+                    FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(user.uid)
+                        .snapshots(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final data = snapshot.data!.data() as Map<String, dynamic>?;
+                  if (data == null) {
+                    return const Center(child: Text('No user data found'));
+                  }
+                  _userName = data['fullName'] ?? 'Unknown Expert';
+                  _userRole = data['role'] ?? 'Expert';
+                  _userEmail = data['email'] ?? '';
+                  _userPhone = data['phoneNumber'] ?? '';
+                  _userAddress = data['address'] ?? '';
+                  _profileImageUrl = data['imageProfile'];
+                  _isLoading = false;
+                  return SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        // Profile Header
+                        Container(
+                          color: Colors.green,
+                          padding: const EdgeInsets.only(bottom: 24.0),
+                          child: Column(
+                            children: [
+                              // Profile Picture
+                              Stack(
+                                children: [
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 16),
+                                    width: 140,
+                                    height: 140,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 4,
+                                      ),
+                                      color: Colors.white,
+                                    ),
+                                    child:
+                                        _profileImage != null
+                                            ? ClipOval(
+                                              child: Image.file(
+                                                _profileImage!,
+                                                width: 140,
+                                                height: 140,
+                                                fit: BoxFit.cover,
+                                              ),
+                                            )
+                                            : _profileImageUrl != null
+                                            ? ClipOval(
+                                              child: Image.network(
+                                                _profileImageUrl!,
+                                                width: 140,
+                                                height: 140,
+                                                fit: BoxFit.cover,
+                                                errorBuilder:
+                                                    (
+                                                      context,
+                                                      error,
+                                                      stackTrace,
+                                                    ) => const Icon(
+                                                      Icons.person,
+                                                      size: 90,
+                                                      color: Colors.green,
+                                                    ),
+                                              ),
+                                            )
+                                            : const Icon(
+                                              Icons.person,
+                                              size: 90,
+                                              color: Colors.green,
+                                            ),
+                                  ),
+                                  Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: GestureDetector(
+                                      onTap: _pickProfileImage,
+                                      child: Container(
+                                        width: 38,
+                                        height: 38,
+                                        decoration: const BoxDecoration(
+                                          color: Colors.white,
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Colors.black12,
+                                              blurRadius: 4,
+                                              offset: Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Center(
+                                          child: Icon(
+                                            Icons.camera_alt,
+                                            size: 22,
                                             color: Colors.green,
                                           ),
-                                ),
-                              )
-                              : const Icon(
-                                Icons.person,
-                                size: 90,
-                                color: Colors.green,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: GestureDetector(
-                        onTap: _pickProfileImage,
-                        child: Container(
-                          width: 38,
-                          height: 38,
-                          decoration: const BoxDecoration(
+                              const SizedBox(height: 16),
+                              // Expert Name
+                              Text(
+                                _isLoading ? 'Loading...' : _userName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              // Expert Role
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Text(
+                                  _userRole,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              // Stats Row
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 32,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    GestureDetector(
+                                      onTap: () {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Overall Completed Reviews clicked!',
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                      child: Column(
+                                        children: [
+                                          Text(
+                                            _completedReviews.toString(),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 24,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          const Text(
+                                            'Completed Reviews',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    // REMOVE divider and Farmers Under Care stat
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Profile Options
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: BoxDecoration(
                             color: Colors.white,
-                            shape: BoxShape.circle,
+                            borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black12,
-                                blurRadius: 4,
-                                offset: Offset(0, 2),
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 5),
                               ),
                             ],
                           ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.camera_alt,
-                              size: 22,
-                              color: Colors.green,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                // Expert Name
-                Text(
-                  _isLoading ? 'Loading...' : _userName,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                // Expert Role
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    _userRole,
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                // Stats Row
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      GestureDetector(
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Overall Completed Reviews clicked!',
+                          child: Column(
+                            children: [
+                              _buildProfileOption(
+                                title: 'Edit Profile',
+                                icon: Icons.edit,
+                                onTap: () => _showEditProfileDialog(context),
                               ),
-                            ),
-                          );
-                        },
-                        child: Column(
-                          children: [
-                            Text(
-                              _completedReviews.toString(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
+                              _buildProfileOption(
+                                title: 'About App',
+                                icon: Icons.info,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder:
+                                          (context) => const AboutAppPage(),
+                                    ),
+                                  );
+                                },
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'Completed Reviews',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white70,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
+                              _buildProfileOption(
+                                title: 'Change Password',
+                                icon: Icons.lock,
+                                onTap: () => _showChangePasswordDialog(context),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      // REMOVE divider and Farmers Under Care stat
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Profile Options
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                _buildProfileOption(
-                  title: 'Edit Profile',
-                  icon: Icons.edit,
-                  onTap: () => _showEditProfileDialog(context),
-                ),
-                _buildProfileOption(
-                  title: 'About App',
-                  icon: Icons.info,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const AboutAppPage(),
-                      ),
-                    );
-                  },
-                ),
-                _buildProfileOption(
-                  title: 'Change Password',
-                  icon: Icons.lock,
-                  onTap: () => _showChangePasswordDialog(context),
-                ),
-                _buildProfileOption(
-                  title: 'Log Out',
-                  icon: Icons.logout,
-                  showDivider: false,
-                  onTap: () async {
-                    final shouldLogout = await showDialog<bool>(
-                      context: context,
-                      builder:
-                          (context) => AlertDialog(
-                            title: const Text('Confirm Logout'),
-                            content: const Text(
-                              'Are you sure you want to logout?',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed:
-                                    () => Navigator.of(context).pop(false),
-                                child: const Text('Cancel'),
-                              ),
-                              TextButton(
-                                onPressed:
-                                    () => Navigator.of(context).pop(true),
-                                child: const Text('Logout'),
+                              _buildProfileOption(
+                                title: 'Log Out',
+                                icon: Icons.logout,
+                                showDivider: false,
+                                onTap: () async {
+                                  final shouldLogout = await showDialog<bool>(
+                                    context: context,
+                                    builder:
+                                        (context) => AlertDialog(
+                                          title: const Text('Confirm Logout'),
+                                          content: const Text(
+                                            'Are you sure you want to logout?',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed:
+                                                  () => Navigator.of(
+                                                    context,
+                                                  ).pop(false),
+                                              child: const Text('Cancel'),
+                                            ),
+                                            TextButton(
+                                              onPressed:
+                                                  () => Navigator.of(
+                                                    context,
+                                                  ).pop(true),
+                                              child: const Text('Logout'),
+                                            ),
+                                          ],
+                                        ),
+                                  );
+                                  if (shouldLogout == true) {
+                                    // Sign out from Firebase
+                                    await FirebaseAuth.instance.signOut();
+                                    // Clear Hive userBox
+                                    final userBox = await Hive.openBox(
+                                      'userBox',
+                                    );
+                                    await userBox.clear();
+                                    Navigator.pushAndRemoveUntil(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => const LoginPage(),
+                                      ),
+                                      (route) => false,
+                                    );
+                                  }
+                                },
                               ),
                             ],
                           ),
-                    );
-                    if (shouldLogout == true) {
-                      // Sign out from Firebase
-                      await FirebaseAuth.instance.signOut();
-                      // Clear Hive userBox
-                      final userBox = await Hive.openBox('userBox');
-                      await userBox.clear();
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const LoginPage(),
                         ),
-                        (route) => false,
-                      );
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Preferences Section
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.only(top: 8, bottom: 4),
-                  child: Text(
-                    'Preferences',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green,
+                        const SizedBox(height: 16),
+                        // Preferences Section
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 10,
+                                offset: const Offset(0, 5),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Padding(
+                                padding: EdgeInsets.only(top: 8, bottom: 4),
+                                child: Text(
+                                  'Preferences',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green,
+                                  ),
+                                ),
+                              ),
+                              SwitchListTile(
+                                value: _notificationsEnabled,
+                                onChanged: (value) async {
+                                  setState(() {
+                                    _notificationsEnabled = value;
+                                  });
+                                  final user =
+                                      FirebaseAuth.instance.currentUser;
+                                  if (user != null) {
+                                    await FirebaseFirestore.instance
+                                        .collection('users')
+                                        .doc(user.uid)
+                                        .update({'enableNotifications': value});
+                                  }
+                                },
+                                title: const Text('Enable Notifications'),
+                                secondary: const Icon(
+                                  Icons.notifications,
+                                  color: Colors.green,
+                                ),
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        // Description
+                        Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.green.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Expert Access',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'This profile is exclusively for plant disease experts. Regular users and other personnel do not have access to this interface.',
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        // App Version
+                        const SizedBox(height: 24),
+                      ],
                     ),
-                  ),
-                ),
-                SwitchListTile(
-                  value: _notificationsEnabled,
-                  onChanged: (value) {
-                    setState(() {
-                      _notificationsEnabled = value;
-                    });
-                    // TODO: Save this preference persistently if needed
-                  },
-                  title: const Text('Enable Notifications'),
-                  secondary: const Icon(
-                    Icons.notifications,
-                    color: Colors.green,
-                  ),
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          // Description
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.green.withOpacity(0.3)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Expert Access',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'This profile is exclusively for plant disease experts. Regular users and other personnel do not have access to this interface.',
-                  style: TextStyle(color: Colors.grey[700], fontSize: 14),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          // App Version
-          const SizedBox(height: 24),
-        ],
-      ),
+                  );
+                },
+              ),
     );
   }
 }

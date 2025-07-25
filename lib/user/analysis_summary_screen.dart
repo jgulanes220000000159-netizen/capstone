@@ -10,6 +10,7 @@ import 'detection_result_card.dart';
 import 'package:hive/hive.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AnalysisSummaryScreen extends StatefulWidget {
   final Map<int, List<DetectionResult>> allResults;
@@ -69,17 +70,68 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     }
   }
 
+  void _showSendingDialog(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => Dialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(width: 24),
+                  Flexible(
+                    child: Text(
+                      message,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+    );
+  }
+
   Future<void> _sendForExternalReview() async {
     print('DEBUG: _sendForExternalReview called');
     setState(() {
       _isSubmitting = true;
     });
-
+    _showSendingDialog(context, "Sending to expert...");
     try {
       final _userProfile = UserProfile();
       final user = FirebaseAuth.instance.currentUser;
       final userId = user?.uid ?? 'unknown';
       final _reviewManager = ReviewManager();
+
+      // --- Upload images to Supabase Storage and get URLs ---
+      final supabase = Supabase.instance.client;
+      List<String> supabaseImageUrls = [];
+      for (int i = 0; i < widget.imagePaths.length; i++) {
+        final file = File(widget.imagePaths[i]);
+        final fileName =
+            '${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+        final storagePath = 'leaf/$fileName';
+        final uploadResult = await supabase.storage
+            .from('mangosense')
+            .upload(storagePath, file);
+        // No error property: upload() throws on error, returns path on success
+        final publicUrl = supabase.storage
+            .from('mangosense')
+            .getPublicUrl(storagePath);
+        supabaseImageUrls.add(publicUrl);
+      }
 
       // Convert detection results to the format expected by ReviewManager
       final detections = <Map<String, dynamic>>[];
@@ -89,7 +141,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
           detections.add({
             'disease': result.label,
             'confidence': result.confidence,
-            'imagePath': widget.imagePaths[i],
+            'imageUrl': supabaseImageUrls[i],
             'boundingBox': {
               'left': result.boundingBox.left,
               'top': result.boundingBox.top,
@@ -145,7 +197,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
         } else {
           resultList.add({'disease': 'Unknown', 'confidence': null});
         }
-        images.add({'imagePath': widget.imagePaths[i], 'results': resultList});
+        images.add({'imageUrl': supabaseImageUrls[i], 'results': resultList});
       }
       sessions.add({
         'sessionId': sessionId,
@@ -179,6 +231,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       // --- End add to tracking ---
 
       if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop(); // Dismiss dialog
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Analysis sent for review successfully!'),
@@ -195,6 +248,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       }
     } catch (e) {
       if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop(); // Dismiss dialog
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error sending for review: $e'),
@@ -835,6 +889,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     setState(() {
       _isSubmitting = true;
     });
+    _showSendingDialog(context, "Adding to tracking...");
     try {
       final _userProfile = UserProfile();
       final user = FirebaseAuth.instance.currentUser;
@@ -844,6 +899,22 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       final now = DateTime.now().toIso8601String();
       final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
       final List<Map<String, dynamic>> images = [];
+      // --- Upload images to Supabase Storage and get URLs ---
+      final supabase = Supabase.instance.client;
+      List<String> supabaseImageUrls = [];
+      for (int i = 0; i < widget.imagePaths.length; i++) {
+        final file = File(widget.imagePaths[i]);
+        final fileName =
+            '${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+        final storagePath = 'leaf/$fileName';
+        final uploadResult = await supabase.storage
+            .from('mangosense')
+            .upload(storagePath, file);
+        final publicUrl = supabase.storage
+            .from('mangosense')
+            .getPublicUrl(storagePath);
+        supabaseImageUrls.add(publicUrl);
+      }
       for (int i = 0; i < widget.imagePaths.length; i++) {
         final results = widget.allResults[i] ?? [];
         List<Map<String, dynamic>> resultList = [];
@@ -857,7 +928,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
         } else {
           resultList.add({'disease': 'Unknown', 'confidence': null});
         }
-        images.add({'imagePath': widget.imagePaths[i], 'results': resultList});
+        images.add({'imageUrl': supabaseImageUrls[i], 'results': resultList});
       }
       sessions.add({
         'sessionId': sessionId,
@@ -880,6 +951,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
           });
       // --- End upload to Firestore ---
       if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop(); // Dismiss dialog
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Analysis added to tracking!'),
@@ -896,6 +968,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       }
     } catch (e) {
       if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop(); // Dismiss dialog
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error adding to tracking: $e'),

@@ -9,6 +9,10 @@ import 'admin/screens/admin_login.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'expert/expert_dashboard.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +22,25 @@ void main() async {
   await Hive.openBox('userBox'); // Box for login state and user profile
   await Hive.openBox('settings'); // Box for app settings (including locale)
   await EasyLocalization.ensureInitialized();
+  await dotenv.load(); // Load environment variables
+  await Supabase.initialize(
+    url: dotenv.env['SUPABASE_URL']!,
+    anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+  );
+
+  // --- FCM Notification Setup ---
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+      FlutterLocalNotificationsPlugin();
+  const AndroidInitializationSettings initializationSettingsAndroid =
+      AndroidInitializationSettings('@mipmap/ic_launcher');
+  const InitializationSettings initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+  );
+  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // --- End FCM Notification Setup ---
 
   // Load saved locale from Hive
   final settingsBox = Hive.box('settings');
@@ -36,6 +59,12 @@ void main() async {
       child: const CapstoneApp(),
     ),
   );
+}
+
+// FCM background handler
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  // You can handle background notification logic here
 }
 
 class CapstoneApp extends StatelessWidget {
@@ -59,8 +88,46 @@ class CapstoneApp extends StatelessWidget {
     }
   }
 
+  void _setupFCM(BuildContext context) async {
+    // Request notification permissions
+    await FirebaseMessaging.instance.requestPermission();
+
+    // Get FCM token and store it if needed
+    String? token = await FirebaseMessaging.instance.getToken();
+    // TODO: Store this token in Firestore under the user's document
+    // Example:
+    // final user = FirebaseAuth.instance.currentUser;
+    // if (user != null && token != null) {
+    //   await FirebaseFirestore.instance.collection('users').doc(user.uid).update({'fcmToken': token});
+    // }
+
+    // Foreground notification handler
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      RemoteNotification? notification = message.notification;
+      AndroidNotification? android = message.notification?.android;
+      if (notification != null && android != null) {
+        final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+            FlutterLocalNotificationsPlugin();
+        flutterLocalNotificationsPlugin.show(
+          notification.hashCode,
+          notification.title,
+          notification.body,
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              'channel_id',
+              'channel_name',
+              importance: Importance.max,
+              priority: Priority.high,
+            ),
+          ),
+        );
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    _setupFCM(context);
     return Builder(
       builder:
           (context) => MaterialApp(

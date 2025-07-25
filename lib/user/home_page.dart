@@ -291,101 +291,115 @@ class _HomePageState extends State<HomePage> {
             Expanded(
               child:
                   _selectedIndex == 0
-                      ? SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        child: Column(
-                          children: [
-                            const SizedBox(height: 16),
-                            // Welcome text
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      tr(
-                                        'good_day',
-                                        namedArgs: {'name': _userName},
-                                      ),
+                      ? StreamBuilder<QuerySnapshot>(
+                        stream:
+                            FirebaseFirestore.instance
+                                .collection('diseases')
+                                .snapshots(),
+                        builder: (context, snapshot) {
+                          if (!snapshot.hasData) {
+                            return const Center(
+                              child: CircularProgressIndicator(),
+                            );
+                          }
+                          final diseaseDocs = snapshot.data!.docs;
+                          final diseaseNames =
+                              diseaseDocs
+                                  .map((doc) => doc['name'] as String)
+                                  .toList();
+                          final diseaseImages = [
+                            'assets/diseases/anthracnose.jpg',
+                            'assets/diseases/backterial_blackspot1.jpg',
+                            'assets/diseases/dieback.jpg',
+                            'assets/diseases/powdery_mildew3.jpg',
+                            'assets/diseases/healthy.jpg',
+                          ];
+                          return SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            child: Column(
+                              children: [
+                                const SizedBox(height: 16),
+                                // Welcome text
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          tr(
+                                            'good_day',
+                                            namedArgs: {'name': _userName},
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.green[700],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                // Diseases section
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      tr('diseases'),
                                       style: TextStyle(
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.green[700],
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.grey[800],
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            // Diseases section
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  tr('diseases'),
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.grey[800],
                                   ),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            // Disease cards (only those in labels.txt)
-                            _buildDiseaseCard(
-                              'Anthracnose',
-                              'assets/diseases/anthracnose.jpg',
-                            ),
-                            _buildDiseaseCard(
-                              'Bacterial black spot',
-                              'assets/diseases/backterial_blackspot1.jpg',
-                            ),
-                            _buildDiseaseCard(
-                              'Dieback',
-                              'assets/diseases/dieback.jpg',
-                            ),
-                            _buildDiseaseCard(
-                              'Powdery mildew',
-                              'assets/diseases/powdery_mildew3.jpg',
-                            ),
-                            const SizedBox(height: 16),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              child: Align(
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  tr('none_disease'),
-                                  style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
+                                const SizedBox(height: 8),
+                                // Disease cards (from Firestore)
+                                for (
+                                  int i = 0;
+                                  i < diseaseNames.length &&
+                                      i < diseaseImages.length;
+                                  i++
+                                )
+                                  _buildDiseaseCard(
+                                    diseaseNames[i],
+                                    diseaseImages[i],
+                                  ),
+                                const SizedBox(height: 16),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      tr('none_disease'),
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+                                _buildDiseaseCard(
+                                  tr('healthy'),
+                                  'assets/diseases/healthy.jpg',
+                                ),
+                                const SizedBox(height: 16),
+                              ],
                             ),
-                            _buildDiseaseCard(
-                              tr('healthy'),
-                              'assets/diseases/healthy.jpg',
-                            ),
-                            const SizedBox(height: 16),
-                            // Tip Burn recommendation card (not detected, info only)
-                            // _buildDiseaseCard(
-                            //   'Tip Burn',
-                            //   'assets/diseases/tip_burn.jpg',
-                            // ),
-                            // const SizedBox(height: 16),
-                          ],
-                        ),
+                          );
+                        },
                       )
                       : _pages[_selectedIndex],
             ),

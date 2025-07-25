@@ -3,6 +3,9 @@ import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import 'dart:io';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:rxdart/rxdart.dart';
 
 class TrackingPage extends StatefulWidget {
   const TrackingPage({Key? key}) : super(key: key);
@@ -68,32 +71,105 @@ class _TrackingPageState extends State<TrackingPage> {
 
   Future<void> _loadTrackedScans() async {
     try {
+      final userBox = await Hive.openBox('userBox');
+      final userProfile = userBox.get('userProfile');
+      final userId = userProfile?['userId'];
+      List<Map<String, dynamic>> cloudSessions = [];
+      List<Map<String, dynamic>> pendingSessions = [];
+      if (userId != null) {
+        // Fetch tracking sessions
+        final query =
+            await FirebaseFirestore.instance
+                .collection('tracking')
+                .where('userId', isEqualTo: userId)
+                .orderBy('date', descending: true)
+                .get();
+        cloudSessions =
+            query.docs
+                .map((doc) => Map<String, dynamic>.from(doc.data()))
+                .toList();
+        // Fetch pending scan_requests
+        final pendingQuery =
+            await FirebaseFirestore.instance
+                .collection('scan_requests')
+                .where('userId', isEqualTo: userId)
+                .where('status', isEqualTo: 'pending')
+                .orderBy('submittedAt', descending: true)
+                .get();
+        pendingSessions =
+            pendingQuery.docs.map((doc) {
+              final data = Map<String, dynamic>.from(doc.data());
+              // Normalize to tracking session structure
+              return {
+                'sessionId': data['id'] ?? data['sessionId'] ?? doc.id,
+                'date': data['submittedAt'] ?? '',
+                'images': data['images'] ?? [],
+                'source': 'pending',
+                'diseaseSummary': data['diseaseSummary'] ?? [],
+                'status': 'pending',
+                'userName': data['userName'] ?? '',
+              };
+            }).toList();
+        print('Loaded pending scan_requests: ${pendingSessions.length}');
+        for (var s in pendingSessions) print('Pending: $s');
+      }
+      // Merge pending and tracking sessions
+      List<Map<String, dynamic>> sessions = [
+        ...pendingSessions,
+        ...cloudSessions,
+      ];
+      // Sort sessions by date descending (most recent first)
+      sessions.sort((a, b) {
+        final dateA =
+            a['date'] != null && a['date'].toString().isNotEmpty
+                ? DateTime.tryParse(a['date'].toString())
+                : null;
+        final dateB =
+            b['date'] != null && b['date'].toString().isNotEmpty
+                ? DateTime.tryParse(b['date'].toString())
+                : null;
+        if (dateA == null && dateB == null) return 0;
+        if (dateA == null) return 1;
+        if (dateB == null) return -1;
+        return dateB.compareTo(dateA); // Descending
+      });
+      // Save to Hive for offline use
       final box = await Hive.openBox('trackingBox');
-      final sessions = box.get('scans', defaultValue: []);
-      print('DEBUG: loaded sessions: ' + sessions.toString());
-      if (sessions is List) {
-        setState(() {
-          _sessionScans =
-              sessions
-                  .whereType<Map>()
-                  .map<Map<String, dynamic>>(
-                    (e) => Map<String, dynamic>.from(e as Map),
-                  )
-                  .toList();
-          _isLoading = false;
-        });
-      } else {
+      await box.put('scans', sessions);
+      setState(() {
+        _sessionScans = sessions;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading tracked scans: $e');
+      // Fallback to local Hive data if Firestore fails
+      try {
+        final box = await Hive.openBox('trackingBox');
+        final sessions = box.get('scans', defaultValue: []);
+        if (sessions is List) {
+          setState(() {
+            _sessionScans =
+                sessions
+                    .whereType<Map>()
+                    .map<Map<String, dynamic>>(
+                      (e) => Map<String, dynamic>.from(e as Map),
+                    )
+                    .toList();
+            _isLoading = false;
+          });
+        } else {
+          setState(() {
+            _sessionScans = [];
+            _isLoading = false;
+          });
+        }
+      } catch (e2) {
+        print('Error loading local tracked scans: $e2');
         setState(() {
           _sessionScans = [];
           _isLoading = false;
         });
       }
-    } catch (e) {
-      print('Error loading tracked scans: $e');
-      setState(() {
-        _sessionScans = [];
-        _isLoading = false;
-      });
     }
   }
 
@@ -175,7 +251,24 @@ class _TrackingPageState extends State<TrackingPage> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (scan['imagePath'] != null)
+                if (scan['imageUrl'] != null &&
+                    (scan['imageUrl'] as String).isNotEmpty)
+                  CachedNetworkImage(
+                    imageUrl: scan['imageUrl'],
+                    width: 200,
+                    height: 200,
+                    fit: BoxFit.cover,
+                    placeholder:
+                        (context, url) =>
+                            const Center(child: CircularProgressIndicator()),
+                    errorWidget:
+                        (context, url, error) => const Icon(
+                          Icons.broken_image,
+                          size: 40,
+                          color: Colors.grey,
+                        ),
+                  )
+                else if (scan['imagePath'] != null)
                   Image.file(
                     File(scan['imagePath']),
                     width: 200,
@@ -184,7 +277,7 @@ class _TrackingPageState extends State<TrackingPage> {
                   ),
                 const SizedBox(height: 12),
                 Text(
-                  'Date: ${scan['date'] != null ? DateFormat('yyyy-MM-dd – kk:mm').format(DateTime.parse(scan['date'])) : 'Unknown'}',
+                  'Date: ${scan['date'] != null ? DateFormat('MMM d, yyyy – h:mma').format(DateTime.parse(scan['date'])) : 'Unknown'}',
                 ),
                 if (scan['confidence'] != null)
                   Text(
@@ -247,8 +340,7 @@ class _TrackingPageState extends State<TrackingPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Date: '
-                      '${session['date'] != null ? DateFormat('yyyy-MM-dd – kk:mm').format(DateTime.parse(session['date'])) : 'Unknown'}',
+                      'Date: ${session['date'] != null ? DateFormat('MMM d, yyyy – h:mma').format(DateTime.parse(session['date'])) : 'Unknown'}',
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
@@ -268,7 +360,29 @@ class _TrackingPageState extends State<TrackingPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              if (images[idx]['imagePath'] != null)
+                              if (images[idx]['imageUrl'] != null &&
+                                  (images[idx]['imageUrl'] as String)
+                                      .isNotEmpty)
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: CachedNetworkImage(
+                                    imageUrl: images[idx]['imageUrl'],
+                                    width: 320,
+                                    height: 180,
+                                    fit: BoxFit.cover,
+                                    placeholder:
+                                        (context, url) => const Center(
+                                          child: CircularProgressIndicator(),
+                                        ),
+                                    errorWidget:
+                                        (context, url, error) => const Icon(
+                                          Icons.broken_image,
+                                          size: 40,
+                                          color: Colors.grey,
+                                        ),
+                                  ),
+                                )
+                              else if (images[idx]['imagePath'] != null)
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
                                   child: Image.file(
@@ -586,453 +700,597 @@ class _TrackingPageState extends State<TrackingPage> {
 
   @override
   Widget build(BuildContext context) {
-    final filteredSessions = _filteredSessions();
-    final flatScans = _flattenScans(filteredSessions);
-    final chartData = _chartData(flatScans);
-    final overallCounts = _overallHealthyAndDiseases(flatScans);
-    final healthy = overallCounts['healthy'] ?? 0;
-    final totalDiseased = _diseaseLabels.fold(
-      0,
-      (sum, d) => sum + (overallCounts[d] ?? 0),
-    );
-    final total = healthy + totalDiseased;
-    final healthyPercent =
-        total > 0 ? (healthy / total * 100).toStringAsFixed(1) : '0';
-    final diseasedPercent =
-        total > 0 ? (totalDiseased / total * 100).toStringAsFixed(1) : '0';
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Tracking & Progress'),
-        backgroundColor: Colors.green,
+    final userBox = Hive.box('userBox');
+    final userProfile = userBox.get('userProfile');
+    final userId = userProfile?['userId'];
+    if (userId == null) {
+      return const Center(child: Text('Not logged in'));
+    }
+    // Real-time streams for tracking and pending scan_requests
+    final trackingStream =
+        FirebaseFirestore.instance
+            .collection('tracking')
+            .where('userId', isEqualTo: userId)
+            .orderBy('date', descending: true)
+            .snapshots();
+    final pendingStream =
+        FirebaseFirestore.instance
+            .collection('scan_requests')
+            .where('userId', isEqualTo: userId)
+            .where('status', isEqualTo: 'pending')
+            .orderBy('submittedAt', descending: true)
+            .snapshots();
+    return StreamBuilder<List<List<Map<String, dynamic>>>>(
+      stream: Rx.combineLatest2(
+        trackingStream.map(
+          (snapshot) =>
+              snapshot.docs
+                  .map((doc) => Map<String, dynamic>.from(doc.data()))
+                  .toList(),
+        ),
+        pendingStream.map(
+          (snapshot) =>
+              snapshot.docs.map((doc) {
+                final data = Map<String, dynamic>.from(doc.data());
+                return {
+                  'sessionId': data['id'] ?? data['sessionId'] ?? doc.id,
+                  'date': data['submittedAt'] ?? '',
+                  'images': data['images'] ?? [],
+                  'source': 'pending',
+                  'diseaseSummary': data['diseaseSummary'] ?? [],
+                  'status': 'pending',
+                  'userName': data['userName'] ?? '',
+                };
+              }).toList(),
+        ),
+        (
+          List<Map<String, dynamic>> tracking,
+          List<Map<String, dynamic>> pending,
+        ) => [pending, tracking],
       ),
-      body:
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : filteredSessions.isEmpty
-              ? const Center(child: Text('No tracked scans yet.'))
-              : SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Time range selector
-                      Row(
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        final pendingSessions = snapshot.data![0];
+        final cloudSessions = snapshot.data![1];
+        List<Map<String, dynamic>> sessions = [
+          ...pendingSessions,
+          ...cloudSessions,
+        ];
+        // Sort sessions by date descending (most recent first)
+        sessions.sort((a, b) {
+          final dateA =
+              a['date'] != null && a['date'].toString().isNotEmpty
+                  ? DateTime.tryParse(a['date'].toString())
+                  : null;
+          final dateB =
+              b['date'] != null && b['date'].toString().isNotEmpty
+                  ? DateTime.tryParse(b['date'].toString())
+                  : null;
+          if (dateA == null && dateB == null) return 0;
+          if (dateA == null) return 1;
+          if (dateB == null) return -1;
+          return dateB.compareTo(dateA); // Descending
+        });
+        // Save to Hive for offline use
+        Hive.openBox('trackingBox').then((box) => box.put('scans', sessions));
+        final filteredSessions = _filteredSessionsFromList(sessions);
+        final flatScans = _flattenScans(filteredSessions);
+        final chartData = _chartData(flatScans);
+        final overallCounts = _overallHealthyAndDiseases(flatScans);
+        final healthy = overallCounts['healthy'] ?? 0;
+        final totalDiseased = _diseaseLabels.fold(
+          0,
+          (sum, d) => sum + (overallCounts[d] ?? 0),
+        );
+        final total = healthy + totalDiseased;
+        final healthyPercent =
+            total > 0 ? (healthy / total * 100).toStringAsFixed(1) : '0';
+        final diseasedPercent =
+            total > 0 ? (totalDiseased / total * 100).toStringAsFixed(1) : '0';
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Tracking & Progress'),
+            backgroundColor: Colors.green,
+          ),
+          body:
+              filteredSessions.isEmpty
+                  ? const Center(child: Text('No tracked scans yet.'))
+                  : SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Show:',
-                            style: TextStyle(fontWeight: FontWeight.bold),
+                          // Time range selector
+                          Row(
+                            children: [
+                              const Text(
+                                'Show:',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(width: 8),
+                              DropdownButton<int>(
+                                value: _selectedRangeIndex,
+                                items: List.generate(
+                                  _timeRanges.length,
+                                  (i) => DropdownMenuItem(
+                                    value: i,
+                                    child: Text(
+                                      _timeRanges[i]['label'] as String,
+                                    ),
+                                  ),
+                                ),
+                                onChanged: (i) async {
+                                  if (i != null) {
+                                    setState(() => _selectedRangeIndex = i);
+                                    await _saveSelectedRangeIndex(i);
+                                  }
+                                },
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                          DropdownButton<int>(
-                            value: _selectedRangeIndex,
-                            items: List.generate(
-                              _timeRanges.length,
-                              (i) => DropdownMenuItem(
-                                value: i,
-                                child: Text(_timeRanges[i]['label'] as String),
+                          const SizedBox(height: 12),
+                          // Friendly summary
+                          Card(
+                            color: Colors.green[50],
+                            margin: const EdgeInsets.only(bottom: 16),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.insights,
+                                    color: Colors.green[700],
+                                    size: 32,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      '${_timeRanges[_selectedRangeIndex]['label']}: $healthyPercent% healthy, $diseasedPercent% diseased. Keep tracking your farm health!',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            onChanged: (i) async {
-                              if (i != null) {
-                                setState(() => _selectedRangeIndex = i);
-                                await _saveSelectedRangeIndex(i);
-                              }
+                          ),
+                          // Trend Bar Chart
+                          Text(
+                            'Farm Health Trend',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            height: 260,
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.04),
+                                  blurRadius: 8,
+                                ),
+                              ],
+                            ),
+                            child:
+                                chartData.isEmpty
+                                    ? const Center(
+                                      child: Text('Not enough data for chart.'),
+                                    )
+                                    : LineChart(
+                                      LineChartData(
+                                        minY: 0,
+                                        maxY:
+                                            chartData
+                                                .expand(
+                                                  (m) =>
+                                                      m.values.whereType<int>(),
+                                                )
+                                                .fold<double>(
+                                                  0,
+                                                  (prev, e) =>
+                                                      e > prev
+                                                          ? e.toDouble()
+                                                          : prev,
+                                                ) *
+                                            1.2,
+                                        lineBarsData: [
+                                          // Healthy line
+                                          LineChartBarData(
+                                            spots: [
+                                              for (
+                                                int i = 0;
+                                                i < chartData.length;
+                                                i++
+                                              )
+                                                FlSpot(
+                                                  i.toDouble(),
+                                                  (chartData[i]['healthy']
+                                                              as int?)
+                                                          ?.toDouble() ??
+                                                      0,
+                                                ),
+                                            ],
+                                            isCurved: true,
+                                            color: _diseaseColors['healthy'],
+                                            barWidth: 4,
+                                            dotData: FlDotData(show: true),
+                                            belowBarData: BarAreaData(
+                                              show: false,
+                                            ),
+                                          ),
+                                          // Disease lines
+                                          for (final d in _diseaseLabels)
+                                            LineChartBarData(
+                                              spots: [
+                                                for (
+                                                  int i = 0;
+                                                  i < chartData.length;
+                                                  i++
+                                                )
+                                                  FlSpot(
+                                                    i.toDouble(),
+                                                    (chartData[i][d] as int?)
+                                                            ?.toDouble() ??
+                                                        0,
+                                                  ),
+                                              ],
+                                              isCurved: true,
+                                              color: _diseaseColors[d],
+                                              barWidth: 4,
+                                              dotData: FlDotData(show: true),
+                                              belowBarData: BarAreaData(
+                                                show: false,
+                                              ),
+                                            ),
+                                        ],
+                                        titlesData: FlTitlesData(
+                                          show: true,
+                                          bottomTitles: AxisTitles(
+                                            sideTitles: SideTitles(
+                                              showTitles: true,
+                                              reservedSize:
+                                                  48, // Increased for more vertical space
+                                              getTitlesWidget: (value, meta) {
+                                                if (value < 0 ||
+                                                    value >= chartData.length)
+                                                  return const SizedBox.shrink();
+                                                final group =
+                                                    chartData[value
+                                                            .toInt()]['group']
+                                                        as String;
+                                                Widget labelWidget;
+                                                if (_selectedRangeIndex == 0) {
+                                                  // Only show every Nth label if there are many
+                                                  int n =
+                                                      chartData.length > 24
+                                                          ? 3
+                                                          : 1;
+                                                  if (value.toInt() % n != 0 &&
+                                                      chartData.length > 12) {
+                                                    return const SizedBox.shrink();
+                                                  }
+                                                  // Only do substring if group is a month label (yyyy-MM)
+                                                  if (group.length >= 7 &&
+                                                      group.contains('-')) {
+                                                    labelWidget = Transform.rotate(
+                                                      angle:
+                                                          -0.5708, // -90 degrees in radians
+                                                      child: Text(
+                                                        group.substring(5),
+                                                        style: const TextStyle(
+                                                          fontSize: 12,
+                                                        ),
+                                                      ),
+                                                    );
+                                                  } else {
+                                                    labelWidget =
+                                                        Transform.rotate(
+                                                          angle: -0.5708,
+                                                          child: Text(
+                                                            group,
+                                                            style:
+                                                                const TextStyle(
+                                                                  fontSize: 12,
+                                                                ),
+                                                          ),
+                                                        );
+                                                  }
+                                                } else if (_selectedRangeIndex >=
+                                                        1 &&
+                                                    _selectedRangeIndex <= 4) {
+                                                  labelWidget = Transform.rotate(
+                                                    angle:
+                                                        -0.5708, // -90 degrees in radians
+                                                    child: Text(
+                                                      group,
+                                                      style: const TextStyle(
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  );
+                                                } else {
+                                                  // Show month as 3-letter abbreviation, vertical
+                                                  final year = int.parse(
+                                                    group.substring(0, 4),
+                                                  );
+                                                  final month = int.parse(
+                                                    group.substring(5),
+                                                  );
+                                                  final monthAbbr = DateFormat(
+                                                    'MMM',
+                                                  ).format(
+                                                    DateTime(year, month),
+                                                  );
+                                                  labelWidget =
+                                                      Transform.rotate(
+                                                        angle: -0.5708,
+                                                        child: Text(
+                                                          monthAbbr,
+                                                          style:
+                                                              const TextStyle(
+                                                                fontSize: 12,
+                                                              ),
+                                                        ),
+                                                      );
+                                                }
+                                                // Add space between axis and label
+                                                return Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                        top: 16,
+                                                      ),
+                                                  child: labelWidget,
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                          leftTitles: AxisTitles(
+                                            sideTitles: SideTitles(
+                                              showTitles: true,
+                                              reservedSize: 32,
+                                              getTitlesWidget: (value, meta) {
+                                                if (value % 1 == 0) {
+                                                  return Text(
+                                                    value.toInt().toString(),
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                    ),
+                                                  );
+                                                }
+                                                return const SizedBox.shrink();
+                                              },
+                                            ),
+                                          ),
+                                          topTitles: AxisTitles(
+                                            sideTitles: SideTitles(
+                                              showTitles: false,
+                                            ),
+                                          ),
+                                          rightTitles: AxisTitles(
+                                            sideTitles: SideTitles(
+                                              showTitles: false,
+                                            ),
+                                          ),
+                                        ),
+                                        gridData: FlGridData(
+                                          show: true,
+                                          drawVerticalLine: false,
+                                        ),
+                                        borderData: FlBorderData(show: false),
+                                      ),
+                                    ),
+                          ),
+                          const SizedBox(height: 12),
+                          // Legend
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _buildLegendItem(
+                                  _diseaseColors['healthy']!,
+                                  _formatLabel('healthy'),
+                                ),
+                                for (final d in _diseaseLabels)
+                                  _buildLegendItem(
+                                    _diseaseColors[d]!,
+                                    _formatLabel(d),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          Text(
+                            'History',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Scans from \'${_timeRanges[_selectedRangeIndex]['label']}\'',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 8),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: filteredSessions.length,
+                            itemBuilder: (context, index) {
+                              final session =
+                                  filteredSessions[index]; // newest at top
+                              final date =
+                                  session['date'] != null
+                                      ? DateFormat(
+                                        'MMM d, yyyy – h:mma',
+                                      ).format(DateTime.parse(session['date']))
+                                      : '';
+                              final images = session['images'] as List? ?? [];
+                              return Card(
+                                margin: const EdgeInsets.symmetric(vertical: 6),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    ListTile(
+                                      leading:
+                                          images.isNotEmpty &&
+                                                  images[0]['imageUrl'] !=
+                                                      null &&
+                                                  (images[0]['imageUrl']
+                                                          as String)
+                                                      .isNotEmpty
+                                              ? CachedNetworkImage(
+                                                imageUrl: images[0]['imageUrl'],
+                                                width: 56,
+                                                height: 56,
+                                                fit: BoxFit.cover,
+                                                placeholder:
+                                                    (
+                                                      context,
+                                                      url,
+                                                    ) => const Center(
+                                                      child:
+                                                          CircularProgressIndicator(),
+                                                    ),
+                                                errorWidget:
+                                                    (context, url, error) =>
+                                                        const Icon(
+                                                          Icons.broken_image,
+                                                          size: 40,
+                                                          color: Colors.grey,
+                                                        ),
+                                              )
+                                              : images.isNotEmpty &&
+                                                  images[0]['imagePath'] != null
+                                              ? Image.file(
+                                                File(images[0]['imagePath']),
+                                                width: 56,
+                                                height: 56,
+                                                fit: BoxFit.cover,
+                                              )
+                                              : const Icon(
+                                                Icons.image,
+                                                size: 56,
+                                              ),
+                                      title: Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text('Session: $date'),
+                                          ),
+                                          if (session['source'] == 'pending')
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                left: 8.0,
+                                              ),
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 4,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.orange,
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                                child: const Text(
+                                                  'Pending',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ),
+                                            )
+                                          else
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                left: 8.0,
+                                              ),
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 4,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.blue,
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                                child: const Text(
+                                                  'Tracking',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      subtitle: Text(
+                                        '${images.length} image(s)',
+                                      ),
+                                      onTap: () => _showSessionDetails(session),
+                                    ),
+                                    if (session['source'] == 'expert_review')
+                                      const Padding(
+                                        padding: EdgeInsets.only(
+                                          left: 16,
+                                          right: 16,
+                                          bottom: 12,
+                                        ),
+                                        child: Text(
+                                          'Waiting for expert review',
+                                          style: TextStyle(
+                                            color: Colors.orange,
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              );
                             },
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      // Friendly summary
-                      Card(
-                        color: Colors.green[50],
-                        margin: const EdgeInsets.only(bottom: 16),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.insights,
-                                color: Colors.green[700],
-                                size: 32,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  '${_timeRanges[_selectedRangeIndex]['label']}: $healthyPercent% healthy, $diseasedPercent% diseased. Keep tracking your farm health!',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      // Trend Bar Chart
-                      Text(
-                        'Farm Health Trend',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      Container(
-                        height: 260,
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.04),
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                        child:
-                            chartData.isEmpty
-                                ? const Center(
-                                  child: Text('Not enough data for chart.'),
-                                )
-                                : LineChart(
-                                  LineChartData(
-                                    minY: 0,
-                                    maxY:
-                                        chartData
-                                            .expand(
-                                              (m) => m.values.whereType<int>(),
-                                            )
-                                            .fold<double>(
-                                              0,
-                                              (prev, e) =>
-                                                  e > prev
-                                                      ? e.toDouble()
-                                                      : prev,
-                                            ) *
-                                        1.2,
-                                    lineBarsData: [
-                                      // Healthy line
-                                      LineChartBarData(
-                                        spots: [
-                                          for (
-                                            int i = 0;
-                                            i < chartData.length;
-                                            i++
-                                          )
-                                            FlSpot(
-                                              i.toDouble(),
-                                              (chartData[i]['healthy'] as int?)
-                                                      ?.toDouble() ??
-                                                  0,
-                                            ),
-                                        ],
-                                        isCurved: true,
-                                        color: _diseaseColors['healthy'],
-                                        barWidth: 4,
-                                        dotData: FlDotData(show: true),
-                                        belowBarData: BarAreaData(show: false),
-                                      ),
-                                      // Disease lines
-                                      for (final d in _diseaseLabels)
-                                        LineChartBarData(
-                                          spots: [
-                                            for (
-                                              int i = 0;
-                                              i < chartData.length;
-                                              i++
-                                            )
-                                              FlSpot(
-                                                i.toDouble(),
-                                                (chartData[i][d] as int?)
-                                                        ?.toDouble() ??
-                                                    0,
-                                              ),
-                                          ],
-                                          isCurved: true,
-                                          color: _diseaseColors[d],
-                                          barWidth: 4,
-                                          dotData: FlDotData(show: true),
-                                          belowBarData: BarAreaData(
-                                            show: false,
-                                          ),
-                                        ),
-                                    ],
-                                    titlesData: FlTitlesData(
-                                      show: true,
-                                      bottomTitles: AxisTitles(
-                                        sideTitles: SideTitles(
-                                          showTitles: true,
-                                          reservedSize:
-                                              48, // Increased for more vertical space
-                                          getTitlesWidget: (value, meta) {
-                                            if (value < 0 ||
-                                                value >= chartData.length)
-                                              return const SizedBox.shrink();
-                                            final group =
-                                                chartData[value
-                                                        .toInt()]['group']
-                                                    as String;
-                                            Widget labelWidget;
-                                            if (_selectedRangeIndex == 0) {
-                                              // Only show every Nth label if there are many
-                                              int n =
-                                                  chartData.length > 24 ? 3 : 1;
-                                              if (value.toInt() % n != 0 &&
-                                                  chartData.length > 12) {
-                                                return const SizedBox.shrink();
-                                              }
-                                              // Only do substring if group is a month label (yyyy-MM)
-                                              if (group.length >= 7 &&
-                                                  group.contains('-')) {
-                                                labelWidget = Transform.rotate(
-                                                  angle:
-                                                      -0.5708, // -90 degrees in radians
-                                                  child: Text(
-                                                    group.substring(5),
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                    ),
-                                                  ),
-                                                );
-                                              } else {
-                                                labelWidget = Transform.rotate(
-                                                  angle: -0.5708,
-                                                  child: Text(
-                                                    group,
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                    ),
-                                                  ),
-                                                );
-                                              }
-                                            } else if (_selectedRangeIndex >=
-                                                    1 &&
-                                                _selectedRangeIndex <= 4) {
-                                              labelWidget = Transform.rotate(
-                                                angle:
-                                                    -0.5708, // -90 degrees in radians
-                                                child: Text(
-                                                  group,
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                  ),
-                                                ),
-                                              );
-                                            } else {
-                                              // Show month as 3-letter abbreviation, vertical
-                                              final year = int.parse(
-                                                group.substring(0, 4),
-                                              );
-                                              final month = int.parse(
-                                                group.substring(5),
-                                              );
-                                              final monthAbbr = DateFormat(
-                                                'MMM',
-                                              ).format(DateTime(year, month));
-                                              labelWidget = Transform.rotate(
-                                                angle: -0.5708,
-                                                child: Text(
-                                                  monthAbbr,
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                  ),
-                                                ),
-                                              );
-                                            }
-                                            // Add space between axis and label
-                                            return Padding(
-                                              padding: const EdgeInsets.only(
-                                                top: 16,
-                                              ),
-                                              child: labelWidget,
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                      leftTitles: AxisTitles(
-                                        sideTitles: SideTitles(
-                                          showTitles: true,
-                                          reservedSize: 32,
-                                          getTitlesWidget: (value, meta) {
-                                            if (value % 1 == 0) {
-                                              return Text(
-                                                value.toInt().toString(),
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                ),
-                                              );
-                                            }
-                                            return const SizedBox.shrink();
-                                          },
-                                        ),
-                                      ),
-                                      topTitles: AxisTitles(
-                                        sideTitles: SideTitles(
-                                          showTitles: false,
-                                        ),
-                                      ),
-                                      rightTitles: AxisTitles(
-                                        sideTitles: SideTitles(
-                                          showTitles: false,
-                                        ),
-                                      ),
-                                    ),
-                                    gridData: FlGridData(
-                                      show: true,
-                                      drawVerticalLine: false,
-                                    ),
-                                    borderData: FlBorderData(show: false),
-                                  ),
-                                ),
-                      ),
-                      const SizedBox(height: 12),
-                      // Legend
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            _buildLegendItem(
-                              _diseaseColors['healthy']!,
-                              _formatLabel('healthy'),
-                            ),
-                            for (final d in _diseaseLabels)
-                              _buildLegendItem(
-                                _diseaseColors[d]!,
-                                _formatLabel(d),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                      Text(
-                        'History',
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Scans from \'${_timeRanges[_selectedRangeIndex]['label']}\'',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: filteredSessions.length,
-                        itemBuilder: (context, index) {
-                          final session =
-                              filteredSessions[filteredSessions.length -
-                                  1 -
-                                  index]; // newest first
-                          final date =
-                              session['date'] != null
-                                  ? DateFormat(
-                                    'yyyy-MM-dd – kk:mm',
-                                  ).format(DateTime.parse(session['date']))
-                                  : '';
-                          final images = session['images'] as List? ?? [];
-                          return Card(
-                            margin: const EdgeInsets.symmetric(vertical: 6),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ListTile(
-                                  leading:
-                                      images.isNotEmpty &&
-                                              images[0]['imagePath'] != null
-                                          ? Image.file(
-                                            File(images[0]['imagePath']),
-                                            width: 56,
-                                            height: 56,
-                                            fit: BoxFit.cover,
-                                          )
-                                          : const Icon(Icons.image, size: 56),
-                                  title: Row(
-                                    children: [
-                                      Expanded(child: Text('Session: $date')),
-                                      if (session['source'] == 'expert_review')
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            left: 8.0,
-                                          ),
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.orange,
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                            child: const Text(
-                                              'Reviewing',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                          ),
-                                        )
-                                      else
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            left: 8.0,
-                                          ),
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.blue,
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                            ),
-                                            child: const Text(
-                                              'Tracking',
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  subtitle: Text('${images.length} image(s)'),
-                                  onTap: () => _showSessionDetails(session),
-                                ),
-                                if (session['source'] == 'expert_review')
-                                  const Padding(
-                                    padding: EdgeInsets.only(
-                                      left: 16,
-                                      right: 16,
-                                      bottom: 12,
-                                    ),
-                                    child: Text(
-                                      'Waiting for expert review',
-                                      style: TextStyle(
-                                        color: Colors.orange,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
+        );
+      },
     );
+  }
+
+  // Helper for filtering sessions in real-time
+  List<Map<String, dynamic>> _filteredSessionsFromList(
+    List<Map<String, dynamic>> sessions,
+  ) {
+    if (sessions.isEmpty) return [];
+    final now = DateTime.now();
+    final days = _timeRanges[_selectedRangeIndex]['days'] as int?;
+    if (days == null) {
+      // Show everything
+      return List<Map<String, dynamic>>.from(sessions);
+    }
+    final filtered =
+        sessions.where((session) {
+          final dateStr = session['date'];
+          if (dateStr == null) return false;
+          final date = DateTime.tryParse(dateStr);
+          if (date == null) return false;
+          return now.difference(date).inDays.abs() < days;
+        }).toList();
+    return filtered;
   }
 
   Widget _buildLegendItem(Color color, String label) {
