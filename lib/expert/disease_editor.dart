@@ -27,10 +27,6 @@ class _DiseaseEditorState extends State<DiseaseEditor> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Edit Diseases'),
-        backgroundColor: Colors.green,
-      ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('diseases').snapshots(),
         builder: (context, snapshot) {

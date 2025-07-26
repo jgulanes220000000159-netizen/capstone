@@ -5,6 +5,10 @@ import '../shared/review_manager.dart';
 import '../user/detection_painter.dart';
 import '../user/tflite_detector.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hive/hive.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 
 class ScanRequestDetail extends StatefulWidget {
   final Map<String, dynamic> request;
@@ -21,6 +25,7 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
   final TextEditingController _dosageController = TextEditingController();
   final TextEditingController _frequencyController = TextEditingController();
   final TextEditingController _precautionsController = TextEditingController();
+  final TextEditingController _durationController = TextEditingController();
   bool _isSubmitting = false;
   bool _showBoundingBoxes = true;
   String _selectedSeverity = 'medium';
@@ -50,13 +55,24 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
     super.dispose();
   }
 
-  void _submitReview() {
+  void _submitReview() async {
     if (_commentController.text.isEmpty || _treatmentController.text.isEmpty)
       return;
 
     setState(() {
       _isSubmitting = true;
     });
+
+    // Get current expert's UID and name
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() => _isSubmitting = false);
+      return;
+    }
+
+    final userBox = Hive.box('userBox');
+    final userProfile = userBox.get('userProfile');
+    final expertName = userProfile?['fullName'] ?? 'Expert';
 
     final expertReview = {
       'comment': _commentController.text,
@@ -71,29 +87,59 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
             'treatment': _treatmentController.text,
             'dosage': _dosageController.text,
             'frequency': _frequencyController.text,
-            'precautions': _precautionsController.text,
+            'duration': _durationController.text,
           },
         ],
+        'precautions': _precautionsController.text,
         'preventiveMeasures': _selectedPreventiveMeasures,
       },
+      'expertName': expertName,
+      'expertUid': user.uid,
     };
 
-    _reviewManager.updateReview(
-      reviewId: widget.request['id'],
-      status: 'reviewed',
-      expertReview: expertReview,
-    );
-
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Review submitted successfully'),
-        backgroundColor: Colors.green,
-      ),
-    );
-
-    // Go back to the list
-    Navigator.pop(context);
+    try {
+      final docId = widget.request['id'] ?? widget.request['requestId'];
+      await FirebaseFirestore.instance
+          .collection('scan_requests')
+          .doc(docId)
+          .update({
+            'status': 'completed',
+            'expertReview': expertReview,
+            'expertName': expertName,
+            'expertUid': user.uid,
+            'reviewedAt': DateTime.now().toIso8601String(),
+          });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Review submitted successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context, {
+          ...widget.request,
+          'status': 'completed',
+          'expertReview': expertReview,
+          'expertName': expertName,
+          'expertUid': user.uid,
+          'reviewedAt': DateTime.now().toIso8601String(),
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to submit review: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted)
+        setState(() {
+          _isSubmitting = false;
+        });
+    }
   }
 
   void _startEditing() {
@@ -1300,9 +1346,25 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
   Widget build(BuildContext context) {
     final userName = widget.request['userName']?.toString() ?? 'Asif';
     final submittedAt = widget.request['submittedAt']?.toString() ?? '';
-    final reviewedAt =
-        widget.request['expertReview']?['reviewedAt']?.toString() ?? '';
-    final isCompleted = widget.request['status']?.toString() == 'reviewed';
+    final reviewedAt = widget.request['reviewedAt']?.toString() ?? '';
+
+    // Format dates for better readability
+    final formattedSubmittedDate =
+        submittedAt.isNotEmpty && DateTime.tryParse(submittedAt) != null
+            ? DateFormat(
+              'MMM d, yyyy – h:mma',
+            ).format(DateTime.parse(submittedAt))
+            : submittedAt;
+    final formattedReviewedDate =
+        reviewedAt.isNotEmpty && DateTime.tryParse(reviewedAt) != null
+            ? DateFormat(
+              'MMM d, yyyy – h:mma',
+            ).format(DateTime.parse(reviewedAt))
+            : reviewedAt;
+
+    final isCompleted =
+        widget.request['status']?.toString() == 'reviewed' ||
+        widget.request['status']?.toString() == 'completed';
     final totalImages = widget.request['images']?.length ?? 0;
     final totalDetections = widget.request['diseaseSummary']?.length ?? 0;
 
@@ -1376,7 +1438,9 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            submittedAt.isNotEmpty ? submittedAt : '-',
+                            formattedSubmittedDate.isNotEmpty
+                                ? formattedSubmittedDate
+                                : '-',
                             style: const TextStyle(
                               fontSize: 12,
                               color: Colors.grey,
@@ -1403,7 +1467,7 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              reviewedAt,
+                              formattedReviewedDate,
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Colors.green,

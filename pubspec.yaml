@@ -64,6 +64,7 @@ flutter:
     - assets/lang/en.json
     - assets/lang/tl.json
     - assets/lang/bs.json
+    - .env
     # Add any other image or asset files here
     # - assets/images/your_image.jpg
 

@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hive/hive.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 final List<Map<String, dynamic>> userRequests = [
   {
@@ -415,6 +416,7 @@ class _UserRequestListState extends State<UserRequestList> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
@@ -443,33 +445,132 @@ class _UserRequestListState extends State<UserRequestList> {
                             fontSize: 12,
                           ),
                         ),
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                status == 'completed'
+                                    ? Colors.green.withOpacity(0.1)
+                                    : Colors.orange.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            _formatStatusLabel(status),
+                            style: TextStyle(
+                              color:
+                                  status == 'completed'
+                                      ? Colors.green
+                                      : Colors.orange,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
+                  if (status == 'pending' || status == 'pending_review')
+                    IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      tooltip: 'Delete Report',
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder:
+                              (context) => AlertDialog(
+                                title: const Text('Delete Report'),
+                                content: const Text(
+                                  'Are you sure you want to delete this report? This action cannot be undone.',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.of(context).pop(false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed:
+                                        () => Navigator.of(context).pop(true),
+                                    child: const Text(
+                                      'Delete',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                        );
+                        if (confirm == true) {
+                          final docId = request['id'] ?? request['requestId'];
+                          final images = (request['images'] as List?) ?? [];
+                          final supabase = Supabase.instance.client;
+                          bool imageDeleteError = false;
+                          for (final img in images) {
+                            final imageUrl = img['imageUrl'] ?? '';
+                            if (imageUrl is String && imageUrl.isNotEmpty) {
+                              // Extract storage path from public URL
+                              final uri = Uri.parse(imageUrl);
+                              final segments = uri.pathSegments;
+                              // Find the index of 'mangosense' and get the rest as the storage path
+                              final bucketIndex = segments.indexOf(
+                                'mangosense',
+                              );
+                              if (bucketIndex != -1 &&
+                                  bucketIndex + 1 < segments.length) {
+                                final storagePath = segments
+                                    .sublist(bucketIndex + 1)
+                                    .join('/');
+                                try {
+                                  await supabase.storage
+                                      .from('mangosense')
+                                      .remove([storagePath]);
+                                } catch (e) {
+                                  imageDeleteError = true;
+                                }
+                              }
+                            }
+                          }
+                          try {
+                            await FirebaseFirestore.instance
+                                .collection('scan_requests')
+                                .doc(docId)
+                                .delete();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    imageDeleteError
+                                        ? 'Report deleted, but some images could not be removed from storage.'
+                                        : 'Report deleted successfully!',
+                                  ),
+                                  backgroundColor:
+                                      imageDeleteError
+                                          ? Colors.orange
+                                          : Colors.red,
+                                ),
+                              );
+                              setState(() {
+                                widget.requests.removeWhere(
+                                  (r) => (r['id'] ?? r['requestId']) == docId,
+                                );
+                              });
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Failed to delete report: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        }
+                      },
                     ),
-                    decoration: BoxDecoration(
-                      color:
-                          status == 'completed'
-                              ? Colors.green.withOpacity(0.1)
-                              : Colors.orange.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _formatStatusLabel(status),
-                      style: TextStyle(
-                        color:
-                            status == 'completed'
-                                ? Colors.green
-                                : Colors.orange,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -557,6 +658,13 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
             ).format(DateTime.parse(submittedAt))
             : submittedAt;
     final reviewedAt = widget.request['reviewedAt'] ?? '';
+    // Format reviewed date
+    final formattedReviewedDate =
+        reviewedAt.isNotEmpty && DateTime.tryParse(reviewedAt) != null
+            ? DateFormat(
+              'MMM d, yyyy – h:mma',
+            ).format(DateTime.parse(reviewedAt))
+            : reviewedAt;
     final expertReview = widget.request['expertReview'];
     final expertName = widget.request['expertName'] ?? '';
     final isCompleted = status == 'completed';
@@ -657,7 +765,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              reviewedAt,
+                              formattedReviewedDate,
                               style: const TextStyle(
                                 fontSize: 12,
                                 color: Colors.green,
@@ -972,7 +1080,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                         const Icon(Icons.person, color: Colors.green, size: 18),
                         const SizedBox(width: 6),
                         Text(
-                          expertName.isNotEmpty ? expertName : 'Expert',
+                          'Reviewed by: ${expertName.isNotEmpty ? expertName : 'Expert'}',
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             color: Colors.green,
@@ -1369,6 +1477,7 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
     if (user == null) {
       return const Center(child: Text('Not logged in'));
     }
+
     return StreamBuilder<QuerySnapshot>(
       stream:
           FirebaseFirestore.instance
@@ -1376,13 +1485,24 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
               .where('userId', isEqualTo: user.uid)
               .snapshots(),
       builder: (context, snapshot) {
+        // Handle connection errors by falling back to cached data
+        if (snapshot.hasError) {
+          print('Firestore connection error: ${snapshot.error}');
+          return _buildWithOfflineFallback();
+        }
+
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
+
         final allRequests =
             snapshot.data!.docs
                 .map((doc) => doc.data() as Map<String, dynamic>)
                 .toList();
+
+        // Cache requests to Hive for offline access
+        _cacheRequestsToHive(allRequests);
+
         final pending = _filterRequests(
           allRequests.where((r) => r['status'] == 'pending').toList(),
         );
@@ -1391,6 +1511,124 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
         );
         return Column(
           children: [
+            _buildSearchBar(),
+            Container(
+              color: Colors.green,
+              child: TabBar(
+                controller: _tabController,
+                indicatorColor: Colors.white,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white70,
+                tabs: [Tab(text: tr('pending')), Tab(text: tr('completed'))],
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  pending.isEmpty
+                      ? _buildEmptyState(
+                        _searchQuery.isNotEmpty
+                            ? 'No pending requests found for "$_searchQuery"'
+                            : 'No pending requests',
+                      )
+                      : Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: UserRequestList(requests: pending),
+                      ),
+                  completed.isEmpty
+                      ? _buildEmptyState(
+                        _searchQuery.isNotEmpty
+                            ? 'No completed requests found for "$_searchQuery"'
+                            : 'No completed requests',
+                      )
+                      : Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: UserRequestList(requests: completed),
+                      ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Cache requests to Hive for offline access
+  Future<void> _cacheRequestsToHive(List<Map<String, dynamic>> requests) async {
+    try {
+      final box = await Hive.openBox('userRequestsBox');
+      await box.put('cachedRequests', requests);
+      await box.put('lastUpdated', DateTime.now().toIso8601String());
+    } catch (e) {
+      print('Error caching requests to Hive: $e');
+    }
+  }
+
+  // Load cached requests from Hive for offline access
+  Future<List<Map<String, dynamic>>> _loadCachedRequests() async {
+    try {
+      final box = await Hive.openBox('userRequestsBox');
+      final cachedRequests = box.get('cachedRequests', defaultValue: []);
+      if (cachedRequests is List) {
+        return cachedRequests
+            .whereType<Map>()
+            .map<Map<String, dynamic>>(
+              (e) => Map<String, dynamic>.from(e as Map),
+            )
+            .toList();
+      }
+    } catch (e) {
+      print('Error loading cached requests: $e');
+    }
+    return [];
+  }
+
+  // Build widget with offline fallback
+  Widget _buildWithOfflineFallback() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Center(child: Text('Not logged in'));
+    }
+
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _loadCachedRequests(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final cachedRequests = snapshot.data!;
+        final pending = _filterRequests(
+          cachedRequests.where((r) => r['status'] == 'pending').toList(),
+        );
+        final completed = _filterRequests(
+          cachedRequests.where((r) => r['status'] == 'completed').toList(),
+        );
+
+        return Column(
+          children: [
+            // Offline indicator banner
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              color: Colors.orange.withOpacity(0.1),
+              child: Row(
+                children: [
+                  Icon(Icons.wifi_off, color: Colors.orange, size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Offline mode - Showing cached data',
+                    style: TextStyle(
+                      color: Colors.orange[700],
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
             _buildSearchBar(),
             Container(
               color: Colors.green,

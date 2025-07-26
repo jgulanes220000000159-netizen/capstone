@@ -6,9 +6,13 @@ import '../user/user_request_list.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
+import 'package:hive/hive.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ScanRequestList extends StatefulWidget {
-  const ScanRequestList({Key? key}) : super(key: key);
+  final int initialTabIndex;
+
+  const ScanRequestList({Key? key, this.initialTabIndex = 0}) : super(key: key);
 
   @override
   State<ScanRequestList> createState() => _ScanRequestListState();
@@ -27,11 +31,26 @@ class _ScanRequestListState extends State<ScanRequestList>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    // Set initial tab based on parameter
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.initialTabIndex < _tabController.length) {
+        _tabController.animateTo(widget.initialTabIndex);
+      }
+    });
     _fetchRequests();
   }
 
   Future<void> _fetchRequests() async {
     setState(() => _isLoading = true);
+
+    // Get current expert's UID from Firebase Auth
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      setState(() => _isLoading = false);
+      return;
+    }
+    final currentExpertUid = user.uid;
+
     final pendingQuery =
         await FirebaseFirestore.instance
             .collection('scan_requests')
@@ -42,10 +61,15 @@ class _ScanRequestListState extends State<ScanRequestList>
             .collection('scan_requests')
             .where('status', whereIn: ['reviewed', 'completed'])
             .get();
+
     setState(() {
       _pendingRequests = pendingQuery.docs.map((doc) => doc.data()).toList();
+      // Filter completed requests to only show those reviewed by current expert
       _completedRequests =
-          completedQuery.docs.map((doc) => doc.data()).toList();
+          completedQuery.docs.map((doc) => doc.data()).where((request) {
+            final expertUid = request['expertUid'] ?? '';
+            return expertUid == currentExpertUid;
+          }).toList();
       _isLoading = false;
     });
   }
@@ -173,9 +197,19 @@ class _ScanRequestListState extends State<ScanRequestList>
             : submittedAt.toString();
     String? reviewedAt;
     if (isCompleted) {
-      final expertReview = request['expertReview'] as Map<String, dynamic>?;
-      reviewedAt = expertReview?['reviewedAt'] as String? ?? '';
+      // reviewedAt is saved at document level, not inside expertReview
+      reviewedAt = request['reviewedAt'] as String? ?? '';
     }
+
+    // Format review date for completed requests
+    final formattedReviewDate =
+        reviewedAt != null &&
+                reviewedAt.isNotEmpty &&
+                DateTime.tryParse(reviewedAt) != null
+            ? DateFormat(
+              'MMM d, yyyy – h:mma',
+            ).format(DateTime.parse(reviewedAt))
+            : reviewedAt ?? '';
 
     // Use imageUrl if present and not empty, else path if not empty
     String? imageUrl = request['images']?[0]?['imageUrl'];
@@ -294,6 +328,31 @@ class _ScanRequestListState extends State<ScanRequestList>
                         ),
                       ],
                     ),
+                    if (isCompleted && formattedReviewDate.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.check_circle,
+                            size: 14,
+                            color: Colors.green,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              'Reviewed: $formattedReviewDate',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.green,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              softWrap: false,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -318,6 +377,10 @@ class _ScanRequestListState extends State<ScanRequestList>
 
   @override
   Widget build(BuildContext context) {
+    // Get current expert's UID from Firebase Auth
+    final user = FirebaseAuth.instance.currentUser;
+    final currentExpertUid = user?.uid ?? '';
+
     return StreamBuilder<QuerySnapshot>(
       stream:
           FirebaseFirestore.instance.collection('scan_requests').snapshots(),
@@ -352,10 +415,13 @@ class _ScanRequestListState extends State<ScanRequestList>
               )
               .toList(),
         );
+        // Filter completed requests to only show those reviewed by current expert
         final filteredCompleted = _filterRequests(
           allRequests
               .where(
-                (r) => r['status'] == 'reviewed' || r['status'] == 'completed',
+                (r) =>
+                    (r['status'] == 'reviewed' || r['status'] == 'completed') &&
+                    (r['expertUid'] == currentExpertUid),
               )
               .toList(),
         );
@@ -449,12 +515,19 @@ class _ScanRequestListState extends State<ScanRequestList>
 
   Widget _buildImageWidget(String path) {
     if (path.startsWith('http')) {
-      // Supabase public URL
+      // Supabase public URL - use cached network image with memory optimization
       return CachedNetworkImage(
         imageUrl: path,
         fit: BoxFit.cover,
+        memCacheWidth: 200, // Limit memory usage
+        memCacheHeight: 200,
+        maxWidthDiskCache: 400,
+        maxHeightDiskCache: 400,
         placeholder:
-            (context, url) => const Center(child: CircularProgressIndicator()),
+            (context, url) => Container(
+              color: Colors.grey[200],
+              child: const Center(child: CircularProgressIndicator()),
+            ),
         errorWidget: (context, url, error) {
           return Container(
             color: Colors.grey[200],
@@ -463,7 +536,7 @@ class _ScanRequestListState extends State<ScanRequestList>
         },
       );
     } else if (path.startsWith('/') || path.contains(':')) {
-      // File path
+      // File path - optimize file loading
       return Image.file(
         File(path),
         fit: BoxFit.cover,
@@ -475,7 +548,7 @@ class _ScanRequestListState extends State<ScanRequestList>
         },
       );
     } else {
-      // Asset path
+      // Asset image - use optimized loading
       return Image.asset(
         path,
         fit: BoxFit.cover,

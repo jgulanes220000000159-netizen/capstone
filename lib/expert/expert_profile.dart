@@ -39,6 +39,16 @@ class _ExpertProfileState extends State<ExpertProfile> {
     _saveFcmTokenToFirestore();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh stats when page is focused
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _loadExpertStats(user.uid);
+    }
+  }
+
   Future<void> _loadUserData() async {
     try {
       final userBox = await Hive.openBox('userBox');
@@ -53,6 +63,12 @@ class _ExpertProfileState extends State<ExpertProfile> {
           _profileImageUrl = localProfile['imageProfile'];
           _isLoading = false;
         });
+
+        // Load expert statistics even when using local data
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          _loadExpertStats(user.uid);
+        }
         return;
       }
       final user = FirebaseAuth.instance.currentUser;
@@ -90,13 +106,19 @@ class _ExpertProfileState extends State<ExpertProfile> {
 
   Future<void> _loadExpertStats(String userId) async {
     try {
-      // Count completed reviews
+      print('Loading expert stats for user: $userId');
+
+      // Count completed reviews for this expert
       final reviewsQuery =
           await FirebaseFirestore.instance
               .collection('scan_requests')
-              .where('expertId', isEqualTo: userId)
-              .where('status', isEqualTo: 'completed')
+              .where('expertUid', isEqualTo: userId)
+              .where('status', whereIn: ['completed', 'reviewed'])
               .get();
+
+      print(
+        'Found ${reviewsQuery.docs.length} completed reviews for expert $userId',
+      );
 
       setState(() {
         _completedReviews = reviewsQuery.docs.length;

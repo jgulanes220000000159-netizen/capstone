@@ -6,6 +6,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:rxdart/rxdart.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class TrackingPage extends StatefulWidget {
   const TrackingPage({Key? key}) : super(key: key);
@@ -1234,6 +1235,156 @@ class _TrackingPageState extends State<TrackingPage> {
                                                 ),
                                               ),
                                             ),
+                                          IconButton(
+                                            icon: const Icon(
+                                              Icons.delete,
+                                              color: Colors.red,
+                                            ),
+                                            tooltip: 'Delete Session',
+                                            onPressed: () async {
+                                              final confirm = await showDialog<
+                                                bool
+                                              >(
+                                                context: context,
+                                                builder:
+                                                    (context) => AlertDialog(
+                                                      title: const Text(
+                                                        'Delete Session',
+                                                      ),
+                                                      content: const Text(
+                                                        'Are you sure you want to delete this session? This action cannot be undone.',
+                                                      ),
+                                                      actions: [
+                                                        TextButton(
+                                                          onPressed:
+                                                              () =>
+                                                                  Navigator.of(
+                                                                    context,
+                                                                  ).pop(false),
+                                                          child: const Text(
+                                                            'Cancel',
+                                                          ),
+                                                        ),
+                                                        TextButton(
+                                                          onPressed:
+                                                              () =>
+                                                                  Navigator.of(
+                                                                    context,
+                                                                  ).pop(true),
+                                                          child: const Text(
+                                                            'Delete',
+                                                            style: TextStyle(
+                                                              color: Colors.red,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                              );
+                                              if (confirm == true) {
+                                                final images =
+                                                    (session['images']
+                                                        as List?) ??
+                                                    [];
+                                                final supabase =
+                                                    Supabase.instance.client;
+                                                bool imageDeleteError = false;
+                                                for (final img in images) {
+                                                  final imageUrl =
+                                                      img['imageUrl'] ?? '';
+                                                  if (imageUrl is String &&
+                                                      imageUrl.isNotEmpty) {
+                                                    final uri = Uri.parse(
+                                                      imageUrl,
+                                                    );
+                                                    final segments =
+                                                        uri.pathSegments;
+                                                    final bucketIndex = segments
+                                                        .indexOf('mangosense');
+                                                    if (bucketIndex != -1 &&
+                                                        bucketIndex + 1 <
+                                                            segments.length) {
+                                                      final storagePath =
+                                                          segments
+                                                              .sublist(
+                                                                bucketIndex + 1,
+                                                              )
+                                                              .join('/');
+                                                      try {
+                                                        await supabase.storage
+                                                            .from('mangosense')
+                                                            .remove([
+                                                              storagePath,
+                                                            ]);
+                                                      } catch (e) {
+                                                        imageDeleteError = true;
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                                try {
+                                                  if (session['source'] ==
+                                                      'pending') {
+                                                    final docId =
+                                                        session['sessionId'] ??
+                                                        session['id'];
+                                                    await FirebaseFirestore
+                                                        .instance
+                                                        .collection(
+                                                          'scan_requests',
+                                                        )
+                                                        .doc(docId)
+                                                        .delete();
+                                                  } else {
+                                                    final docId =
+                                                        session['sessionId'] ??
+                                                        session['id'];
+                                                    await FirebaseFirestore
+                                                        .instance
+                                                        .collection('tracking')
+                                                        .doc(docId)
+                                                        .delete();
+                                                  }
+                                                  if (context.mounted) {
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(
+                                                          imageDeleteError
+                                                              ? 'Session deleted, but some images could not be removed from storage.'
+                                                              : 'Session deleted successfully!',
+                                                        ),
+                                                        backgroundColor:
+                                                            imageDeleteError
+                                                                ? Colors.orange
+                                                                : Colors.red,
+                                                      ),
+                                                    );
+                                                    setState(() {
+                                                      filteredSessions.removeAt(
+                                                        index,
+                                                      );
+                                                    });
+                                                  }
+                                                } catch (e) {
+                                                  if (context.mounted) {
+                                                    ScaffoldMessenger.of(
+                                                      context,
+                                                    ).showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(
+                                                          'Failed to delete session: $e',
+                                                        ),
+                                                        backgroundColor:
+                                                            Colors.red,
+                                                      ),
+                                                    );
+                                                  }
+                                                }
+                                              }
+                                            },
+                                          ),
                                         ],
                                       ),
                                       subtitle: Text(
