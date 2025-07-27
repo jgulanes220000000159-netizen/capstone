@@ -29,6 +29,28 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
   bool _isSubmitting = false;
   bool _showBoundingBoxes = true;
   String _selectedSeverity = 'medium';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBoundingBoxPreference();
+  }
+
+  Future<void> _loadBoundingBoxPreference() async {
+    final box = await Hive.openBox('userBox');
+    final savedPreference = box.get('expertShowBoundingBoxes');
+    if (savedPreference != null) {
+      setState(() {
+        _showBoundingBoxes = savedPreference as bool;
+      });
+    }
+  }
+
+  Future<void> _saveBoundingBoxPreference(bool value) async {
+    final box = await Hive.openBox('userBox');
+    await box.put('expertShowBoundingBoxes', value);
+  }
+
   List<String> _selectedPreventiveMeasures = [];
   DateTime _nextScanDate = DateTime.now().add(const Duration(days: 7));
   bool _isEditing = false;
@@ -205,10 +227,11 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
             const Text('Show Bounding Boxes'),
             Switch(
               value: _showBoundingBoxes,
-              onChanged: (value) {
+              onChanged: (value) async {
                 setState(() {
                   _showBoundingBoxes = value;
                 });
+                await _saveBoundingBoxPreference(value);
               },
             ),
           ],
@@ -228,7 +251,7 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
             final imageUrl = image['imageUrl'];
             final imagePath = image['path'];
             final detections =
-                (image['detections'] as List<dynamic>?)
+                (image['results'] as List<dynamic>?)
                     ?.where(
                       (d) =>
                           d != null &&
@@ -238,8 +261,10 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                     .toList() ??
                 [];
 
-            print('🔍 Raw detections: ${image['detections']}');
+            print('🔍 Raw results: ${image['results']}');
             print('✅ Filtered detections: $detections');
+            print('📊 Total detections for image $index: ${detections.length}');
+            print('🖼️ Image URL: $imageUrl, Image Path: $imagePath');
 
             return GestureDetector(
               onTap: () {
@@ -259,13 +284,12 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                                   imageUrl ?? imagePath,
                                   fit: BoxFit.contain,
                                 ),
-                                if (_showBoundingBoxes &&
-                                    detections.isNotEmpty &&
-                                    imagePath is String &&
-                                    imagePath.isNotEmpty)
+                                if (_showBoundingBoxes && detections.isNotEmpty)
                                   FutureBuilder<Size>(
                                     future: _getImageSize(
-                                      FileImage(File(imagePath)),
+                                      imageUrl != null && imageUrl.isNotEmpty
+                                          ? NetworkImage(imageUrl)
+                                          : FileImage(File(imagePath)),
                                     ),
                                     builder: (context, snapshot) {
                                       if (!snapshot.hasData) {
@@ -276,6 +300,11 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                                         painter: DetectionPainter(
                                           results:
                                               detections
+                                                  .where(
+                                                    (d) =>
+                                                        d['boundingBox'] !=
+                                                        null,
+                                                  )
                                                   .map(
                                                     (d) => DetectionResult(
                                                       label: d['disease'],
@@ -326,12 +355,13 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                       fit: BoxFit.cover,
                     ),
                   ),
-                  if (_showBoundingBoxes &&
-                      detections.isNotEmpty &&
-                      imagePath is String &&
-                      imagePath.isNotEmpty)
+                  if (_showBoundingBoxes && detections.isNotEmpty)
                     FutureBuilder<Size>(
-                      future: _getImageSize(FileImage(File(imagePath))),
+                      future: _getImageSize(
+                        imageUrl != null && imageUrl.isNotEmpty
+                            ? NetworkImage(imageUrl)
+                            : FileImage(File(imagePath)),
+                      ),
                       builder: (context, snapshot) {
                         if (!snapshot.hasData) {
                           return const SizedBox.shrink();

@@ -19,6 +19,7 @@ class ExpertDashboard extends StatefulWidget {
 class _ExpertDashboardState extends State<ExpertDashboard> {
   int _selectedIndex = 0;
   int _requestsInitialTab = 0; // 0 for pending, 1 for completed
+  int _pendingNotifications = 0; // Track pending notifications
 
   List<Widget> _pages = [];
 
@@ -26,6 +27,7 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
   void initState() {
     super.initState();
     _updatePages();
+    _loadNotificationCount(); // Load notification count
   }
 
   void _updatePages() {
@@ -41,6 +43,45 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
     setState(() {
       _selectedIndex = index;
     });
+
+    // Clear notifications when Requests tab is clicked
+    if (index == 1) {
+      _clearNotifications();
+    }
+  }
+
+  // Load notification count from Hive
+  Future<void> _loadNotificationCount() async {
+    try {
+      final notificationBox = await Hive.openBox('notificationBox');
+      final count = notificationBox.get(
+        'pendingNotifications',
+        defaultValue: 0,
+      );
+      setState(() {
+        _pendingNotifications = count;
+      });
+    } catch (e) {
+      print('Error loading notification count: $e');
+    }
+  }
+
+  // Save notification count to Hive
+  Future<void> _saveNotificationCount(int count) async {
+    try {
+      final notificationBox = await Hive.openBox('notificationBox');
+      await notificationBox.put('pendingNotifications', count);
+    } catch (e) {
+      print('Error saving notification count: $e');
+    }
+  }
+
+  // Clear notifications when Requests tab is clicked
+  void _clearNotifications() async {
+    await _saveNotificationCount(0);
+    setState(() {
+      _pendingNotifications = 0;
+    });
   }
 
   void _navigateToRequests(int tabIndex) {
@@ -49,6 +90,7 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
       _selectedIndex = 1; // Switch to Requests tab
       _updatePages();
     });
+    _clearNotifications(); // Clear notifications when navigating to requests
   }
 
   @override
@@ -80,17 +122,62 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
         onTap: _onItemTapped,
         selectedItemColor: Colors.green,
         type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+        items: [
+          const BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
           BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt),
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.list_alt),
+                if (_pendingNotifications > 0)
+                  Positioned(
+                    right: -6,
+                    top: -6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            blurRadius: 2,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 16,
+                        minHeight: 16,
+                      ),
+                      child: Text(
+                        _pendingNotifications > 9
+                            ? '9+'
+                            : '$_pendingNotifications',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             label: 'Requests',
           ),
-          BottomNavigationBarItem(
+          const BottomNavigationBarItem(
             icon: Icon(Icons.local_hospital),
             label: 'Diseases',
           ),
-          BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Profile',
+          ),
         ],
       ),
     );
@@ -113,6 +200,21 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
   List<Map<String, dynamic>> _recentReviews = [];
   bool _isOffline = false;
   StreamSubscription<QuerySnapshot>? _streamSubscription;
+
+  // Debug tracking variables
+  int _lastPendingCount = 0;
+  int _lastCompletedCount = 0;
+
+  // Update notification count
+  void _updateNotificationCount(int newCount) {
+    // Find the parent dashboard to update notification count
+    final dashboard = context.findAncestorStateOfType<_ExpertDashboardState>();
+    if (dashboard != null) {
+      dashboard._pendingNotifications = newCount;
+      dashboard._saveNotificationCount(newCount);
+      dashboard.setState(() {});
+    }
+  }
 
   @override
   void initState() {
@@ -185,12 +287,21 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                 .where('status', whereIn: ['completed', 'reviewed'])
                 .get();
 
-        // Count pending requests
+        // Count pending requests available for this expert (either assigned or unassigned)
         final pendingQuery =
             await FirebaseFirestore.instance
                 .collection('scan_requests')
                 .where('status', whereIn: ['pending', 'pending_review'])
                 .get();
+
+        // Filter to show requests that are either assigned to this expert OR unassigned
+        final pendingDocs =
+            pendingQuery.docs.where((doc) {
+              final data = doc.data();
+              final expertUid = data['expertUid'];
+              // Show if assigned to this expert OR if no expert assigned yet
+              return expertUid == null || expertUid == user.uid;
+            }).toList();
 
         // Calculate average response time
         double totalResponseTime = 0.0;
@@ -275,7 +386,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
         setState(() {
           _expertName = expertName;
           _totalCompleted = completedQuery.docs.length;
-          _pendingRequests = pendingQuery.docs.length;
+          _pendingRequests = pendingDocs.length;
           _averageResponseTime =
               validReviews > 0 ? (totalResponseTime / validReviews) : 0.0;
           _recentReviews = recentReviews;
@@ -337,9 +448,39 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
       final pendingDocs =
           docs.where((doc) {
             final data = doc.data() as Map<String, dynamic>;
+            final expertUid = data['expertUid'];
+            // Show if assigned to this expert OR if no expert assigned yet
+            return (data['status'] == 'pending' ||
+                    data['status'] == 'pending_review') &&
+                (expertUid == null || expertUid == user.uid);
+          }).toList();
+
+      // Debug logging
+      print('Total docs in stream: ${docs.length}');
+      print('Completed docs for expert: ${completedDocs.length}');
+      print('Pending docs for expert: ${pendingDocs.length}');
+      print('Current expert UID: ${user.uid}');
+
+      // Additional debug for pending requests
+      final allPending =
+          docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
             return data['status'] == 'pending' ||
                 data['status'] == 'pending_review';
           }).toList();
+      print('Total pending requests in system: ${allPending.length}');
+      for (var doc in allPending.take(3)) {
+        final data = doc.data() as Map<String, dynamic>;
+        print(
+          'Pending request - expertUid: ${data['expertUid']}, status: ${data['status']}',
+        );
+      }
+
+      // Update notification count if pending requests changed
+      if (_lastPendingCount != pendingDocs.length) {
+        _updateNotificationCount(pendingDocs.length);
+        _lastPendingCount = pendingDocs.length;
+      }
 
       // Calculate average response time using fixed logic
       double totalResponseTime = 0.0;
@@ -442,7 +583,10 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
       stream:
           FirebaseFirestore.instance
               .collection('scan_requests')
-              .where('status', whereIn: ['completed', 'reviewed'])
+              .where(
+                'status',
+                whereIn: ['completed', 'reviewed', 'pending', 'pending_review'],
+              )
               .snapshots(),
       builder: (context, snapshot) {
         // Update stats when stream data changes

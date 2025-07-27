@@ -12,6 +12,7 @@ import 'package:mailer/mailer.dart';
 import 'package:mailer/smtp_server.dart';
 import 'package:hive/hive.dart';
 import '../expert/scan_request_list.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -26,6 +27,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _isLoading = false;
   final _formKey = GlobalKey<FormState>();
   bool _obscurePassword = true;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   // Store verification codes in memory (for testing)
   final Map<String, Map<String, dynamic>> _verificationCodes = {};
@@ -66,6 +68,157 @@ class _LoginPageState extends State<LoginPage> {
       print('Verification code for $email: $code');
       throw Exception(
         'Failed to send verification email. Please check your email settings.',
+      );
+    }
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      // Trigger the authentication flow
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+
+      if (googleUser == null) {
+        setState(() {
+          _isLoading = false;
+        });
+        return; // User cancelled the sign-in
+      }
+
+      // Obtain the auth details from the request
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      // Create a new credential
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // Sign in to Firebase with the Google credential
+      final UserCredential userCredential = await FirebaseAuth.instance
+          .signInWithCredential(credential);
+      final user = userCredential.user;
+
+      if (user != null) {
+        // Check if user exists in Firestore
+        DocumentSnapshot userDoc =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .get();
+
+        if (userDoc.exists) {
+          // User exists, proceed with normal login flow
+          final data = userDoc.data() as Map<String, dynamic>;
+          final role = data['role'];
+          final status = data['status'];
+
+          if (status != 'active') {
+            setState(() {
+              _isLoading = false;
+            });
+            String roleText = role == 'expert' ? 'expert' : 'farmer';
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Your $roleText account is currently ${status ?? 'inactive'}. Please contact support for assistance.',
+                ),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+            return;
+          }
+
+          // Save login state and user info to Hive
+          final userBox = await Hive.openBox('userBox');
+          await userBox.put('isLoggedIn', true);
+          await userBox.put('userProfile', {
+            'fullName': data['fullName'] ?? user.displayName ?? '',
+            'email': data['email'] ?? user.email ?? '',
+            'phoneNumber': data['phoneNumber'] ?? '',
+            'address': data['address'] ?? '',
+            'role': data['role'] ?? '',
+            'imageProfile': data['imageProfile'] ?? user.photoURL ?? '',
+            'userId': user.uid,
+          });
+
+          // Navigate based on role
+          if (role == 'expert') {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const ExpertDashboard()),
+            );
+          } else {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const HomePage()),
+              (route) => false,
+            );
+          }
+        } else {
+          // New user, create account with Google info
+          final newUserData = {
+            'fullName': user.displayName ?? 'Google User',
+            'email': user.email ?? '',
+            'phoneNumber': user.phoneNumber ?? '',
+            'address': '',
+            'role': 'farmer', // Default role for new users
+            'imageProfile': user.photoURL ?? '',
+            'status': 'active',
+            'createdAt': DateTime.now().toIso8601String(),
+            'lastLogin': DateTime.now().toIso8601String(),
+          };
+
+          // Save to Firestore
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set(newUserData);
+
+          // Save login state and user info to Hive
+          final userBox = await Hive.openBox('userBox');
+          await userBox.put('isLoggedIn', true);
+          await userBox.put('userProfile', {
+            'fullName': newUserData['fullName'],
+            'email': newUserData['email'],
+            'phoneNumber': newUserData['phoneNumber'],
+            'address': newUserData['address'],
+            'role': newUserData['role'],
+            'imageProfile': newUserData['imageProfile'],
+            'userId': user.uid,
+          });
+
+          // Navigate to home page for new users
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (context) => const HomePage()),
+            (route) => false,
+          );
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+
+      String errorMessage = 'Google Sign-In failed. Please try again.';
+      if (e.toString().contains('network')) {
+        errorMessage = 'Network error. Please check your internet connection.';
+      } else if (e.toString().contains('cancelled')) {
+        errorMessage = 'Sign-in was cancelled.';
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
       );
     }
   }
@@ -477,6 +630,67 @@ class _LoginPageState extends State<LoginPage> {
                                   ),
                                 ),
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Google Sign-In Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 55,
+                      child: ElevatedButton.icon(
+                        onPressed: _isLoading ? null : _handleGoogleSignIn,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.green,
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        icon: Image.asset(
+                          'assets/google-icon-1.png',
+                          width: 24,
+                          height: 24,
+                        ),
+                        label:
+                            _isLoading
+                                ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.green,
+                                    ),
+                                  ),
+                                )
+                                : const Text(
+                                  'Continue with Google',
+                                  style: TextStyle(
+                                    color: Colors.green,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Divider
+                    Row(
+                      children: [
+                        Expanded(child: Divider(color: Colors.white70)),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Text(
+                            'OR',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Expanded(child: Divider(color: Colors.white70)),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     // Guest Mode Button

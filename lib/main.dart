@@ -21,6 +21,7 @@ void main() async {
   await Hive.openBox('reviews'); // Open a box for review/request data
   await Hive.openBox('userBox'); // Box for login state and user profile
   await Hive.openBox('settings'); // Box for app settings (including locale)
+  await Hive.openBox('notificationBox'); // Box for notification counts
   await EasyLocalization.ensureInitialized();
   await dotenv.load(); // Load environment variables
   await Supabase.initialize(

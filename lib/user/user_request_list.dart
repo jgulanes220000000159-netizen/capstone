@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../shared/review_manager.dart';
 import 'dart:io';
+import 'dart:async';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,6 +9,8 @@ import 'package:hive/hive.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'detection_painter.dart';
+import 'tflite_detector.dart';
 
 final List<Map<String, dynamic>> userRequests = [
   {
@@ -334,6 +337,121 @@ class UserRequestList extends StatefulWidget {
 }
 
 class _UserRequestListState extends State<UserRequestList> {
+  bool _showBoundingBoxes = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBoundingBoxPreference();
+  }
+
+  Future<void> _loadBoundingBoxPreference() async {
+    final box = await Hive.openBox('userBox');
+    final savedPreference = box.get('showBoundingBoxes');
+    if (savedPreference != null) {
+      setState(() {
+        _showBoundingBoxes = savedPreference as bool;
+      });
+    }
+  }
+
+  Future<void> _saveBoundingBoxPreference(bool value) async {
+    final box = await Hive.openBox('userBox');
+    await box.put('showBoundingBoxes', value);
+  }
+
+  Future<Size> _getImageSize(ImageProvider imageProvider) async {
+    final ImageStream stream = imageProvider.resolve(ImageConfiguration.empty);
+    final Completer<Size> completer = Completer<Size>();
+
+    stream.addListener(
+      ImageStreamListener((ImageInfo info, bool _) {
+        completer.complete(
+          Size(info.image.width.toDouble(), info.image.height.toDouble()),
+        );
+      }),
+    );
+
+    return completer.future;
+  }
+
+  Widget _buildImageWidgetWithBoundingBoxes(
+    String path,
+    List detections, {
+    double? width,
+    double? height,
+    BoxFit fit = BoxFit.cover,
+  }) {
+    if (!_showBoundingBoxes || detections.isEmpty) {
+      return _buildImageWidget(path, width: width, height: height, fit: fit);
+    }
+
+    return FutureBuilder<Size>(
+      future: _getImageSize(
+        path.startsWith('http') ? NetworkImage(path) : FileImage(File(path)),
+      ),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return _buildImageWidget(
+            path,
+            width: width,
+            height: height,
+            fit: fit,
+          );
+        }
+
+        final imageSize = snapshot.data!;
+        final widgetSize = Size(width ?? 80, height ?? 80);
+
+        // Calculate scaling for BoxFit.cover
+        final scaleX = widgetSize.width / imageSize.width;
+        final scaleY = widgetSize.height / imageSize.height;
+        final scale = scaleX > scaleY ? scaleX : scaleY;
+
+        final scaledW = imageSize.width * scale;
+        final scaledH = imageSize.height * scale;
+        final dx = (widgetSize.width - scaledW) / 2;
+        final dy = (widgetSize.height - scaledH) / 2;
+
+        return Stack(
+          children: [
+            _buildImageWidget(path, width: width, height: height, fit: fit),
+            CustomPaint(
+              painter: DetectionPainter(
+                results:
+                    detections
+                        .map((d) {
+                          if (d == null ||
+                              d['disease'] == null ||
+                              d['boundingBox'] == null) {
+                            return null;
+                          }
+                          return DetectionResult(
+                            label: d['disease'].toString(),
+                            confidence:
+                                (d['confidence'] as num?)?.toDouble() ?? 0.0,
+                            boundingBox: Rect.fromLTRB(
+                              (d['boundingBox']['left'] as num).toDouble(),
+                              (d['boundingBox']['top'] as num).toDouble(),
+                              (d['boundingBox']['right'] as num).toDouble(),
+                              (d['boundingBox']['bottom'] as num).toDouble(),
+                            ),
+                          );
+                        })
+                        .whereType<DetectionResult>()
+                        .toList(),
+                originalImageSize: imageSize,
+                displayedImageSize: Size(scaledW, scaledH),
+                displayedImageOffset: Offset(dx, dy),
+              ),
+              size: widgetSize,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Sort requests by submittedAt descending (most recent first)
@@ -352,13 +470,39 @@ class _UserRequestListState extends State<UserRequestList> {
       if (dateB == null) return -1;
       return dateB.compareTo(dateA); // Descending
     });
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: sortedRequests.length,
-      itemBuilder: (context, index) {
-        final request = sortedRequests[index];
-        return _buildRequestCard(request);
-      },
+    return Column(
+      children: [
+        // Bounding box toggle
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              const Text('Show Bounding Boxes', style: TextStyle(fontSize: 14)),
+              const SizedBox(width: 8),
+              Switch(
+                value: _showBoundingBoxes,
+                onChanged: (value) async {
+                  setState(() {
+                    _showBoundingBoxes = value;
+                  });
+                  await _saveBoundingBoxPreference(value);
+                },
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: sortedRequests.length,
+            itemBuilder: (context, index) {
+              final request = sortedRequests[index];
+              return _buildRequestCard(request);
+            },
+          ),
+        ),
+      ],
     );
   }
 
@@ -420,8 +564,11 @@ class _UserRequestListState extends State<UserRequestList> {
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: _buildImageWidget(
+                    child: _buildImageWidgetWithBoundingBoxes(
                       displayPath,
+                      images.isNotEmpty
+                          ? (images[0]['results'] as List?) ?? []
+                          : [],
                       width: 80,
                       height: 80,
                     ),
@@ -639,9 +786,29 @@ class UserRequestDetail extends StatefulWidget {
 }
 
 class _UserRequestDetailState extends State<UserRequestDetail> {
-  bool _showBoundingBoxes = false;
+  bool _showBoundingBoxes = true;
 
   @override
+  void initState() {
+    super.initState();
+    _loadBoundingBoxPreference();
+  }
+
+  Future<void> _loadBoundingBoxPreference() async {
+    final box = await Hive.openBox('userBox');
+    final savedPreference = box.get('showBoundingBoxes');
+    if (savedPreference != null) {
+      setState(() {
+        _showBoundingBoxes = savedPreference as bool;
+      });
+    }
+  }
+
+  Future<void> _saveBoundingBoxPreference(bool value) async {
+    final box = await Hive.openBox('userBox');
+    await box.put('showBoundingBoxes', value);
+  }
+
   Widget build(BuildContext context) {
     final diseaseSummary = (widget.request['diseaseSummary'] as List?) ?? [];
     final mainDisease =
@@ -779,22 +946,6 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                 ),
               ),
             ),
-            // Add bounding box toggle like expert view
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                const Text('Show Bounding Boxes'),
-                Switch(
-                  value: _showBoundingBoxes,
-                  onChanged: (value) {
-                    setState(() {
-                      _showBoundingBoxes = value;
-                    });
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
             // Images Grid
             if (images.isNotEmpty)
               Padding(
@@ -805,12 +956,37 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Submitted Images',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Submitted Images',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            const Text(
+                              'Show Bounding Boxes',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                            const SizedBox(width: 8),
+                            Switch(
+                              value: _showBoundingBoxes,
+                              onChanged: (value) async {
+                                setState(() {
+                                  _showBoundingBoxes = value;
+                                });
+                                await _saveBoundingBoxPreference(value);
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     GridView.builder(
@@ -829,7 +1005,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                         final imagePath = img['imagePath'] ?? img['path'] ?? '';
                         final displayPath =
                             (imageUrl.isNotEmpty) ? imageUrl : imagePath;
-                        final detections = (img['detections'] as List?) ?? [];
+                        final detections = (img['results'] as List?) ?? [];
                         return GestureDetector(
                           onTap: () {
                             showDialog(
@@ -855,6 +1031,59 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                                 fit: BoxFit.contain,
                                               ),
                                             ),
+                                            if (_showBoundingBoxes &&
+                                                detections.isNotEmpty)
+                                              FutureBuilder<Size>(
+                                                future: _getImageSize(
+                                                  imageUrl.isNotEmpty
+                                                      ? NetworkImage(imageUrl)
+                                                      : FileImage(
+                                                        File(imagePath),
+                                                      ),
+                                                ),
+                                                builder: (context, snapshot) {
+                                                  if (!snapshot.hasData) {
+                                                    return const SizedBox.shrink();
+                                                  }
+                                                  final imageSize =
+                                                      snapshot.data!;
+                                                  return CustomPaint(
+                                                    painter: DetectionPainter(
+                                                      results:
+                                                          detections
+                                                              .where(
+                                                                (d) =>
+                                                                    d['boundingBox'] !=
+                                                                    null,
+                                                              )
+                                                              .map(
+                                                                (
+                                                                  d,
+                                                                ) => DetectionResult(
+                                                                  label:
+                                                                      d['disease'],
+                                                                  confidence:
+                                                                      d['confidence'],
+                                                                  boundingBox: Rect.fromLTRB(
+                                                                    d['boundingBox']['left'],
+                                                                    d['boundingBox']['top'],
+                                                                    d['boundingBox']['right'],
+                                                                    d['boundingBox']['bottom'],
+                                                                  ),
+                                                                ),
+                                                              )
+                                                              .toList(),
+                                                      originalImageSize:
+                                                          imageSize,
+                                                      displayedImageSize:
+                                                          imageSize,
+                                                      displayedImageOffset:
+                                                          Offset.zero,
+                                                    ),
+                                                    size: imageSize,
+                                                  );
+                                                },
+                                              ),
                                             Positioned(
                                               top: 8,
                                               right: 8,
@@ -885,6 +1114,105 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                   fit: BoxFit.cover,
                                 ),
                               ),
+                              if (_showBoundingBoxes && detections.isNotEmpty)
+                                FutureBuilder<Size>(
+                                  future: _getImageSize(
+                                    imageUrl.isNotEmpty
+                                        ? NetworkImage(imageUrl)
+                                        : FileImage(File(imagePath)),
+                                  ),
+                                  builder: (context, snapshot) {
+                                    if (!snapshot.hasData) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    final imageSize = snapshot.data!;
+                                    return LayoutBuilder(
+                                      builder: (context, constraints) {
+                                        // Calculate the actual displayed image size
+                                        final imgW = imageSize.width;
+                                        final imgH = imageSize.height;
+                                        final widgetW = constraints.maxWidth;
+                                        final widgetH = constraints.maxHeight;
+
+                                        // Calculate scale and offset for BoxFit.cover
+                                        final scale =
+                                            imgW / imgH > widgetW / widgetH
+                                                ? widgetH /
+                                                    imgH // Height constrained
+                                                : widgetW /
+                                                    imgW; // Width constrained
+
+                                        final scaledW = imgW * scale;
+                                        final scaledH = imgH * scale;
+                                        final dx = (widgetW - scaledW) / 2;
+                                        final dy = (widgetH - scaledH) / 2;
+
+                                        return CustomPaint(
+                                          painter: DetectionPainter(
+                                            results:
+                                                detections
+                                                    .map((d) {
+                                                      if (d == null ||
+                                                          d['disease'] ==
+                                                              null ||
+                                                          d['confidence'] ==
+                                                              null ||
+                                                          d['boundingBox'] ==
+                                                              null ||
+                                                          d['boundingBox']['left'] ==
+                                                              null ||
+                                                          d['boundingBox']['top'] ==
+                                                              null ||
+                                                          d['boundingBox']['right'] ==
+                                                              null ||
+                                                          d['boundingBox']['bottom'] ==
+                                                              null) {
+                                                        return null;
+                                                      }
+                                                      return DetectionResult(
+                                                        label:
+                                                            d['disease']
+                                                                .toString(),
+                                                        confidence:
+                                                            (d['confidence']
+                                                                    as num)
+                                                                .toDouble(),
+                                                        boundingBox: Rect.fromLTRB(
+                                                          (d['boundingBox']['left']
+                                                                  as num)
+                                                              .toDouble(),
+                                                          (d['boundingBox']['top']
+                                                                  as num)
+                                                              .toDouble(),
+                                                          (d['boundingBox']['right']
+                                                                  as num)
+                                                              .toDouble(),
+                                                          (d['boundingBox']['bottom']
+                                                                  as num)
+                                                              .toDouble(),
+                                                        ),
+                                                      );
+                                                    })
+                                                    .whereType<
+                                                      DetectionResult
+                                                    >()
+                                                    .toList(),
+                                            originalImageSize: imageSize,
+                                            displayedImageSize: Size(
+                                              scaledW,
+                                              scaledH,
+                                            ),
+                                            displayedImageOffset: Offset(
+                                              dx,
+                                              dy,
+                                            ),
+                                          ),
+                                          size: Size(widgetW, widgetH),
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
                               Positioned(
                                 top: 8,
                                 right: 8,
@@ -1357,6 +1685,22 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
     }
     return merged.values.toList();
   }
+
+  Future<Size> _getImageSize(ImageProvider provider) async {
+    final Completer<Size> completer = Completer();
+    final ImageStreamListener listener = ImageStreamListener((
+      ImageInfo info,
+      bool _,
+    ) {
+      final myImage = info.image;
+      completer.complete(
+        Size(myImage.width.toDouble(), myImage.height.toDouble()),
+      );
+    });
+    provider.resolve(const ImageConfiguration()).addListener(listener);
+    final size = await completer.future;
+    return size;
+  }
 }
 
 class UserRequestTabbedList extends StatefulWidget {
@@ -1478,30 +1822,62 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
       return const Center(child: Text('Not logged in'));
     }
 
-    return StreamBuilder<QuerySnapshot>(
-      stream:
-          FirebaseFirestore.instance
-              .collection('scan_requests')
-              .where('userId', isEqualTo: user.uid)
-              .snapshots(),
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _loadRequestsWithFallback(user.uid),
       builder: (context, snapshot) {
-        // Handle connection errors by falling back to cached data
-        if (snapshot.hasError) {
-          print('Firestore connection error: ${snapshot.error}');
-          return _buildWithOfflineFallback();
-        }
-
-        if (!snapshot.hasData) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final allRequests =
-            snapshot.data!.docs
-                .map((doc) => doc.data() as Map<String, dynamic>)
-                .toList();
+        if (snapshot.hasError) {
+          return _buildWithOfflineFallback();
+        }
 
-        // Cache requests to Hive for offline access
-        _cacheRequestsToHive(allRequests);
+        final allRequests = snapshot.data ?? [];
+        if (allRequests.isEmpty) {
+          return Column(
+            children: [
+              _buildSearchBar(),
+              Container(
+                color: Colors.green,
+                child: TabBar(
+                  controller: _tabController,
+                  indicatorColor: Colors.white,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white70,
+                  tabs: [Tab(text: tr('pending')), Tab(text: tr('completed'))],
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.description_outlined,
+                        size: 64,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'No requests yet',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Start scanning to see your requests here',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
 
         final pending = _filterRequests(
           allRequests.where((r) => r['status'] == 'pending').toList(),
@@ -1563,6 +1939,32 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
       await box.put('lastUpdated', DateTime.now().toIso8601String());
     } catch (e) {
       print('Error caching requests to Hive: $e');
+    }
+  }
+
+  // Load requests with fallback to cached data
+  Future<List<Map<String, dynamic>>> _loadRequestsWithFallback(
+    String userId,
+  ) async {
+    try {
+      // Try to load from Firestore first
+      final query =
+          await FirebaseFirestore.instance
+              .collection('scan_requests')
+              .where('userId', isEqualTo: userId)
+              .get();
+
+      final allRequests =
+          query.docs.map((doc) => doc.data() as Map<String, dynamic>).toList();
+
+      // Cache requests to Hive for offline access
+      await _cacheRequestsToHive(allRequests);
+
+      return allRequests;
+    } catch (e) {
+      print('Error loading from Firestore: $e');
+      // Fallback to local Hive data
+      return await _loadCachedRequests();
     }
   }
 
@@ -1746,6 +2148,21 @@ Widget _buildImageWidget(
               const Icon(Icons.broken_image, size: 40, color: Colors.grey),
     );
   }
+}
+
+Future<Size> _getImageSize(ImageProvider imageProvider) async {
+  final ImageStream stream = imageProvider.resolve(ImageConfiguration.empty);
+  final Completer<Size> completer = Completer<Size>();
+
+  stream.addListener(
+    ImageStreamListener((ImageInfo info, bool _) {
+      completer.complete(
+        Size(info.image.width.toDouble(), info.image.height.toDouble()),
+      );
+    }),
+  );
+
+  return completer.future;
 }
 
 bool _isFilePath(String path) {

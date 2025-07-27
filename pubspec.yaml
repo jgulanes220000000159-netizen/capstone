@@ -30,6 +30,7 @@ dependencies:
   mailer: ^6.0.1
   easy_localization: ^3.0.1
   firebase_messaging: ^14.7.4
+  google_sign_in: ^6.2.1
   flutter_local_notifications:
     git:
       url: https://github.com/SherwenCabanilla/flutter_local_notifications.git
@@ -53,6 +54,7 @@ flutter:
     - assets/labelsv2.txt
     - assets/v24.tflite
     - assets/logo.png
+    - assets/google-icon-1.png
     - assets/diseases/anthracnose.jpg
     - assets/diseases/powdery_mildew.jpg
     - assets/diseases/backterial_blackspot.jpg
