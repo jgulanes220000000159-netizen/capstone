@@ -7,6 +7,7 @@ import 'detection_carousel_screen.dart';
 import 'disease_details_page.dart';
 import 'profile_page.dart';
 import 'user_request_list.dart';
+import 'user_request_tabbed_list.dart';
 import 'scan_page.dart';
 import '../shared/review_manager.dart';
 import 'package:hive/hive.dart';

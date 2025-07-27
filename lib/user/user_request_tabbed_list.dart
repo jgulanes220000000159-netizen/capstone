@@ -1,0 +1,407 @@
+import 'package:flutter/material.dart';
+import '../shared/review_manager.dart';
+import 'dart:async';
+import 'package:easy_localization/easy_localization.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:hive/hive.dart';
+import 'package:intl/intl.dart';
+import 'user_request_list.dart';
+import 'user_request_detail.dart';
+
+class UserRequestTabbedList extends StatefulWidget {
+  const UserRequestTabbedList({Key? key}) : super(key: key);
+
+  @override
+  State<UserRequestTabbedList> createState() => _UserRequestTabbedListState();
+}
+
+class _UserRequestTabbedListState extends State<UserRequestTabbedList>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  final ReviewManager _reviewManager = ReviewManager();
+
+  // Add missing _buildSearchBar method
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: tr('search'),
+              prefixIcon: const Icon(Icons.search, color: Colors.grey),
+              suffixIcon:
+                  _searchQuery.isNotEmpty
+                      ? IconButton(
+                        icon: const Icon(Icons.clear, color: Colors.grey),
+                        onPressed: () {
+                          setState(() {
+                            _searchController.clear();
+                            _searchQuery = '';
+                          });
+                        },
+                      )
+                      : null,
+              filled: true,
+              fillColor: Colors.grey[50],
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 0),
+            ),
+            onChanged: (value) {
+              setState(() {
+                _searchQuery = value;
+              });
+            },
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              tr('try_searching_for'),
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> _filterRequests(
+    List<Map<String, dynamic>> requests,
+  ) {
+    if (_searchQuery.isEmpty) return requests;
+
+    return requests.where((request) {
+      final diseaseName =
+          request['diseaseSummary'][0]['name']?.toString().toLowerCase() ?? '';
+      final status = request['status']?.toString().toLowerCase() ?? '';
+      final submittedAt =
+          request['submittedAt']?.toString().toLowerCase() ?? '';
+      final query = _searchQuery.toLowerCase();
+
+      return diseaseName.contains(query) ||
+          status.contains(query) ||
+          submittedAt.contains(query);
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Center(child: Text('Not logged in'));
+    }
+
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _loadRequestsWithFallback(user.uid),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return _buildWithOfflineFallback();
+        }
+
+        final allRequests = snapshot.data ?? [];
+        if (allRequests.isEmpty) {
+          return Column(
+            children: [
+              _buildSearchBar(),
+              Container(
+                color: Colors.green,
+                child: TabBar(
+                  controller: _tabController,
+                  indicatorColor: Colors.white,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white70,
+                  tabs: [Tab(text: tr('pending')), Tab(text: tr('completed'))],
+                ),
+              ),
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.description_outlined,
+                        size: 64,
+                        color: Colors.grey,
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'No requests yet',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Start scanning to see your requests here',
+                        style: TextStyle(color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+
+        final pending = _filterRequests(
+          allRequests.where((r) => r['status'] == 'pending').toList(),
+        );
+        final completed = _filterRequests(
+          allRequests.where((r) => r['status'] == 'completed').toList(),
+        );
+        return Column(
+          children: [
+            _buildSearchBar(),
+            Container(
+              color: Colors.green,
+              child: TabBar(
+                controller: _tabController,
+                indicatorColor: Colors.white,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white70,
+                tabs: [Tab(text: tr('pending')), Tab(text: tr('completed'))],
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  pending.isEmpty
+                      ? _buildEmptyState(
+                        _searchQuery.isNotEmpty
+                            ? 'No pending requests found for "$_searchQuery"'
+                            : 'No pending requests',
+                      )
+                      : Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: UserRequestList(requests: pending),
+                      ),
+                  completed.isEmpty
+                      ? _buildEmptyState(
+                        _searchQuery.isNotEmpty
+                            ? 'No completed requests found for "$_searchQuery"'
+                            : 'No completed requests',
+                      )
+                      : Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: UserRequestList(requests: completed),
+                      ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Cache requests to Hive for offline access
+  Future<void> _cacheRequestsToHive(List<Map<String, dynamic>> requests) async {
+    try {
+      final box = await Hive.openBox('userRequestsBox');
+      await box.put('cachedRequests', requests);
+      await box.put('lastUpdated', DateTime.now().toIso8601String());
+    } catch (e) {
+      print('Error caching requests to Hive: $e');
+    }
+  }
+
+  // Load requests with fallback to cached data
+  Future<List<Map<String, dynamic>>> _loadRequestsWithFallback(
+    String userId,
+  ) async {
+    try {
+      // Try to load from Firestore first
+      final query =
+          await FirebaseFirestore.instance
+              .collection('scan_requests')
+              .where('userId', isEqualTo: userId)
+              .get();
+
+      final allRequests =
+          query.docs.map((doc) => doc.data() as Map<String, dynamic>).toList();
+
+      // Cache requests to Hive for offline access
+      await _cacheRequestsToHive(allRequests);
+
+      return allRequests;
+    } catch (e) {
+      print('Error loading from Firestore: $e');
+      // Fallback to local Hive data
+      return await _loadCachedRequests();
+    }
+  }
+
+  // Load cached requests from Hive for offline access
+  Future<List<Map<String, dynamic>>> _loadCachedRequests() async {
+    try {
+      final box = await Hive.openBox('userRequestsBox');
+      final cachedRequests = box.get('cachedRequests', defaultValue: []);
+      if (cachedRequests is List) {
+        return cachedRequests
+            .whereType<Map>()
+            .map<Map<String, dynamic>>(
+              (e) => Map<String, dynamic>.from(e as Map),
+            )
+            .toList();
+      }
+    } catch (e) {
+      print('Error loading cached requests: $e');
+    }
+    return [];
+  }
+
+  // Build widget with offline fallback
+  Widget _buildWithOfflineFallback() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Center(child: Text('Not logged in'));
+    }
+
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _loadCachedRequests(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final cachedRequests = snapshot.data!;
+        final pending = _filterRequests(
+          cachedRequests.where((r) => r['status'] == 'pending').toList(),
+        );
+        final completed = _filterRequests(
+          cachedRequests.where((r) => r['status'] == 'completed').toList(),
+        );
+
+        return Column(
+          children: [
+            // Offline indicator banner
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              color: Colors.orange.withOpacity(0.1),
+              child: Row(
+                children: [
+                  Icon(Icons.wifi_off, color: Colors.orange, size: 16),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Offline mode - Showing cached data',
+                    style: TextStyle(
+                      color: Colors.orange[700],
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            _buildSearchBar(),
+            Container(
+              color: Colors.green,
+              child: TabBar(
+                controller: _tabController,
+                indicatorColor: Colors.white,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white70,
+                tabs: [Tab(text: tr('pending')), Tab(text: tr('completed'))],
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  pending.isEmpty
+                      ? _buildEmptyState(
+                        _searchQuery.isNotEmpty
+                            ? 'No pending requests found for "$_searchQuery"'
+                            : 'No pending requests',
+                      )
+                      : Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: UserRequestList(requests: pending),
+                      ),
+                  completed.isEmpty
+                      ? _buildEmptyState(
+                        _searchQuery.isNotEmpty
+                            ? 'No completed requests found for "$_searchQuery"'
+                            : 'No completed requests',
+                      )
+                      : Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: UserRequestList(requests: completed),
+                      ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyState(String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              _searchQuery.isNotEmpty ? Icons.search_off : Icons.inbox,
+              size: 64,
+              color: Colors.green[200],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              style: const TextStyle(fontSize: 18, color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

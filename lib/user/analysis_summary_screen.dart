@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'dart:convert';
+import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:hive/hive.dart';
+import 'package:image/image.dart' as img;
 import 'tflite_detector.dart';
 import 'detection_painter.dart';
 import 'detection_screen.dart';
 import 'detection_carousel_screen.dart';
-import '../shared/review_manager.dart';
-import '../shared/user_profile.dart';
 import 'detection_result_card.dart';
-import 'package:hive/hive.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'tracking_page.dart';
+import '../shared/user_profile.dart';
+import '../shared/review_manager.dart';
 
 class AnalysisSummaryScreen extends StatefulWidget {
   final Map<int, List<DetectionResult>> allResults;
@@ -58,11 +63,11 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     for (int index = 0; index < widget.imagePaths.length; index++) {
       final image = File(widget.imagePaths[index]);
       final decodedImage = await image.readAsBytes();
-      final imageInfo = await decodeImageFromList(decodedImage);
+      final imageInfo = await img.decodeImage(decodedImage);
       if (mounted) {
         setState(() {
           imageSizes[widget.imagePaths[index]] = Size(
-            imageInfo.width.toDouble(),
+            imageInfo!.width.toDouble(),
             imageInfo.height.toDouble(),
           );
         });
@@ -197,7 +202,21 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
         } else {
           resultList.add({'disease': 'Unknown', 'confidence': null});
         }
-        images.add({'imageUrl': supabaseImageUrls[i], 'results': resultList});
+
+        // Get actual image dimensions for accurate offline bounding box positioning
+        final imageFile = File(widget.imagePaths[i]);
+        final imageBytes = await imageFile.readAsBytes();
+        final imageInfo = await img.decodeImage(imageBytes);
+        final imageWidth = imageInfo!.width.toDouble();
+        final imageHeight = imageInfo.height.toDouble();
+
+        // Save network URL and dimensions for proper caching
+        images.add({
+          'imageUrl': supabaseImageUrls[i],
+          'imageWidth': imageWidth, // Add actual image width
+          'imageHeight': imageHeight, // Add actual image height
+          'results': resultList,
+        });
       }
       sessions.add({
         'sessionId': sessionId,
@@ -221,7 +240,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
             'userName': fullName,
             'status': 'pending',
             'submittedAt': now,
-            'images': images,
+            'images': images, // This now includes both imageUrl and imagePath
             'diseaseSummary':
                 diseaseCounts
                     .map((e) => {'name': e['name'], 'count': e['count']})

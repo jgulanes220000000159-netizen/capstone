@@ -285,46 +285,110 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                                   fit: BoxFit.contain,
                                 ),
                                 if (_showBoundingBoxes && detections.isNotEmpty)
-                                  FutureBuilder<Size>(
-                                    future: _getImageSize(
-                                      imageUrl != null && imageUrl.isNotEmpty
-                                          ? NetworkImage(imageUrl)
-                                          : FileImage(File(imagePath)),
-                                    ),
-                                    builder: (context, snapshot) {
-                                      if (!snapshot.hasData) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      final imageSize = snapshot.data!;
-                                      return CustomPaint(
-                                        painter: DetectionPainter(
-                                          results:
-                                              detections
-                                                  .where(
-                                                    (d) =>
-                                                        d['boundingBox'] !=
-                                                        null,
-                                                  )
-                                                  .map(
-                                                    (d) => DetectionResult(
-                                                      label: d['disease'],
-                                                      confidence:
-                                                          d['confidence'],
-                                                      boundingBox: Rect.fromLTRB(
-                                                        d['boundingBox']['left'],
-                                                        d['boundingBox']['top'],
-                                                        d['boundingBox']['right'],
-                                                        d['boundingBox']['bottom'],
+                                  Builder(
+                                    builder: (context) {
+                                      // Try to get stored image dimensions for fast loading
+                                      final storedImageWidth =
+                                          image['imageWidth'] as num?;
+                                      final storedImageHeight =
+                                          image['imageHeight'] as num?;
+
+                                      if (storedImageWidth != null &&
+                                          storedImageHeight != null) {
+                                        // Use stored dimensions for instant loading
+                                        final imageSize = Size(
+                                          storedImageWidth.toDouble(),
+                                          storedImageHeight.toDouble(),
+                                        );
+                                        print(
+                                          '🔍 Expert Dialog Fast mode: Using stored dimensions ${imageSize.width}x${imageSize.height}',
+                                        );
+
+                                        return CustomPaint(
+                                          painter: DetectionPainter(
+                                            results:
+                                                detections
+                                                    .where(
+                                                      (d) =>
+                                                          d['boundingBox'] !=
+                                                          null,
+                                                    )
+                                                    .map(
+                                                      (d) => DetectionResult(
+                                                        label: d['disease'],
+                                                        confidence:
+                                                            d['confidence'],
+                                                        boundingBox: Rect.fromLTRB(
+                                                          d['boundingBox']['left'],
+                                                          d['boundingBox']['top'],
+                                                          d['boundingBox']['right'],
+                                                          d['boundingBox']['bottom'],
+                                                        ),
                                                       ),
-                                                    ),
-                                                  )
-                                                  .toList(),
-                                          originalImageSize: imageSize,
-                                          displayedImageSize: imageSize,
-                                          displayedImageOffset: Offset.zero,
-                                        ),
-                                        size: imageSize,
-                                      );
+                                                    )
+                                                    .toList(),
+                                            originalImageSize: imageSize,
+                                            displayedImageSize: imageSize,
+                                            displayedImageOffset: Offset.zero,
+                                          ),
+                                          size: imageSize,
+                                        );
+                                      } else {
+                                        // Fallback to slow method for old data
+                                        return FutureBuilder<Size>(
+                                          future: _getImageSize(
+                                            imageUrl != null &&
+                                                    imageUrl.isNotEmpty
+                                                ? NetworkImage(imageUrl)
+                                                : FileImage(File(imagePath)),
+                                          ),
+                                          builder: (context, snapshot) {
+                                            if (!snapshot.hasData) {
+                                              print(
+                                                '🔍 Expert Dialog: No image size data, hiding bounding boxes',
+                                              );
+                                              return const SizedBox.shrink();
+                                            }
+                                            final imageSize = snapshot.data!;
+                                            print(
+                                              '🔍 Expert Dialog Slow mode: Image size loaded from network ${imageSize.width}x${imageSize.height}',
+                                            );
+
+                                            return CustomPaint(
+                                              painter: DetectionPainter(
+                                                results:
+                                                    detections
+                                                        .where(
+                                                          (d) =>
+                                                              d['boundingBox'] !=
+                                                              null,
+                                                        )
+                                                        .map(
+                                                          (
+                                                            d,
+                                                          ) => DetectionResult(
+                                                            label: d['disease'],
+                                                            confidence:
+                                                                d['confidence'],
+                                                            boundingBox: Rect.fromLTRB(
+                                                              d['boundingBox']['left'],
+                                                              d['boundingBox']['top'],
+                                                              d['boundingBox']['right'],
+                                                              d['boundingBox']['bottom'],
+                                                            ),
+                                                          ),
+                                                        )
+                                                        .toList(),
+                                                originalImageSize: imageSize,
+                                                displayedImageSize: imageSize,
+                                                displayedImageOffset:
+                                                    Offset.zero,
+                                              ),
+                                              size: imageSize,
+                                            );
+                                          },
+                                        );
+                                      }
                                     },
                                   ),
                                 Positioned(
@@ -356,83 +420,145 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                     ),
                   ),
                   if (_showBoundingBoxes && detections.isNotEmpty)
-                    FutureBuilder<Size>(
-                      future: _getImageSize(
-                        imageUrl != null && imageUrl.isNotEmpty
-                            ? NetworkImage(imageUrl)
-                            : FileImage(File(imagePath)),
-                      ),
-                      builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return const SizedBox.shrink();
-                        }
-                        final imageSize = snapshot.data!;
-                        return LayoutBuilder(
-                          builder: (context, constraints) {
-                            // Calculate the actual displayed image size
-                            final imgW = imageSize.width;
-                            final imgH = imageSize.height;
-                            final widgetW = constraints.maxWidth;
-                            final widgetH = constraints.maxHeight;
+                    Builder(
+                      builder: (context) {
+                        // Try to get stored image dimensions for fast loading
+                        final storedImageWidth = image['imageWidth'] as num?;
+                        final storedImageHeight = image['imageHeight'] as num?;
 
-                            // Calculate scale and offset for BoxFit.cover
-                            final scale =
-                                imgW / imgH > widgetW / widgetH
-                                    ? widgetH /
-                                        imgH // Height constrained
-                                    : widgetW / imgW; // Width constrained
+                        if (storedImageWidth != null &&
+                            storedImageHeight != null) {
+                          // Use stored dimensions for instant loading
+                          final imageSize = Size(
+                            storedImageWidth.toDouble(),
+                            storedImageHeight.toDouble(),
+                          );
+                          print(
+                            '🔍 Expert Grid Fast mode: Using stored dimensions ${imageSize.width}x${imageSize.height}',
+                          );
 
-                            final scaledW = imgW * scale;
-                            final scaledH = imgH * scale;
-                            final dx = (widgetW - scaledW) / 2;
-                            final dy = (widgetH - scaledH) / 2;
+                          return LayoutBuilder(
+                            builder: (context, constraints) {
+                              // Calculate the actual displayed image size
+                              final imgW = imageSize.width;
+                              final imgH = imageSize.height;
+                              final widgetW = constraints.maxWidth;
+                              final widgetH = constraints.maxHeight;
 
-                            return CustomPaint(
-                              painter: DetectionPainter(
-                                results:
-                                    detections
-                                        .map((d) {
-                                          if (d == null ||
-                                              d['disease'] == null ||
-                                              d['confidence'] == null ||
-                                              d['boundingBox'] == null ||
-                                              d['boundingBox']['left'] ==
-                                                  null ||
-                                              d['boundingBox']['top'] == null ||
-                                              d['boundingBox']['right'] ==
-                                                  null ||
-                                              d['boundingBox']['bottom'] ==
-                                                  null) {
-                                            return null;
-                                          }
-                                          return DetectionResult(
-                                            label: d['disease'].toString(),
-                                            confidence:
-                                                (d['confidence'] as num)
-                                                    .toDouble(),
-                                            boundingBox: Rect.fromLTRB(
-                                              (d['boundingBox']['left'] as num)
-                                                  .toDouble(),
-                                              (d['boundingBox']['top'] as num)
-                                                  .toDouble(),
-                                              (d['boundingBox']['right'] as num)
-                                                  .toDouble(),
-                                              (d['boundingBox']['bottom']
-                                                      as num)
-                                                  .toDouble(),
+                              // Calculate scale and offset for BoxFit.cover
+                              final scale =
+                                  imgW / imgH > widgetW / widgetH
+                                      ? widgetH /
+                                          imgH // Height constrained
+                                      : widgetW / imgW; // Width constrained
+
+                              final scaledW = imgW * scale;
+                              final scaledH = imgH * scale;
+                              final dx = (widgetW - scaledW) / 2;
+                              final dy = (widgetH - scaledH) / 2;
+
+                              return CustomPaint(
+                                painter: DetectionPainter(
+                                  results:
+                                      detections
+                                          .where(
+                                            (d) => d['boundingBox'] != null,
+                                          )
+                                          .map(
+                                            (d) => DetectionResult(
+                                              label: d['disease'],
+                                              confidence: d['confidence'],
+                                              boundingBox: Rect.fromLTRB(
+                                                d['boundingBox']['left'],
+                                                d['boundingBox']['top'],
+                                                d['boundingBox']['right'],
+                                                d['boundingBox']['bottom'],
+                                              ),
                                             ),
-                                          );
-                                        })
-                                        .whereType<DetectionResult>()
-                                        .toList(),
-                                originalImageSize: imageSize,
-                                displayedImageSize: Size(scaledW, scaledH),
-                                displayedImageOffset: Offset(dx, dy),
-                              ),
-                              size: Size(widgetW, widgetH),
-                            );
-                          },
-                        );
+                                          )
+                                          .toList(),
+                                  originalImageSize: imageSize,
+                                  displayedImageSize: Size(scaledW, scaledH),
+                                  displayedImageOffset: Offset(dx, dy),
+                                ),
+                                size: Size(widgetW, widgetH),
+                              );
+                            },
+                          );
+                        } else {
+                          // Fallback to slow method for old data
+                          return FutureBuilder<Size>(
+                            future: _getImageSize(
+                              imageUrl != null && imageUrl.isNotEmpty
+                                  ? NetworkImage(imageUrl)
+                                  : FileImage(File(imagePath)),
+                            ),
+                            builder: (context, snapshot) {
+                              if (!snapshot.hasData) {
+                                print(
+                                  '🔍 Expert Grid: No image size data, hiding bounding boxes',
+                                );
+                                return const SizedBox.shrink();
+                              }
+                              final imageSize = snapshot.data!;
+                              print(
+                                '🔍 Expert Grid Slow mode: Image size loaded from network ${imageSize.width}x${imageSize.height}',
+                              );
+
+                              return LayoutBuilder(
+                                builder: (context, constraints) {
+                                  // Calculate the actual displayed image size
+                                  final imgW = imageSize.width;
+                                  final imgH = imageSize.height;
+                                  final widgetW = constraints.maxWidth;
+                                  final widgetH = constraints.maxHeight;
+
+                                  // Calculate scale and offset for BoxFit.cover
+                                  final scale =
+                                      imgW / imgH > widgetW / widgetH
+                                          ? widgetH /
+                                              imgH // Height constrained
+                                          : widgetW / imgW; // Width constrained
+
+                                  final scaledW = imgW * scale;
+                                  final scaledH = imgH * scale;
+                                  final dx = (widgetW - scaledW) / 2;
+                                  final dy = (widgetH - scaledH) / 2;
+
+                                  return CustomPaint(
+                                    painter: DetectionPainter(
+                                      results:
+                                          detections
+                                              .where(
+                                                (d) => d['boundingBox'] != null,
+                                              )
+                                              .map(
+                                                (d) => DetectionResult(
+                                                  label: d['disease'],
+                                                  confidence: d['confidence'],
+                                                  boundingBox: Rect.fromLTRB(
+                                                    d['boundingBox']['left'],
+                                                    d['boundingBox']['top'],
+                                                    d['boundingBox']['right'],
+                                                    d['boundingBox']['bottom'],
+                                                  ),
+                                                ),
+                                              )
+                                              .toList(),
+                                      originalImageSize: imageSize,
+                                      displayedImageSize: Size(
+                                        scaledW,
+                                        scaledH,
+                                      ),
+                                      displayedImageOffset: Offset(dx, dy),
+                                    ),
+                                    size: Size(widgetW, widgetH),
+                                  );
+                                },
+                              );
+                            },
+                          );
+                        }
                       },
                     ),
                   Positioned(
