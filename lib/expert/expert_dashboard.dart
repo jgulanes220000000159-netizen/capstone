@@ -112,7 +112,25 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(getTitle()), backgroundColor: Colors.green),
+      appBar: AppBar(
+        elevation: 2,
+        backgroundColor: Colors.green[700],
+        foregroundColor: Colors.white,
+        title: Row(
+          children: [
+            // Logo
+            ClipOval(
+              child: Image.asset('assets/logo.png', height: 32, width: 32),
+            ),
+            const SizedBox(width: 12),
+            // Single title
+            Text(
+              getTitle(),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ),
       body:
           _pages.isNotEmpty
               ? _pages[_selectedIndex]

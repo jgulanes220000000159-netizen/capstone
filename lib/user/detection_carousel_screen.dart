@@ -355,17 +355,29 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
       );
     }
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 360;
+
     final overallResults = _getOverallResults();
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('Analysis Results'),
-        centerTitle: true,
+        title: Text(
+          'Analysis Results',
+          style: TextStyle(
+            fontSize: isSmallScreen ? 14 : 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        centerTitle: false,
         backgroundColor: Colors.green,
         elevation: 0,
         actions: [
+          if (!isSmallScreen) const SizedBox(width: 8),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            padding: EdgeInsets.symmetric(
+              horizontal: isSmallScreen ? 4.0 : 8.0,
+            ),
             child: Ink(
               decoration: BoxDecoration(
                 color: showBoundingBoxes ? Colors.green[700] : Colors.grey[300],
@@ -377,7 +389,11 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
                     showBoundingBoxes = !showBoundingBoxes;
                   });
                 },
-                icon: Icon(Icons.visibility, color: Colors.white),
+                icon: Icon(
+                  Icons.visibility,
+                  color: Colors.white,
+                  size: isSmallScreen ? 20 : 24,
+                ),
                 tooltip:
                     showBoundingBoxes
                         ? 'Hide Bounding Boxes'
@@ -385,21 +401,27 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
               ),
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.summarize),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder:
-                      (context) => AnalysisSummaryScreen(
-                        allResults: _resultsCache,
-                        imagePaths: widget.imagePaths,
-                      ),
-                ),
-              );
-            },
+          Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: isSmallScreen ? 4.0 : 8.0,
+            ),
+            child: IconButton(
+              icon: Icon(Icons.send, size: isSmallScreen ? 20 : 24),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder:
+                        (context) => AnalysisSummaryScreen(
+                          allResults: _resultsCache,
+                          imagePaths: widget.imagePaths,
+                        ),
+                  ),
+                );
+              },
+            ),
           ),
+          if (!isSmallScreen) const SizedBox(width: 8),
         ],
       ),
       body: Column(

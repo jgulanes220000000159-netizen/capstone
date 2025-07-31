@@ -33,6 +33,75 @@ class _HomePageState extends State<HomePage> {
   // Disease information (now loaded from Firestore and cached in Hive)
   Map<String, Map<String, dynamic>> _diseaseInfo = {};
 
+  // Quick overview state
+  int _pendingRequests = 0;
+  int _completedRequests = 0;
+  bool _loadingRequests = true;
+
+  // Cache request counts to Hive for offline access
+  Future<void> _cacheRequestCounts(int pending, int completed) async {
+    try {
+      final box = await Hive.openBox('requestCountsBox');
+      await box.put('pendingCount', pending);
+      await box.put('completedCount', completed);
+      await box.put('lastUpdated', DateTime.now().toIso8601String());
+    } catch (e) {
+      print('Error caching request counts to Hive: $e');
+    }
+  }
+
+  // Load cached request counts from Hive for offline access
+  Future<Map<String, int>> _loadCachedRequestCounts() async {
+    try {
+      final box = await Hive.openBox('requestCountsBox');
+      final pending = box.get('pendingCount', defaultValue: 0);
+      final completed = box.get('completedCount', defaultValue: 0);
+      return {'pending': pending, 'completed': completed};
+    } catch (e) {
+      print('Error loading cached request counts: $e');
+    }
+    return {'pending': 0, 'completed': 0};
+  }
+
+  Future<void> _loadRequestCounts() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final query =
+          await FirebaseFirestore.instance
+              .collection('scan_requests')
+              .where('userId', isEqualTo: user.uid)
+              .get();
+
+      int pending = 0;
+      int completed = 0;
+      for (var doc in query.docs) {
+        final status = doc['status'];
+        if (status == 'pending') pending++;
+        if (status == 'completed') completed++;
+      }
+
+      // Cache the counts for offline access
+      await _cacheRequestCounts(pending, completed);
+
+      setState(() {
+        _pendingRequests = pending;
+        _completedRequests = completed;
+        _loadingRequests = false;
+      });
+    } catch (e) {
+      print('Error loading from Firestore: $e');
+      // Fallback to cached data
+      final cachedCounts = await _loadCachedRequestCounts();
+      setState(() {
+        _pendingRequests = cachedCounts['pending'] ?? 0;
+        _completedRequests = cachedCounts['completed'] ?? 0;
+        _loadingRequests = false;
+      });
+    }
+  }
+
   final List<Widget> _pages = [
     // Home
     Container(), // Placeholder for home content
@@ -140,6 +209,148 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       print('Error fetching disease info: $e');
     }
+  }
+
+  Widget _buildQuickOverviewCard() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const SizedBox.shrink();
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream:
+          FirebaseFirestore.instance
+              .collection('scan_requests')
+              .where('userId', isEqualTo: user.uid)
+              .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (snapshot.hasError) {
+          // Fallback to cached data when offline
+          return FutureBuilder<Map<String, int>>(
+            future: _loadCachedRequestCounts(),
+            builder: (context, cachedSnapshot) {
+              if (cachedSnapshot.hasData) {
+                final cachedCounts = cachedSnapshot.data!;
+                return _buildOverviewCardContent(
+                  cachedCounts['pending'] ?? 0,
+                  cachedCounts['completed'] ?? 0,
+                  isOffline: true,
+                );
+              }
+              return _buildOverviewCardContent(0, 0, isOffline: true);
+            },
+          );
+        }
+
+        final docs = snapshot.data?.docs ?? [];
+        int pending = 0;
+        int completed = 0;
+        for (var doc in docs) {
+          final status = doc['status'];
+          if (status == 'pending') pending++;
+          if (status == 'completed') completed++;
+        }
+
+        // Cache the counts for offline access
+        _cacheRequestCounts(pending, completed);
+
+        return _buildOverviewCardContent(pending, completed, isOffline: false);
+      },
+    );
+  }
+
+  Widget _buildOverviewCardContent(
+    int pending,
+    int completed, {
+    bool isOffline = false,
+  }) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            if (isOffline)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.wifi_off, color: Colors.orange, size: 12),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Offline - Cached data',
+                      style: TextStyle(
+                        color: Colors.orange[700],
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    children: [
+                      Icon(Icons.pending, color: Colors.orange, size: 32),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Pending',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        '$pending',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.green, size: 32),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Completed',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      Text(
+                        '$completed',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _selectFromGallery(BuildContext context) async {
@@ -346,6 +557,8 @@ class _HomePageState extends State<HomePage> {
                                     ),
                                   ),
                                 ),
+                                // Quick Overview Card
+                                _buildQuickOverviewCard(),
                                 const SizedBox(height: 16),
                                 // Diseases section
                                 Padding(
@@ -412,6 +625,7 @@ class _HomePageState extends State<HomePage> {
                   _selectedIndex = index;
                 });
               },
+              type: BottomNavigationBarType.fixed,
               selectedItemColor: Colors.green,
               unselectedItemColor: Colors.grey,
               items: [
@@ -445,7 +659,7 @@ class _HomePageState extends State<HomePage> {
                             ),
                             child: Center(
                               child: Text(
-                                '$_pendingCount',
+                                _pendingCount > 9 ? '9+' : '$_pendingCount',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 13,

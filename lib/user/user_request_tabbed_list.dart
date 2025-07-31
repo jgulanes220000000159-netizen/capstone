@@ -338,6 +338,58 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
               ),
             ),
             _buildSearchBar(),
+            // Quick Overview Section
+            Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    spreadRadius: 1,
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Quick Overview',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildOverviewCard(
+                          'Pending',
+                          pending.length.toString(),
+                          Colors.orange,
+                          Icons.pending,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildOverviewCard(
+                          'Completed',
+                          completed.length.toString(),
+                          Colors.green,
+                          Icons.check_circle,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             Container(
               color: Colors.green,
               child: TabBar(
@@ -401,6 +453,45 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildOverviewCard(
+    String title,
+    String count,
+    Color color,
+    IconData icon,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 32),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            count,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
