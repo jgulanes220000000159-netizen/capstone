@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'tracking_models.dart';
 import 'tracking_chart.dart';
 
@@ -39,6 +40,25 @@ class _TrackingPageState extends State<TrackingPage> {
   Future<void> _saveSelectedRangeIndex(int idx) async {
     final box = await Hive.openBox('trackingBox');
     await box.put('selectedRangeIndex', idx);
+  }
+
+  String _getTimeRangeLabel(int index) {
+    switch (index) {
+      case 0:
+        return tr('show_everything');
+      case 1:
+        return tr('last_7_days');
+      case 2:
+        return tr('last_30_days');
+      case 3:
+        return tr('last_60_days');
+      case 4:
+        return tr('last_90_days');
+      case 5:
+        return tr('last_year');
+      default:
+        return tr('show_everything');
+    }
   }
 
   Future<List<Map<String, dynamic>>> _loadSessionsWithFallback(
@@ -124,7 +144,7 @@ class _TrackingPageState extends State<TrackingPage> {
               children: [
                 Expanded(
                   child: Text(
-                    'Session Details',
+                    tr('session_details'),
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 ),
@@ -155,7 +175,7 @@ class _TrackingPageState extends State<TrackingPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Date: ${session['date'] != null ? DateFormat('MMM d, yyyy – h:mma').format(DateTime.parse(session['date'])) : 'Unknown'}',
+                      '${tr('date')} ${session['date'] != null ? DateFormat('MMM d, yyyy – h:mma').format(DateTime.parse(session['date'])) : tr('unknown')}',
                       style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
@@ -163,7 +183,10 @@ class _TrackingPageState extends State<TrackingPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${images.length} image(s)',
+                      tr(
+                        'image_count',
+                        namedArgs: {'count': images.length.toString()},
+                      ),
                       style: const TextStyle(fontSize: 14),
                     ),
                     // Show expert review if available
@@ -191,9 +214,9 @@ class _TrackingPageState extends State<TrackingPage> {
                                   size: 20,
                                 ),
                                 const SizedBox(width: 8),
-                                const Text(
-                                  'Expert Review',
-                                  style: TextStyle(
+                                Text(
+                                  tr('expert_review'),
+                                  style: const TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
                                     color: Colors.green,
@@ -205,7 +228,10 @@ class _TrackingPageState extends State<TrackingPage> {
                                 expertName.isNotEmpty) ...[
                               const SizedBox(height: 4),
                               Text(
-                                'Reviewed by: $expertName',
+                                tr(
+                                  'reviewed_by',
+                                  namedArgs: {'name': expertName ?? ''},
+                                ),
                                 style: TextStyle(
                                   fontSize: 14,
                                   color: Colors.grey[600],
@@ -214,9 +240,9 @@ class _TrackingPageState extends State<TrackingPage> {
                             ],
                             if (expertReview['comment'] != null) ...[
                               const SizedBox(height: 8),
-                              const Text(
-                                'Comment:',
-                                style: TextStyle(
+                              Text(
+                                tr('comment'),
+                                style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -229,9 +255,9 @@ class _TrackingPageState extends State<TrackingPage> {
                             ],
                             if (expertReview['treatmentPlan'] != null) ...[
                               const SizedBox(height: 12),
-                              const Text(
-                                'Treatment Plan:',
-                                style: TextStyle(
+                              Text(
+                                tr('treatment_plan'),
+                                style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
                                 ),
@@ -242,7 +268,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                 for (var rec
                                     in expertReview['treatmentPlan']['recommendations']) ...[
                                   Text(
-                                    '• ${rec['treatment'] ?? 'No treatment specified'}',
+                                    '• ${rec['treatment'] ?? tr('no_treatment_specified')}',
                                     style: const TextStyle(fontSize: 14),
                                   ),
                                 ],
@@ -251,7 +277,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                   null) ...[
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Precautions: ${expertReview['treatmentPlan']['precautions']}',
+                                  '${tr('precautions')} ${expertReview['treatmentPlan']['precautions']}',
                                   style: const TextStyle(fontSize: 14),
                                 ),
                               ],
@@ -301,9 +327,11 @@ class _TrackingPageState extends State<TrackingPage> {
                                   ),
                                 ),
                               const SizedBox(height: 8),
-                              const Text(
-                                'Results:',
-                                style: TextStyle(fontWeight: FontWeight.bold),
+                              Text(
+                                tr('results'),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                               ...((images[idx]['results'] as List?) ?? []).map((
                                 res,
@@ -334,7 +362,7 @@ class _TrackingPageState extends State<TrackingPage> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Close'),
+                child: Text(tr('close')),
               ),
             ],
           ),
@@ -347,7 +375,7 @@ class _TrackingPageState extends State<TrackingPage> {
     final userProfile = userBox.get('userProfile');
     final userId = userProfile?['userId'];
     if (userId == null) {
-      return const Center(child: Text('Not logged in'));
+      return Center(child: Text(tr('not_logged_in')));
     }
 
     // Real-time streams for tracking and pending scan_requests
@@ -380,13 +408,16 @@ class _TrackingPageState extends State<TrackingPage> {
                 children: [
                   const Icon(Icons.wifi_off, size: 64, color: Colors.grey),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Offline Mode',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  Text(
+                    tr('offline_mode'),
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Showing cached data',
+                    tr('showing_cached_data'),
                     style: TextStyle(color: Colors.grey[600], fontSize: 16),
                   ),
                 ],
@@ -408,13 +439,16 @@ class _TrackingPageState extends State<TrackingPage> {
                     color: Colors.grey,
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'No tracked scans yet',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                  Text(
+                    tr('no_tracked_scans'),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Start scanning to see your farm health data here',
+                    tr('start_scanning_message'),
                     style: TextStyle(color: Colors.grey[600]),
                   ),
                 ],
@@ -468,7 +502,7 @@ class _TrackingPageState extends State<TrackingPage> {
         return Scaffold(
           body:
               filteredSessions.isEmpty
-                  ? Center(child: Text('No tracked scans yet.'))
+                  ? Center(child: Text(tr('no_tracked_scans')))
                   : SingleChildScrollView(
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
@@ -504,9 +538,9 @@ class _TrackingPageState extends State<TrackingPage> {
                                   color: Colors.green[700],
                                 ),
                                 const SizedBox(width: 12),
-                                const Text(
-                                  'Time Range:',
-                                  style: TextStyle(
+                                Text(
+                                  tr('time_range'),
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.w600,
                                     fontSize: 16,
                                   ),
@@ -522,8 +556,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                       (i) => DropdownMenuItem(
                                         value: i,
                                         child: Text(
-                                          TrackingModels.timeRanges[i]['label']
-                                              as String,
+                                          _getTimeRangeLabel(i),
                                           style: const TextStyle(fontSize: 15),
                                         ),
                                       ),
@@ -585,7 +618,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'Farm Health Summary',
+                                          tr('farm_health_summary'),
                                           style: TextStyle(
                                             fontSize: 18,
                                             fontWeight: FontWeight.bold,
@@ -594,7 +627,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
-                                          '${TrackingModels.timeRanges[_selectedRangeIndex]['label']}: $healthyPercent% healthy, $diseasedPercent% diseased.',
+                                          '${_getTimeRangeLabel(_selectedRangeIndex)}: $healthyPercent% healthy, $diseasedPercent% diseased.',
                                           style: TextStyle(
                                             fontSize: 15,
                                             fontWeight: FontWeight.w500,
@@ -603,7 +636,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          'Keep tracking your farm health!',
+                                          tr('keep_tracking_message'),
                                           style: TextStyle(
                                             fontSize: 13,
                                             color: Colors.green[600],
@@ -619,7 +652,7 @@ class _TrackingPageState extends State<TrackingPage> {
                           ),
                           // Trend Bar Chart
                           Text(
-                            'Farm Health Trend',
+                            tr('farm_health_trend'),
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                           const SizedBox(height: 8),
@@ -638,9 +671,7 @@ class _TrackingPageState extends State<TrackingPage> {
                             ),
                             child:
                                 chartData.isEmpty
-                                    ? const Center(
-                                      child: Text('Not enough data for chart.'),
-                                    )
+                                    ? Center(child: Text(tr('not_enough_data')))
                                     : LineChart(
                                       LineChartData(
                                         minY: 0,
@@ -868,12 +899,20 @@ class _TrackingPageState extends State<TrackingPage> {
                           ),
                           const SizedBox(height: 32),
                           Text(
-                            'History',
+                            tr('history'),
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Scans from \'${TrackingModels.timeRanges[_selectedRangeIndex]['label']}\'',
+                            tr(
+                              'scans_from_period',
+                              namedArgs: {
+                                'period':
+                                    TrackingModels
+                                            .timeRanges[_selectedRangeIndex]['label']
+                                        as String,
+                              },
+                            ),
                             style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(fontWeight: FontWeight.bold),
                           ),
@@ -927,8 +966,17 @@ class _TrackingPageState extends State<TrackingPage> {
                                             fit: BoxFit.cover,
                                           )
                                           : const Icon(Icons.image, size: 56),
-                                  title: Text('Session: $date'),
-                                  subtitle: Text('${images.length} image(s)'),
+                                  title: Text(
+                                    tr('session', namedArgs: {'date': date}),
+                                  ),
+                                  subtitle: Text(
+                                    tr(
+                                      'image_count',
+                                      namedArgs: {
+                                        'count': images.length.toString(),
+                                      },
+                                    ),
+                                  ),
                                   trailing: Container(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 10,
@@ -961,11 +1009,13 @@ class _TrackingPageState extends State<TrackingPage> {
                                               context: context,
                                               builder:
                                                   (context) => AlertDialog(
-                                                    title: const Text(
-                                                      'Delete Session',
+                                                    title: Text(
+                                                      tr('delete_session'),
                                                     ),
-                                                    content: const Text(
-                                                      'Are you sure you want to delete this session? This action cannot be undone.',
+                                                    content: Text(
+                                                      tr(
+                                                        'delete_session_confirm',
+                                                      ),
                                                     ),
                                                     actions: [
                                                       TextButton(
@@ -973,8 +1023,8 @@ class _TrackingPageState extends State<TrackingPage> {
                                                             () => Navigator.of(
                                                               context,
                                                             ).pop(false),
-                                                        child: const Text(
-                                                          'Cancel',
+                                                        child: Text(
+                                                          tr('cancel'),
                                                         ),
                                                       ),
                                                       TextButton(
@@ -982,11 +1032,13 @@ class _TrackingPageState extends State<TrackingPage> {
                                                             () => Navigator.of(
                                                               context,
                                                             ).pop(true),
-                                                        child: const Text(
-                                                          'Delete',
-                                                          style: TextStyle(
-                                                            color: Colors.red,
-                                                          ),
+                                                        child: Text(
+                                                          tr('delete'),
+                                                          style:
+                                                              const TextStyle(
+                                                                color:
+                                                                    Colors.red,
+                                                              ),
                                                         ),
                                                       ),
                                                     ],
@@ -1062,8 +1114,12 @@ class _TrackingPageState extends State<TrackingPage> {
                                                     SnackBar(
                                                       content: Text(
                                                         imageDeleteError
-                                                            ? 'Session deleted, but some images could not be removed from storage.'
-                                                            : 'Session deleted successfully!',
+                                                            ? tr(
+                                                              'session_deleted_with_errors',
+                                                            )
+                                                            : tr(
+                                                              'session_deleted',
+                                                            ),
                                                       ),
                                                       backgroundColor:
                                                           imageDeleteError
@@ -1079,7 +1135,10 @@ class _TrackingPageState extends State<TrackingPage> {
                                                   ).showSnackBar(
                                                     SnackBar(
                                                       content: Text(
-                                                        'Failed to delete session: $e',
+                                                        tr(
+                                                          'failed_to_delete_session',
+                                                          args: [e.toString()],
+                                                        ),
                                                       ),
                                                       backgroundColor:
                                                           Colors.red,

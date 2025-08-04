@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 class TrackingModels {
   // Use the same color mapping as DetectionPainter
@@ -38,17 +39,17 @@ class TrackingModels {
   static String getSourceDisplayText(String? source) {
     switch (source) {
       case 'expert_review':
-        return 'Reviewing';
+        return tr('reviewing');
       case 'completed':
-        return 'Completed';
+        return tr('completed');
       case 'reviewed':
-        return 'Reviewed';
+        return tr('reviewed');
       case 'pending':
-        return 'Pending';
+        return tr('pending');
       case 'pending_review':
-        return 'Pending Review';
+        return tr('pending_review');
       default:
-        return 'Tracking';
+        return tr('tracking');
     }
   }
 
