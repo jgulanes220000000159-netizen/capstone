@@ -37,6 +37,12 @@ class _ExpertProfileState extends State<ExpertProfile> {
     super.initState();
     _loadUserData();
     _saveFcmTokenToFirestore();
+    try {
+      final settingsBox = Hive.box('settings');
+      final enabled =
+          settingsBox.get('enableNotifications', defaultValue: true) as bool;
+      _notificationsEnabled = enabled;
+    } catch (_) {}
   }
 
   @override
@@ -895,14 +901,39 @@ class _ExpertProfileState extends State<ExpertProfile> {
                                   setState(() {
                                     _notificationsEnabled = value;
                                   });
+                                  // Persist locally
+                                  try {
+                                    final settingsBox = await Hive.openBox(
+                                      'settings',
+                                    );
+                                    await settingsBox.put(
+                                      'enableNotifications',
+                                      value,
+                                    );
+                                  } catch (_) {}
+                                  // Mirror to Firestore for backend gating
                                   final user =
                                       FirebaseAuth.instance.currentUser;
                                   if (user != null) {
-                                    await FirebaseFirestore.instance
-                                        .collection('users')
-                                        .doc(user.uid)
-                                        .update({'enableNotifications': value});
+                                    try {
+                                      await FirebaseFirestore.instance
+                                          .collection('users')
+                                          .doc(user.uid)
+                                          .update({
+                                            'enableNotifications': value,
+                                          });
+                                    } catch (_) {}
                                   }
+                                  // Apply topic change immediately
+                                  try {
+                                    if (value) {
+                                      await FirebaseMessaging.instance
+                                          .subscribeToTopic('experts');
+                                    } else {
+                                      await FirebaseMessaging.instance
+                                          .unsubscribeFromTopic('experts');
+                                    }
+                                  } catch (_) {}
                                 },
                                 title: const Text('Enable Notifications'),
                                 secondary: const Icon(

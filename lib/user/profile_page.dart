@@ -38,6 +38,11 @@ class _ProfilePageState extends State<ProfilePage> {
     super.initState();
     _loadUserData();
     _loadTotalScanCount();
+    try {
+      final settingsBox = Hive.box('settings');
+      _notificationsEnabled =
+          settingsBox.get('enableNotifications', defaultValue: true) as bool;
+    } catch (_) {}
   }
 
   Future<void> _loadUserData() async {
@@ -805,11 +810,33 @@ class _ProfilePageState extends State<ProfilePage> {
                               ),
                               SwitchListTile(
                                 value: _notificationsEnabled,
-                                onChanged: (value) {
+                                onChanged: (value) async {
                                   setState(() {
                                     _notificationsEnabled = value;
                                   });
-                                  // TODO: Save this preference persistently if needed
+                                  // Persist locally
+                                  try {
+                                    final settingsBox = await Hive.openBox(
+                                      'settings',
+                                    );
+                                    await settingsBox.put(
+                                      'enableNotifications',
+                                      value,
+                                    );
+                                  } catch (_) {}
+                                  // Mirror to Firestore for backend gating
+                                  try {
+                                    final user =
+                                        FirebaseAuth.instance.currentUser;
+                                    if (user != null) {
+                                      await FirebaseFirestore.instance
+                                          .collection('users')
+                                          .doc(user.uid)
+                                          .update({
+                                            'enableNotifications': value,
+                                          });
+                                    }
+                                  } catch (_) {}
                                 },
                                 title: Text(tr('enable_notifications')),
                                 secondary: const Icon(

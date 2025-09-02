@@ -124,6 +124,25 @@ class CapstoneApp extends StatelessWidget {
       }
     }
 
+    // Subscribe experts to topic 'experts' for broadcast notifications with local toggle
+    try {
+      final userBox = Hive.box('userBox');
+      final profile = userBox.get('userProfile') as Map?;
+      final role = profile != null ? profile['role'] as String? : null;
+      final settingsBox = Hive.box('settings');
+      final notificationsEnabled =
+          settingsBox.get('enableNotifications', defaultValue: true) as bool;
+      if (role == 'expert') {
+        if (notificationsEnabled) {
+          await FirebaseMessaging.instance.subscribeToTopic('experts');
+        } else {
+          await FirebaseMessaging.instance.unsubscribeFromTopic('experts');
+        }
+      } else {
+        await FirebaseMessaging.instance.unsubscribeFromTopic('experts');
+      }
+    } catch (_) {}
+
     // Listen for token refresh and persist
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
       final u = FirebaseAuth.instance.currentUser;
@@ -135,10 +154,34 @@ class CapstoneApp extends StatelessWidget {
               .update({'fcmToken': newToken});
         } catch (_) {}
       }
+      // Maintain topic subscription on refresh with local toggle
+      try {
+        final userBox = Hive.box('userBox');
+        final profile = userBox.get('userProfile') as Map?;
+        final role = profile != null ? profile['role'] as String? : null;
+        final settingsBox = Hive.box('settings');
+        final notificationsEnabled =
+            settingsBox.get('enableNotifications', defaultValue: true) as bool;
+        if (role == 'expert') {
+          if (notificationsEnabled) {
+            await FirebaseMessaging.instance.subscribeToTopic('experts');
+          } else {
+            await FirebaseMessaging.instance.unsubscribeFromTopic('experts');
+          }
+        } else {
+          await FirebaseMessaging.instance.unsubscribeFromTopic('experts');
+        }
+      } catch (_) {}
     });
 
-    // Foreground notification handler
+    // Foreground notification handler (respect local toggle)
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      try {
+        final settingsBox = Hive.box('settings');
+        final enabled =
+            settingsBox.get('enableNotifications', defaultValue: true) as bool;
+        if (!enabled) return;
+      } catch (_) {}
       RemoteNotification? notification = message.notification;
       AndroidNotification? android = message.notification?.android;
       if (notification != null && android != null) {

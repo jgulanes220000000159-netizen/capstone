@@ -35,24 +35,12 @@ exports.notifyExpertsOnNewRequest = functions.firestore
     const userName = data.userName || "A farmer";
     const requestId = context.params.requestId;
 
-    // Fetch expert tokens
-    const expertsSnapshot = await db
-      .collection("users")
-      .where("role", "==", "expert")
-      .get();
-
-    const tokens = [];
-    expertsSnapshot.forEach((doc) => {
-      const u = doc.data() || {};
-      if (u.fcmToken && typeof u.fcmToken === "string") tokens.push(u.fcmToken);
-    });
-
-    if (tokens.length === 0) return null;
-
     const title = "New review request";
     const body = `${userName} submitted a leaf scan for expert review.`;
 
-    const payload = {
+    // Broadcast to all expert devices via topic
+    await messaging.send({
+      topic: "experts",
       notification: {
         title,
         body,
@@ -62,9 +50,43 @@ exports.notifyExpertsOnNewRequest = functions.firestore
         requestId: String(requestId || ""),
         userName: String(userName || ""),
       },
-    };
+    });
 
-    await sendToTokens(tokens, payload);
+    return null;
+  });
+
+// Trigger 1b: When status transitions into pending/pending_review → notify experts
+exports.notifyExpertsOnPendingUpdate = functions.firestore
+  .document("scan_requests/{requestId}")
+  .onUpdate(async (change, context) => {
+    const before = change.before.data() || {};
+    const after = change.after.data() || {};
+
+    const beforeStatus = before.status || "";
+    const afterStatus = after.status || "";
+
+    const becamePending =
+      beforeStatus !== afterStatus &&
+      (afterStatus === "pending" || afterStatus === "pending_review");
+
+    if (!becamePending) return null;
+
+    const userName = after.userName || before.userName || "A farmer";
+    const requestId = context.params.requestId;
+
+    const title = "New review request";
+    const body = `${userName} submitted a leaf scan for expert review.`;
+
+    await messaging.send({
+      topic: "experts",
+      notification: { title, body },
+      data: {
+        type: "scan_request_created",
+        requestId: String(requestId || ""),
+        userName: String(userName || ""),
+      },
+    });
+
     return null;
   });
 
@@ -89,11 +111,12 @@ exports.notifyUserOnReviewCompleted = functions.firestore
     const userId = after.userId || before.userId;
     if (!userId) return null;
 
-    // Get farmer token
+    // Get farmer token and notification preference
     const userDoc = await db.collection("users").doc(userId).get();
     const user = userDoc.exists ? userDoc.data() || {} : {};
     const token = user.fcmToken;
-    if (!token) return null;
+    const enabled = user.enableNotifications;
+    if (!token || enabled === false) return null;
 
     const expertName = after.expertName || "An expert";
     const title = "Your review is ready";
