@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'scan_request_list.dart';
 import 'disease_editor.dart';
 import 'expert_profile.dart';
@@ -114,8 +115,13 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
     return Scaffold(
       appBar: AppBar(
         elevation: 2,
-        backgroundColor: Colors.green[700],
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.green,
+        foregroundColor: Colors.black,
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Colors.white,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+        ),
         title: Row(
           children: [
             // Logo
