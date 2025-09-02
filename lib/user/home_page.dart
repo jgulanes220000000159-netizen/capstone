@@ -12,6 +12,7 @@ import 'scan_page.dart';
 import '../shared/review_manager.dart';
 import 'package:hive/hive.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/services.dart';
 import 'tracking_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -440,247 +441,257 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Green header
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.green,
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(20),
-                  bottomRight: Radius.circular(20),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white,
-                        ),
-                        padding: const EdgeInsets.all(8),
-                        child: Image.asset(
-                          'assets/logo.png',
-                          width: 30,
-                          height: 30,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'MangoSense',
-                        style: TextStyle(
-                          color: Colors.yellow,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.white,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+      ),
+      child: Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Green header
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(20),
+                    bottomRight: Radius.circular(20),
                   ),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => const ProfilePage(),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                          ),
+                          padding: const EdgeInsets.all(8),
+                          child: Image.asset(
+                            'assets/logo.png',
+                            width: 30,
+                            height: 30,
+                          ),
                         ),
-                      );
-                    },
-                    child: const CircleAvatar(
-                      backgroundColor: Colors.white,
-                      child: Icon(Icons.person, color: Colors.green),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'MangoSense',
+                          style: TextStyle(
+                            color: Colors.yellow,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ProfilePage(),
+                          ),
+                        );
+                      },
+                      child: const CircleAvatar(
+                        backgroundColor: Colors.white,
+                        child: Icon(Icons.person, color: Colors.green),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            // Main content
-            Expanded(
-              child:
-                  _selectedIndex == 0
-                      ? StreamBuilder<QuerySnapshot>(
-                        stream:
-                            FirebaseFirestore.instance
-                                .collection('diseases')
-                                .snapshots(),
-                        builder: (context, snapshot) {
-                          if (!snapshot.hasData) {
-                            return const Center(
-                              child: CircularProgressIndicator(),
-                            );
-                          }
-                          final diseaseDocs = snapshot.data!.docs;
-                          final diseaseNames =
-                              diseaseDocs
-                                  .map((doc) => doc['name'] as String)
-                                  .toList();
-                          final diseaseImages = [
-                            'assets/diseases/anthracnose.jpg',
-                            'assets/diseases/backterial_blackspot1.jpg',
-                            'assets/diseases/dieback.jpg',
-                            'assets/diseases/powdery_mildew3.jpg',
-                            'assets/diseases/healthy.jpg',
-                          ];
-                          return SingleChildScrollView(
-                            physics: const BouncingScrollPhysics(),
-                            child: Column(
-                              children: [
-                                const SizedBox(height: 16),
-                                // Welcome text
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
+              // Main content
+              Expanded(
+                child:
+                    _selectedIndex == 0
+                        ? StreamBuilder<QuerySnapshot>(
+                          stream:
+                              FirebaseFirestore.instance
+                                  .collection('diseases')
+                                  .snapshots(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData) {
+                              return const Center(
+                                child: CircularProgressIndicator(),
+                              );
+                            }
+                            final diseaseDocs = snapshot.data!.docs;
+                            final diseaseNames =
+                                diseaseDocs
+                                    .map((doc) => doc['name'] as String)
+                                    .toList();
+                            final diseaseImages = [
+                              'assets/diseases/anthracnose.jpg',
+                              'assets/diseases/backterial_blackspot1.jpg',
+                              'assets/diseases/dieback.jpg',
+                              'assets/diseases/powdery_mildew3.jpg',
+                              'assets/diseases/healthy.jpg',
+                            ];
+                            return SingleChildScrollView(
+                              physics: const BouncingScrollPhysics(),
+                              child: Column(
+                                children: [
+                                  const SizedBox(height: 16),
+                                  // Welcome text
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            tr(
+                                              'good_day',
+                                              namedArgs: {'name': _userName},
+                                            ),
+                                            style: TextStyle(
+                                              fontSize: 24,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.green[700],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          tr(
-                                            'good_day',
-                                            namedArgs: {'name': _userName},
-                                          ),
-                                          style: TextStyle(
-                                            fontSize: 24,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.green[700],
-                                          ),
+                                  // Quick Overview Card
+                                  _buildQuickOverviewCard(),
+                                  const SizedBox(height: 16),
+                                  // Diseases section
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        tr('diseases'),
+                                        style: TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.grey[800],
                                         ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                // Quick Overview Card
-                                _buildQuickOverviewCard(),
-                                const SizedBox(height: 16),
-                                // Diseases section
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                  ),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      tr('diseases'),
-                                      style: TextStyle(
-                                        fontSize: 20,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.grey[800],
                                       ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(height: 8),
-                                // Disease cards (from Firestore)
-                                for (
-                                  int i = 0;
-                                  i < diseaseNames.length &&
-                                      i < diseaseImages.length;
-                                  i++
-                                )
+                                  const SizedBox(height: 8),
+                                  // Disease cards (from Firestore)
+                                  for (
+                                    int i = 0;
+                                    i < diseaseNames.length &&
+                                        i < diseaseImages.length;
+                                    i++
+                                  )
+                                    _buildDiseaseCard(
+                                      diseaseNames[i],
+                                      diseaseImages[i],
+                                    ),
+                                  const SizedBox(height: 16),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                    child: Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        tr('none_disease'),
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                   _buildDiseaseCard(
-                                    diseaseNames[i],
-                                    diseaseImages[i],
+                                    tr('healthy'),
+                                    'assets/diseases/healthy.jpg',
                                   ),
-                                const SizedBox(height: 16),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                  ),
-                                  child: Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(
-                                      tr('none_disease'),
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                _buildDiseaseCard(
-                                  tr('healthy'),
-                                  'assets/diseases/healthy.jpg',
-                                ),
-                                const SizedBox(height: 16),
-                              ],
-                            ),
-                          );
-                        },
-                      )
-                      : _pages[_selectedIndex],
-            ),
-            // Bottom navigation bar
-            BottomNavigationBar(
-              currentIndex: _selectedIndex,
-              onTap: (index) {
-                setState(() {
-                  _selectedIndex = index;
-                });
-              },
-              type: BottomNavigationBarType.fixed,
-              selectedItemColor: Colors.green,
-              unselectedItemColor: Colors.grey,
-              items: [
-                BottomNavigationBarItem(
-                  icon: const Icon(Icons.home),
-                  label: tr('home'),
-                ),
-                BottomNavigationBarItem(
-                  icon: const Icon(Icons.camera_alt),
-                  label: tr('scan'),
-                ),
-                BottomNavigationBarItem(
-                  icon: Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      const Icon(Icons.list_alt, size: 28),
-                      if (_pendingCount > 0)
-                        Positioned(
-                          right: -8,
-                          top: -8,
-                          child: Container(
-                            padding: const EdgeInsets.all(0),
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              border: Border.all(color: Colors.white, width: 2),
-                              shape: BoxShape.circle,
-                            ),
-                            constraints: const BoxConstraints(
-                              minWidth: 22,
-                              minHeight: 22,
-                            ),
-                            child: Center(
-                              child: Text(
-                                _pendingCount > 9 ? '9+' : '$_pendingCount',
-                                style: const TextStyle(
+                                  const SizedBox(height: 16),
+                                ],
+                              ),
+                            );
+                          },
+                        )
+                        : _pages[_selectedIndex],
+              ),
+              // Bottom navigation bar
+              BottomNavigationBar(
+                currentIndex: _selectedIndex,
+                onTap: (index) {
+                  setState(() {
+                    _selectedIndex = index;
+                  });
+                },
+                type: BottomNavigationBarType.fixed,
+                selectedItemColor: Colors.green,
+                unselectedItemColor: Colors.grey,
+                items: [
+                  BottomNavigationBarItem(
+                    icon: const Icon(Icons.home),
+                    label: tr('home'),
+                  ),
+                  BottomNavigationBarItem(
+                    icon: const Icon(Icons.camera_alt),
+                    label: tr('scan'),
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        const Icon(Icons.list_alt, size: 28),
+                        if (_pendingCount > 0)
+                          Positioned(
+                            right: -8,
+                            top: -8,
+                            child: Container(
+                              padding: const EdgeInsets.all(0),
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                border: Border.all(
                                   color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
+                                  width: 2,
                                 ),
-                                textAlign: TextAlign.center,
+                                shape: BoxShape.circle,
+                              ),
+                              constraints: const BoxConstraints(
+                                minWidth: 22,
+                                minHeight: 22,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  _pendingCount > 9 ? '9+' : '$_pendingCount',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
+                    label: tr('my_requests'),
                   ),
-                  label: tr('my_requests'),
-                ),
-                BottomNavigationBarItem(
-                  icon: const Icon(Icons.show_chart),
-                  label: tr('tracking'),
-                ),
-              ],
-            ),
-          ],
+                  BottomNavigationBarItem(
+                    icon: const Icon(Icons.show_chart),
+                    label: tr('tracking'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
