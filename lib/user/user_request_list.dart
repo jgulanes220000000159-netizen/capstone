@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'user_request_detail.dart';
 
 class UserRequestList extends StatefulWidget {
@@ -292,31 +293,48 @@ class _UserRequestListState extends State<UserRequestList> {
                         if (confirm == true) {
                           final docId = request['id'] ?? request['requestId'];
                           final images = (request['images'] as List?) ?? [];
-                          final supabase = Supabase.instance.client;
                           bool imageDeleteError = false;
                           for (final img in images) {
-                            final imageUrl = img['imageUrl'] ?? '';
-                            if (imageUrl is String && imageUrl.isNotEmpty) {
-                              // Extract storage path from public URL
-                              final uri = Uri.parse(imageUrl);
-                              final segments = uri.pathSegments;
-                              // Find the index of 'mangosense' and get the rest as the storage path
-                              final bucketIndex = segments.indexOf(
-                                'mangosense',
-                              );
-                              if (bucketIndex != -1 &&
-                                  bucketIndex + 1 < segments.length) {
-                                final storagePath = segments
-                                    .sublist(bucketIndex + 1)
-                                    .join('/');
-                                try {
-                                  await supabase.storage
-                                      .from('mangosense')
-                                      .remove([storagePath]);
-                                } catch (e) {
-                                  imageDeleteError = true;
+                            try {
+                              final storagePath = img['storagePath'] as String?;
+                              final imageUrl = img['imageUrl'] as String?;
+
+                              if (storagePath != null &&
+                                  storagePath.isNotEmpty) {
+                                await FirebaseStorage.instance
+                                    .ref()
+                                    .child(storagePath)
+                                    .delete();
+                              } else if (imageUrl != null &&
+                                  imageUrl.isNotEmpty) {
+                                if (imageUrl.startsWith('gs://') ||
+                                    imageUrl.startsWith(
+                                      'https://firebasestorage.googleapis.com',
+                                    )) {
+                                  await FirebaseStorage.instance
+                                      .refFromURL(imageUrl)
+                                      .delete();
+                                } else {
+                                  // Legacy Supabase cleanup (best-effort)
+                                  final uri = Uri.parse(imageUrl);
+                                  final segments = uri.pathSegments;
+                                  final bucketIndex = segments.indexOf(
+                                    'mangosense',
+                                  );
+                                  if (bucketIndex != -1 &&
+                                      bucketIndex + 1 < segments.length) {
+                                    final supabase = Supabase.instance.client;
+                                    final supabasePath = segments
+                                        .sublist(bucketIndex + 1)
+                                        .join('/');
+                                    await supabase.storage
+                                        .from('mangosense')
+                                        .remove([supabasePath]);
+                                  }
                                 }
                               }
+                            } catch (e) {
+                              imageDeleteError = true;
                             }
                           }
                           try {

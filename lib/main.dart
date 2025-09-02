@@ -11,6 +11,8 @@ import 'package:easy_localization/easy_localization.dart';
 import 'expert/expert_dashboard.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -38,6 +40,20 @@ void main() async {
     android: initializationSettingsAndroid,
   );
   await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+  // Create Android notification channel (Android 8+)
+  const AndroidNotificationChannel defaultChannel = AndroidNotificationChannel(
+    'high_importance',
+    'High Importance Notifications',
+    description: 'Used for important notifications like reviews and requests',
+    importance: Importance.high,
+  );
+  final androidPlugin =
+      flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+  await androidPlugin?.createNotificationChannel(defaultChannel);
 
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
@@ -95,12 +111,31 @@ class CapstoneApp extends StatelessWidget {
 
     // Get FCM token and store it if needed
     String? token = await FirebaseMessaging.instance.getToken();
-    // TODO: Store this token in Firestore under the user's document
-    // Example:
-    // final user = FirebaseAuth.instance.currentUser;
-    // if (user != null && token != null) {
-    //   await FirebaseFirestore.instance.collection('users').doc(user.uid).update({'fcmToken': token});
-    // }
+    // Store token for the signed-in user (farmer or expert)
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null && token != null) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({'fcmToken': token});
+      } catch (_) {
+        // ignore write errors silently for now
+      }
+    }
+
+    // Listen for token refresh and persist
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      final u = FirebaseAuth.instance.currentUser;
+      if (u != null) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(u.uid)
+              .update({'fcmToken': newToken});
+        } catch (_) {}
+      }
+    });
 
     // Foreground notification handler
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
@@ -115,8 +150,8 @@ class CapstoneApp extends StatelessWidget {
           notification.body,
           NotificationDetails(
             android: AndroidNotificationDetails(
-              'channel_id',
-              'channel_name',
+              'high_importance',
+              'High Importance Notifications',
               importance: Importance.max,
               priority: Priority.high,
             ),
@@ -124,6 +159,17 @@ class CapstoneApp extends StatelessWidget {
         );
       }
     });
+
+    // When app is opened from a notification (background)
+    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+      // Handle deep linking or navigation if needed using message.data
+    });
+
+    // When app is launched by tapping a notification (terminated)
+    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      // Handle cold-start navigation if needed
+    }
   }
 
   @override

@@ -5,7 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
 import 'tflite_detector.dart';
@@ -120,22 +120,17 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       final userId = user?.uid ?? 'unknown';
       final _reviewManager = ReviewManager();
 
-      // --- Upload images to Supabase Storage and get URLs ---
-      final supabase = Supabase.instance.client;
-      List<String> supabaseImageUrls = [];
+      // --- Upload images to Firebase Storage and get URLs ---
+      final List<Map<String, String>> uploadedImages = [];
       for (int i = 0; i < widget.imagePaths.length; i++) {
         final file = File(widget.imagePaths[i]);
         final fileName =
             '${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
         final storagePath = 'leaf/$fileName';
-        final uploadResult = await supabase.storage
-            .from('mangosense')
-            .upload(storagePath, file);
-        // No error property: upload() throws on error, returns path on success
-        final publicUrl = supabase.storage
-            .from('mangosense')
-            .getPublicUrl(storagePath);
-        supabaseImageUrls.add(publicUrl);
+        final ref = FirebaseStorage.instance.ref().child(storagePath);
+        await ref.putFile(file);
+        final downloadUrl = await ref.getDownloadURL();
+        uploadedImages.add({'url': downloadUrl, 'path': storagePath});
       }
 
       // Convert detection results to the format expected by ReviewManager
@@ -146,7 +141,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
           detections.add({
             'disease': result.label,
             'confidence': result.confidence,
-            'imageUrl': supabaseImageUrls[i],
+            'imageUrl': uploadedImages[i]['url'],
             'boundingBox': {
               'left': result.boundingBox.left,
               'top': result.boundingBox.top,
@@ -212,7 +207,8 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
 
         // Save network URL and dimensions for proper caching
         images.add({
-          'imageUrl': supabaseImageUrls[i],
+          'imageUrl': uploadedImages[i]['url'],
+          'storagePath': uploadedImages[i]['path'],
           'imageWidth': imageWidth, // Add actual image width
           'imageHeight': imageHeight, // Add actual image height
           'results': resultList,
@@ -918,21 +914,17 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       final now = DateTime.now().toIso8601String();
       final sessionId = DateTime.now().millisecondsSinceEpoch.toString();
       final List<Map<String, dynamic>> images = [];
-      // --- Upload images to Supabase Storage and get URLs ---
-      final supabase = Supabase.instance.client;
-      List<String> supabaseImageUrls = [];
+      // --- Upload images to Firebase Storage and get URLs ---
+      final List<Map<String, String>> uploadedImages2 = [];
       for (int i = 0; i < widget.imagePaths.length; i++) {
         final file = File(widget.imagePaths[i]);
         final fileName =
             '${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
         final storagePath = 'leaf/$fileName';
-        final uploadResult = await supabase.storage
-            .from('mangosense')
-            .upload(storagePath, file);
-        final publicUrl = supabase.storage
-            .from('mangosense')
-            .getPublicUrl(storagePath);
-        supabaseImageUrls.add(publicUrl);
+        final ref = FirebaseStorage.instance.ref().child(storagePath);
+        await ref.putFile(file);
+        final downloadUrl = await ref.getDownloadURL();
+        uploadedImages2.add({'url': downloadUrl, 'path': storagePath});
       }
       for (int i = 0; i < widget.imagePaths.length; i++) {
         final results = widget.allResults[i] ?? [];
@@ -947,7 +939,11 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
         } else {
           resultList.add({'disease': 'Unknown', 'confidence': null});
         }
-        images.add({'imageUrl': supabaseImageUrls[i], 'results': resultList});
+        images.add({
+          'imageUrl': uploadedImages2[i]['url'],
+          'storagePath': uploadedImages2[i]['path'],
+          'results': resultList,
+        });
       }
       sessions.add({
         'sessionId': sessionId,

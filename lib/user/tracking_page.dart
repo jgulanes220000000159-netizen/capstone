@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:rxdart/rxdart.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'tracking_models.dart';
 import 'tracking_chart.dart';
@@ -1049,39 +1050,72 @@ class _TrackingPageState extends State<TrackingPage> {
                                                   (session['images']
                                                       as List?) ??
                                                   [];
-                                              final supabase =
-                                                  Supabase.instance.client;
                                               bool imageDeleteError = false;
                                               for (final img in images) {
-                                                final imageUrl =
-                                                    img['imageUrl'] ?? '';
-                                                if (imageUrl is String &&
-                                                    imageUrl.isNotEmpty) {
-                                                  final uri = Uri.parse(
-                                                    imageUrl,
-                                                  );
-                                                  final segments =
-                                                      uri.pathSegments;
-                                                  final bucketIndex = segments
-                                                      .indexOf('mangosense');
-                                                  if (bucketIndex != -1 &&
-                                                      bucketIndex + 1 <
-                                                          segments.length) {
-                                                    final storagePath = segments
-                                                        .sublist(
-                                                          bucketIndex + 1,
-                                                        )
-                                                        .join('/');
-                                                    try {
-                                                      await supabase.storage
-                                                          .from('mangosense')
-                                                          .remove([
-                                                            storagePath,
-                                                          ]);
-                                                    } catch (e) {
-                                                      imageDeleteError = true;
+                                                try {
+                                                  final storagePath =
+                                                      img['storagePath']
+                                                          as String?;
+                                                  final imageUrl =
+                                                      img['imageUrl']
+                                                          as String?;
+
+                                                  if (storagePath != null &&
+                                                      storagePath.isNotEmpty) {
+                                                    // Preferred: delete by known storage path
+                                                    await FirebaseStorage
+                                                        .instance
+                                                        .ref()
+                                                        .child(storagePath)
+                                                        .delete();
+                                                  } else if (imageUrl != null &&
+                                                      imageUrl.isNotEmpty) {
+                                                    // If it's a Firebase URL, delete via URL
+                                                    if (imageUrl.startsWith(
+                                                          'gs://',
+                                                        ) ||
+                                                        imageUrl.startsWith(
+                                                          'https://firebasestorage.googleapis.com',
+                                                        )) {
+                                                      await FirebaseStorage
+                                                          .instance
+                                                          .refFromURL(imageUrl)
+                                                          .delete();
+                                                    } else {
+                                                      // Legacy Supabase cleanup (best-effort)
+                                                      final uri = Uri.parse(
+                                                        imageUrl,
+                                                      );
+                                                      final segments =
+                                                          uri.pathSegments;
+                                                      final bucketIndex =
+                                                          segments.indexOf(
+                                                            'mangosense',
+                                                          );
+                                                      if (bucketIndex != -1 &&
+                                                          bucketIndex + 1 <
+                                                              segments.length) {
+                                                        final supabase =
+                                                            Supabase
+                                                                .instance
+                                                                .client;
+                                                        final supabasePath =
+                                                            segments
+                                                                .sublist(
+                                                                  bucketIndex +
+                                                                      1,
+                                                                )
+                                                                .join('/');
+                                                        await supabase.storage
+                                                            .from('mangosense')
+                                                            .remove([
+                                                              supabasePath,
+                                                            ]);
+                                                      }
                                                     }
                                                   }
+                                                } catch (e) {
+                                                  imageDeleteError = true;
                                                 }
                                               }
                                               try {

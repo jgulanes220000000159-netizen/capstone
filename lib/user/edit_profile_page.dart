@@ -79,7 +79,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         final file = File(imagePath);
         final ref = FirebaseStorage.instance
             .ref()
-            .child('profile_images')
+            .child('profile')
             .child('${user.uid}.jpg');
 
         await ref.putFile(file);

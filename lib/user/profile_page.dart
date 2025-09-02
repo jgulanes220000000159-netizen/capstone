@@ -174,7 +174,7 @@ class _ProfilePageState extends State<ProfilePage> {
         final file = File(imagePath);
         final ref = FirebaseStorage.instance
             .ref()
-            .child('profile_images')
+            .child('profile')
             .child('${user.uid}.jpg');
 
         await ref.putFile(file);
@@ -186,16 +186,19 @@ class _ProfilePageState extends State<ProfilePage> {
             .doc(user.uid)
             .update({'imageProfile': url});
 
+        if (!mounted) return;
         setState(() {
           _profileImageUrl = url;
         });
 
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profile image updated successfully!')),
         );
       }
     } catch (e) {
       print('Error uploading profile image: $e');
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to update profile image')),
       );
