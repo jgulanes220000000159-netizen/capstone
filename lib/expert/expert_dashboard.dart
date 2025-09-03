@@ -3,12 +3,13 @@ import 'package:flutter/services.dart';
 import 'scan_request_list.dart';
 import 'disease_editor.dart';
 import 'expert_profile.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+// import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hive/hive.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:async'; // Added for StreamSubscription
+import 'package:intl/intl.dart';
 
 class ExpertDashboard extends StatefulWidget {
   const ExpertDashboard({Key? key}) : super(key: key);
@@ -63,7 +64,7 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
         _pendingNotifications = count;
       });
     } catch (e) {
-      print('Error loading notification count: $e');
+      // print('Error loading notification count: $e');
     }
   }
 
@@ -73,7 +74,7 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
       final notificationBox = await Hive.openBox('notificationBox');
       await notificationBox.put('pendingNotifications', count);
     } catch (e) {
-      print('Error saving notification count: $e');
+      // print('Error saving notification count: $e');
     }
   }
 
@@ -220,14 +221,74 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
   int _totalCompleted = 0;
   int _pendingRequests = 0;
   String _expertName = 'Expert';
-  double _averageResponseTime = 0.0;
+  // double _averageResponseTime = 0.0; // superseded by filtered average
   List<Map<String, dynamic>> _recentReviews = [];
   bool _isOffline = false;
   StreamSubscription<QuerySnapshot>? _streamSubscription;
 
+  // Time range state for the response time chart (0: Last 7 Days, 1: Custom)
+  int _selectedRangeIndex = 0;
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
+  int? _lastStreamDocsCount;
+
+  // Filter reviews according to the selected range
+  List<Map<String, dynamic>> _filterReviewsForRange() {
+    if (_recentReviews.isEmpty) return const [];
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    if (_selectedRangeIndex == 0) {
+      final start7 = todayOnly.subtract(const Duration(days: 6));
+      return _recentReviews.where((r) {
+          final d = r['date'] as DateTime?;
+          if (d == null) return false;
+          final dayOnly = DateTime(d.year, d.month, d.day);
+          return !dayOnly.isBefore(start7) && !dayOnly.isAfter(todayOnly);
+        }).toList()
+        ..sort(
+          (a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime),
+        );
+    }
+    if (_customStartDate == null || _customEndDate == null) {
+      // No custom bounds chosen, return all sorted
+      return List<Map<String, dynamic>>.from(_recentReviews)..sort(
+        (a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime),
+      );
+    }
+    final s = DateTime(
+      _customStartDate!.year,
+      _customStartDate!.month,
+      _customStartDate!.day,
+    );
+    final e = DateTime(
+      _customEndDate!.year,
+      _customEndDate!.month,
+      _customEndDate!.day,
+    );
+    return _recentReviews.where((r) {
+        final d = r['date'] as DateTime?;
+        if (d == null) return false;
+        final dayOnly = DateTime(d.year, d.month, d.day);
+        return !dayOnly.isBefore(s) && !dayOnly.isAfter(e);
+      }).toList()
+      ..sort(
+        (a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime),
+      );
+  }
+
+  double _filteredAverageHours() {
+    final filtered = _filterReviewsForRange();
+    if (filtered.isEmpty) return 0.0;
+    final total = filtered.fold<double>(
+      0.0,
+      (sum, r) => sum + ((r['responseTime'] as num?)?.toDouble() ?? 0.0),
+    );
+    return total / filtered.length;
+  }
+
   // Debug tracking variables
   int _lastPendingCount = 0;
-  int _lastCompletedCount = 0;
+  // int _lastCompletedCount = 0; // unused
 
   // Update notification count
   void _updateNotificationCount(int newCount) {
@@ -244,6 +305,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
   void initState() {
     super.initState();
     _loadExpertStats();
+    _loadRangePrefs();
   }
 
   @override
@@ -253,35 +315,77 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
   }
 
   // Clean up old cached data to prevent memory buildup
-  Future<void> _cleanupOldCache() async {
-    try {
-      final statsBox = await Hive.openBox('expertStatsBox');
-      final cachedData = statsBox.get('expertStats');
-
-      if (cachedData != null) {
-        final lastUpdated = DateTime.tryParse(cachedData['lastUpdated'] ?? '');
-        if (lastUpdated != null) {
-          final daysSinceUpdate = DateTime.now().difference(lastUpdated).inDays;
-          // Remove cache older than 7 days
-          if (daysSinceUpdate > 7) {
-            await statsBox.delete('expertStats');
-            print('Cleaned up old cached data');
-          }
-        }
-      }
-    } catch (e) {
-      print('Error cleaning up cache: $e');
-    }
-  }
+  // Removed unused _cleanupOldCache (was only used for debugging)
 
   // Force clear cache to get fresh calculation
   Future<void> _clearCache() async {
     try {
       final statsBox = await Hive.openBox('expertStatsBox');
       await statsBox.clear(); // Clear entire box instead of just one key
-      print('Completely cleared cached data for fresh calculation');
+      // print('Completely cleared cached data for fresh calculation');
     } catch (e) {
-      print('Error clearing cache: $e');
+      // print('Error clearing cache: $e');
+    }
+  }
+
+  Future<void> _loadRangePrefs() async {
+    try {
+      final box = await Hive.openBox('expertFilterBox');
+      final idx = box.get('selectedRangeIndex', defaultValue: 0);
+      final startStr = box.get('customStartDate') as String?;
+      final endStr = box.get('customEndDate') as String?;
+      setState(() {
+        _selectedRangeIndex = (idx is int && idx >= 0 && idx <= 1) ? idx : 0;
+        _customStartDate =
+            startStr != null ? DateTime.tryParse(startStr) : null;
+        _customEndDate = endStr != null ? DateTime.tryParse(endStr) : null;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _saveRangeIndex(int idx) async {
+    try {
+      final box = await Hive.openBox('expertFilterBox');
+      await box.put('selectedRangeIndex', idx);
+    } catch (_) {}
+  }
+
+  Future<void> _saveCustomRange(DateTime start, DateTime end) async {
+    try {
+      final box = await Hive.openBox('expertFilterBox');
+      await box.put(
+        'customStartDate',
+        DateTime(start.year, start.month, start.day).toIso8601String(),
+      );
+      await box.put(
+        'customEndDate',
+        DateTime(end.year, end.month, end.day).toIso8601String(),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _pickCustomRange() async {
+    final initialRange =
+        _customStartDate != null && _customEndDate != null
+            ? DateTimeRange(start: _customStartDate!, end: _customEndDate!)
+            : DateTimeRange(
+              start: DateTime.now().subtract(const Duration(days: 6)),
+              end: DateTime.now(),
+            );
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(1970),
+      lastDate: DateTime.now(),
+      initialDateRange: initialRange,
+    );
+    if (picked != null) {
+      setState(() {
+        _customStartDate = picked.start;
+        _customEndDate = picked.end;
+        _selectedRangeIndex = 1;
+      });
+      await _saveRangeIndex(1);
+      await _saveCustomRange(picked.start, picked.end);
     }
   }
 
@@ -339,35 +443,28 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
 
           if (submittedAt != null && reviewedAt != null) {
             try {
-              print('Raw submittedAt: $submittedAt');
-              print('Raw reviewedAt: $reviewedAt');
+              // Debug removed
 
               final submitted = DateTime.parse(submittedAt);
               final reviewed = DateTime.parse(reviewedAt);
 
               // Debug: Print the actual times
-              print('Submitted: $submitted');
-              print('Reviewed: $reviewed');
+              // Debug removed
 
               final difference = reviewed.difference(submitted);
-              print(
-                'Raw difference: ${difference.inMilliseconds} milliseconds',
-              );
-              print('Raw difference: ${difference.inMinutes} minutes');
+              // Debug removed
 
               final responseTime =
                   difference.inMilliseconds.toDouble() /
                   (1000 * 60 * 60); // Convert ms to hours
 
               // Debug: Print the calculated response time
-              print('Calculated response time: $responseTime hours');
+              // Debug removed
 
               if (responseTime >= 0) {
                 totalResponseTime += responseTime;
                 validReviews++;
-                print(
-                  'Added to calculation - Total: $totalResponseTime, Count: $validReviews',
-                );
+                // Debug removed
 
                 // Store recent reviews for graph
                 recentReviews.add({
@@ -378,14 +475,13 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                 });
               }
             } catch (e) {
-              print('Error parsing dates: $e');
+              // print('Error parsing dates: $e');
             }
           }
         }
 
-        // Sort recent reviews by date (latest first) and take last 7
+        // Sort recent reviews by date (latest first)
         recentReviews.sort((a, b) => b['date'].compareTo(a['date']));
-        recentReviews = recentReviews.take(7).toList();
 
         // Cache the data for offline access
         final statsData = {
@@ -399,9 +495,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
         };
 
         // Debug: Print the calculation details
-        print('Total response time: $totalResponseTime hours');
-        print('Valid reviews count: $validReviews');
-        print('Calculated average: ${totalResponseTime / validReviews} hours');
+        // Debug removed
 
         // Save to Hive for offline access
         final statsBox = await Hive.openBox('expertStatsBox');
@@ -411,18 +505,17 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
           _expertName = expertName;
           _totalCompleted = completedQuery.docs.length;
           _pendingRequests = pendingDocs.length;
-          _averageResponseTime =
-              validReviews > 0 ? (totalResponseTime / validReviews) : 0.0;
+          // Keep computing average for caching/debug, but UI uses filtered average
           _recentReviews = recentReviews;
           _isOffline = false;
         });
       } catch (e) {
-        print('Error loading from Firestore: $e');
+        // print('Error loading from Firestore: $e');
         // Fallback to cached data
         await _loadCachedStats();
       }
     } catch (e) {
-      print('Error loading expert stats: $e');
+      // print('Error loading expert stats: $e');
       // Fallback to cached data
       await _loadCachedStats();
     }
@@ -438,7 +531,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
           _expertName = cachedData['expertName'] ?? 'Expert';
           _totalCompleted = cachedData['totalCompleted'] ?? 0;
           _pendingRequests = cachedData['pendingRequests'] ?? 0;
-          _averageResponseTime = cachedData['averageResponseTime'] ?? 0.0;
+          // cachedData['averageResponseTime'] is not used directly in UI
           _recentReviews = List<Map<String, dynamic>>.from(
             cachedData['recentReviews'] ?? [],
           );
@@ -446,7 +539,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
         });
       }
     } catch (e) {
-      print('Error loading cached stats: $e');
+      // print('Error loading cached stats: $e');
     }
   }
 
@@ -480,24 +573,22 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
           }).toList();
 
       // Debug logging
-      print('Total docs in stream: ${docs.length}');
-      print('Completed docs for expert: ${completedDocs.length}');
-      print('Pending docs for expert: ${pendingDocs.length}');
-      print('Current expert UID: ${user.uid}');
+      // Debug removed
 
       // Additional debug for pending requests
       final allPending =
-          docs.where((doc) {
-            final data = doc.data() as Map<String, dynamic>;
-            return data['status'] == 'pending' ||
-                data['status'] == 'pending_review';
-          }).toList();
-      print('Total pending requests in system: ${allPending.length}');
-      for (var doc in allPending.take(3)) {
-        final data = doc.data() as Map<String, dynamic>;
-        print(
-          'Pending request - expertUid: ${data['expertUid']}, status: ${data['status']}',
-        );
+          docs
+              .where(
+                (doc) =>
+                    ((doc.data() as Map<String, dynamic>)['status'] ==
+                            'pending' ||
+                        (doc.data() as Map<String, dynamic>)['status'] ==
+                            'pending_review'),
+              )
+              .toList();
+      // print('Total pending requests in system: ${allPending.length}');
+      for (var _ in allPending.take(3)) {
+        // print('Pending request - expertUid: ...');
       }
 
       // Update notification count if pending requests changed
@@ -535,14 +626,13 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
               });
             }
           } catch (e) {
-            print('Error parsing dates: $e');
+            // print('Error parsing dates: $e');
           }
         }
       }
 
-      // Sort recent reviews by date (latest first) and take last 7
+      // Sort recent reviews by date (latest first)
       recentReviews.sort((a, b) => b['date'].compareTo(a['date']));
-      recentReviews = recentReviews.take(7).toList();
 
       // Cache the data for offline access
       final statsData = {
@@ -563,13 +653,12 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
         _expertName = expertName;
         _totalCompleted = completedDocs.length;
         _pendingRequests = pendingDocs.length;
-        _averageResponseTime =
-            validReviews > 0 ? (totalResponseTime / validReviews) : 0.0;
+        // Keep computing average for caching/debug, but UI uses filtered average
         _recentReviews = recentReviews;
         _isOffline = false;
       });
     } catch (e) {
-      print('Error updating stats from stream: $e');
+      // print('Error updating stats from stream: $e');
     }
   }
 
@@ -613,11 +702,16 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
               )
               .snapshots(),
       builder: (context, snapshot) {
-        // Update stats when stream data changes
+        // Update stats when stream data changes (prevent tight loop)
         if (snapshot.hasData) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _updateStatsFromStream(snapshot.data!.docs);
-          });
+          // Only update when the doc count changes; prevents constant re-calls
+          final currentCount = snapshot.data!.docs.length;
+          if (_lastStreamDocsCount != currentCount) {
+            _lastStreamDocsCount = currentCount;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _updateStatsFromStream(snapshot.data!.docs);
+            });
+          }
         }
 
         return Scaffold(
@@ -834,7 +928,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          '${_formatResponseTime(_averageResponseTime)}',
+                          '${_formatResponseTime(_filteredAverageHours())}',
                           style: TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
@@ -842,6 +936,55 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.grey[300]!),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.calendar_today, size: 18),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: DropdownButton<int>(
+                                  value: _selectedRangeIndex,
+                                  isExpanded: true,
+                                  underline: const SizedBox.shrink(),
+                                  items: [
+                                    const DropdownMenuItem(
+                                      value: 0,
+                                      child: Text('Last 7 Days'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 1,
+                                      child: Text(
+                                        _customStartDate != null &&
+                                                _customEndDate != null
+                                            ? 'Custom: ${DateFormat('MMM d').format(_customStartDate!)} – ${DateFormat('MMM d').format(_customEndDate!)}'
+                                            : 'Custom',
+                                      ),
+                                    ),
+                                  ],
+                                  onChanged: (i) async {
+                                    if (i == null) return;
+                                    if (i == 1) {
+                                      await _pickCustomRange();
+                                    } else {
+                                      setState(() => _selectedRangeIndex = 0);
+                                      await _saveRangeIndex(0);
+                                    }
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
                         if (_recentReviews.isNotEmpty) ...[
                           Text(
                             'Recent Response Times',
@@ -854,80 +997,146 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                           const SizedBox(height: 12),
                           SizedBox(
                             height: 200,
-                            child: LineChart(
-                              LineChartData(
-                                gridData: FlGridData(show: true),
-                                titlesData: FlTitlesData(
-                                  leftTitles: AxisTitles(
-                                    sideTitles: SideTitles(
-                                      showTitles: true,
-                                      reservedSize: 40,
-                                      getTitlesWidget: (value, meta) {
-                                        return Text(
-                                          '${value.toInt()}h',
-                                          style: const TextStyle(fontSize: 10),
+                            child: Builder(
+                              builder: (context) {
+                                // Filter reviews per selected range
+                                DateTime today = DateTime.now();
+                                DateTime start7 = DateTime(
+                                  today.year,
+                                  today.month,
+                                  today.day,
+                                ).subtract(const Duration(days: 6));
+                                final List<Map<String, dynamic>> filtered =
+                                    _recentReviews.where((r) {
+                                        final d = r['date'] as DateTime?;
+                                        if (d == null) return false;
+                                        final dayOnly = DateTime(
+                                          d.year,
+                                          d.month,
+                                          d.day,
                                         );
-                                      },
-                                    ),
-                                  ),
-                                  bottomTitles: AxisTitles(
-                                    sideTitles: SideTitles(
-                                      showTitles: true,
-                                      reservedSize: 30,
-                                      getTitlesWidget: (value, meta) {
-                                        if (value.toInt() <
-                                            _recentReviews.length) {
-                                          final review =
-                                              _recentReviews[value.toInt()];
-                                          final date =
-                                              review['date'] as DateTime;
-                                          return Padding(
-                                            padding: const EdgeInsets.only(
-                                              top: 8,
-                                            ),
-                                            child: Text(
-                                              '${date.day}/${date.month}',
+                                        if (_selectedRangeIndex == 0) {
+                                          return !dayOnly.isBefore(start7) &&
+                                              !dayOnly.isAfter(
+                                                DateTime(
+                                                  today.year,
+                                                  today.month,
+                                                  today.day,
+                                                ),
+                                              );
+                                        }
+                                        if (_customStartDate == null ||
+                                            _customEndDate == null)
+                                          return true;
+                                        final s = DateTime(
+                                          _customStartDate!.year,
+                                          _customStartDate!.month,
+                                          _customStartDate!.day,
+                                        );
+                                        final e = DateTime(
+                                          _customEndDate!.year,
+                                          _customEndDate!.month,
+                                          _customEndDate!.day,
+                                        );
+                                        return !dayOnly.isBefore(s) &&
+                                            !dayOnly.isAfter(e);
+                                      }).toList()
+                                      ..sort(
+                                        (a, b) => (a['date'] as DateTime)
+                                            .compareTo(b['date'] as DateTime),
+                                      );
+
+                                final showBottomTitles =
+                                    _selectedRangeIndex == 0;
+                                return LineChart(
+                                  LineChartData(
+                                    gridData: FlGridData(show: true),
+                                    titlesData: FlTitlesData(
+                                      leftTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: true,
+                                          reservedSize: 40,
+                                          getTitlesWidget: (value, meta) {
+                                            return Text(
+                                              '${value.toInt()}h',
                                               style: const TextStyle(
                                                 fontSize: 10,
                                               ),
-                                            ),
-                                          );
-                                        }
-                                        return const Text('');
-                                      },
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      bottomTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: showBottomTitles,
+                                          reservedSize:
+                                              showBottomTitles ? 30 : 0,
+                                          getTitlesWidget: (value, meta) {
+                                            if (!showBottomTitles) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            final idx = value.toInt();
+                                            if (idx >= 0 &&
+                                                idx < filtered.length) {
+                                              final date =
+                                                  filtered[idx]['date']
+                                                      as DateTime;
+                                              return Padding(
+                                                padding: const EdgeInsets.only(
+                                                  top: 8,
+                                                ),
+                                                child: Text(
+                                                  '${date.day}/${date.month}',
+                                                  style: const TextStyle(
+                                                    fontSize: 10,
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                            return const SizedBox.shrink();
+                                          },
+                                        ),
+                                      ),
+                                      rightTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: false,
+                                        ),
+                                      ),
+                                      topTitles: AxisTitles(
+                                        sideTitles: SideTitles(
+                                          showTitles: false,
+                                        ),
+                                      ),
                                     ),
+                                    borderData: FlBorderData(show: true),
+                                    lineBarsData: [
+                                      LineChartBarData(
+                                        spots:
+                                            filtered
+                                                .asMap()
+                                                .entries
+                                                .map(
+                                                  (entry) => FlSpot(
+                                                    entry.key.toDouble(),
+                                                    (entry.value['responseTime']
+                                                            as num)
+                                                        .toDouble(),
+                                                  ),
+                                                )
+                                                .toList(),
+                                        isCurved: true,
+                                        color: Colors.blue,
+                                        barWidth: 3,
+                                        dotData: FlDotData(show: true),
+                                        belowBarData: BarAreaData(
+                                          show: true,
+                                          color: Colors.blue.withOpacity(0.1),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  rightTitles: AxisTitles(
-                                    sideTitles: SideTitles(showTitles: false),
-                                  ),
-                                  topTitles: AxisTitles(
-                                    sideTitles: SideTitles(showTitles: false),
-                                  ),
-                                ),
-                                borderData: FlBorderData(show: true),
-                                lineBarsData: [
-                                  LineChartBarData(
-                                    spots:
-                                        _recentReviews.asMap().entries.map((
-                                          entry,
-                                        ) {
-                                          return FlSpot(
-                                            entry.key.toDouble(),
-                                            entry.value['responseTime']
-                                                .toDouble(),
-                                          );
-                                        }).toList(),
-                                    isCurved: true,
-                                    color: Colors.blue,
-                                    barWidth: 3,
-                                    dotData: FlDotData(show: true),
-                                    belowBarData: BarAreaData(
-                                      show: true,
-                                      color: Colors.blue.withOpacity(0.1),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                );
+                              },
                             ),
                           ),
                         ] else ...[
