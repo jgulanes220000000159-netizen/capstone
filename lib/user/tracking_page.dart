@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:rxdart/rxdart.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:easy_localization/easy_localization.dart';
@@ -20,7 +19,9 @@ class TrackingPage extends StatefulWidget {
 }
 
 class _TrackingPageState extends State<TrackingPage> {
-  int _selectedRangeIndex = 1; // Default to Last 7 Days
+  int _selectedRangeIndex = 0; // 0: Last 7 Days, 1: Custom
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
 
   @override
   void didChangeDependencies() {
@@ -36,6 +37,14 @@ class _TrackingPageState extends State<TrackingPage> {
         _selectedRangeIndex = idx;
       });
     }
+    final startStr = box.get('customStartDate') as String?;
+    final endStr = box.get('customEndDate') as String?;
+    if (startStr != null) {
+      _customStartDate = DateTime.tryParse(startStr);
+    }
+    if (endStr != null) {
+      _customEndDate = DateTime.tryParse(endStr);
+    }
   }
 
   Future<void> _saveSelectedRangeIndex(int idx) async {
@@ -43,22 +52,56 @@ class _TrackingPageState extends State<TrackingPage> {
     await box.put('selectedRangeIndex', idx);
   }
 
+  Future<void> _saveCustomRange(DateTime start, DateTime end) async {
+    final box = await Hive.openBox('trackingBox');
+    await box.put(
+      'customStartDate',
+      DateTime(start.year, start.month, start.day).toIso8601String(),
+    );
+    await box.put(
+      'customEndDate',
+      DateTime(end.year, end.month, end.day).toIso8601String(),
+    );
+  }
+
+  Future<void> _pickCustomRange() async {
+    final initialRange =
+        _customStartDate != null && _customEndDate != null
+            ? DateTimeRange(start: _customStartDate!, end: _customEndDate!)
+            : DateTimeRange(
+              start: DateTime.now().subtract(const Duration(days: 6)),
+              end: DateTime.now(),
+            );
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(1970),
+      lastDate: DateTime.now(),
+      initialDateRange: initialRange,
+    );
+    if (picked != null) {
+      setState(() {
+        _customStartDate = picked.start;
+        _customEndDate = picked.end;
+        _selectedRangeIndex = 1; // Custom
+      });
+      await _saveSelectedRangeIndex(1);
+      await _saveCustomRange(picked.start, picked.end);
+    }
+  }
+
   String _getTimeRangeLabel(int index) {
     switch (index) {
       case 0:
-        return tr('show_everything');
-      case 1:
         return tr('last_7_days');
-      case 2:
-        return tr('last_30_days');
-      case 3:
-        return tr('last_60_days');
-      case 4:
-        return tr('last_90_days');
-      case 5:
-        return tr('last_year');
+      case 1:
+        if (_customStartDate != null && _customEndDate != null) {
+          final s = DateFormat('MMM d').format(_customStartDate!);
+          final e = DateFormat('MMM d').format(_customEndDate!);
+          return '${tr('custom')}: $s – $e';
+        }
+        return tr('custom');
       default:
-        return tr('show_everything');
+        return tr('last_7_days');
     }
   }
 
@@ -117,9 +160,7 @@ class _TrackingPageState extends State<TrackingPage> {
         if (sessions is List) {
           return sessions
               .whereType<Map>()
-              .map<Map<String, dynamic>>(
-                (e) => Map<String, dynamic>.from(e as Map),
-              )
+              .map<Map<String, dynamic>>((e) => Map<String, dynamic>.from(e))
               .toList();
         }
         return [];
@@ -231,7 +272,7 @@ class _TrackingPageState extends State<TrackingPage> {
                               Text(
                                 tr(
                                   'reviewed_by',
-                                  namedArgs: {'name': expertName ?? ''},
+                                  namedArgs: {'name': expertName},
                                 ),
                                 style: TextStyle(
                                   fontSize: 14,
@@ -379,18 +420,7 @@ class _TrackingPageState extends State<TrackingPage> {
       return Center(child: Text(tr('not_logged_in')));
     }
 
-    // Real-time streams for tracking and pending scan_requests
-    final trackingStream =
-        FirebaseFirestore.instance
-            .collection('tracking')
-            .where('userId', isEqualTo: userId)
-            .orderBy('date', descending: true)
-            .snapshots();
-    final scanRequestsStream =
-        FirebaseFirestore.instance
-            .collection('scan_requests')
-            .where('userId', isEqualTo: userId)
-            .snapshots();
+    // Note: Real-time streams removed; we use a one-time load with offline cache.
 
     return FutureBuilder<List<Map<String, dynamic>>>(
       future: _loadSessionsWithFallback(userId),
@@ -428,35 +458,7 @@ class _TrackingPageState extends State<TrackingPage> {
         }
 
         final sessions = snapshot.data ?? [];
-        if (sessions.isEmpty) {
-          return Scaffold(
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.analytics_outlined,
-                    size: 64,
-                    color: Colors.grey,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    tr('no_tracked_scans'),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    tr('start_scanning_message'),
-                    style: TextStyle(color: Colors.grey[600]),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
+        // Note: Do not early-return on empty sessions; allow selector to show
 
         // Sort sessions by date descending (most recent first)
         sessions.sort((a, b) {
@@ -480,11 +482,15 @@ class _TrackingPageState extends State<TrackingPage> {
         final filteredSessions = TrackingModels.filterSessions(
           sessions,
           _selectedRangeIndex,
+          customStart: _customStartDate,
+          customEnd: _customEndDate,
         );
         final flatScans = TrackingModels.flattenScans(filteredSessions);
         final chartData = TrackingChart.chartData(
           flatScans,
           _selectedRangeIndex,
+          customStart: _customStartDate,
+          customEnd: _customEndDate,
         );
         final overallCounts = TrackingModels.overallHealthyAndDiseases(
           flatScans,
@@ -501,697 +507,640 @@ class _TrackingPageState extends State<TrackingPage> {
             total > 0 ? (totalDiseased / total * 100).toStringAsFixed(1) : '0';
 
         return Scaffold(
-          body:
-              filteredSessions.isEmpty
-                  ? Center(child: Text(tr('no_tracked_scans')))
-                  : SingleChildScrollView(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Time range selector
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: Colors.grey[300]!,
-                                width: 1,
+          body: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Time range selector
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey[300]!, width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.03),
+                          blurRadius: 4,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today,
+                          size: 20,
+                          color: Colors.green[700],
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          tr('time_range'),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: DropdownButton<int>(
+                            value: _selectedRangeIndex,
+                            isExpanded: true,
+                            underline: const SizedBox.shrink(),
+                            items: [
+                              DropdownMenuItem(
+                                value: 0,
+                                child: Text(
+                                  _getTimeRangeLabel(0),
+                                  style: const TextStyle(fontSize: 15),
+                                ),
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
-                                  blurRadius: 4,
-                                  offset: Offset(0, 1),
+                              DropdownMenuItem(
+                                value: 1,
+                                child: Text(
+                                  _getTimeRangeLabel(1),
+                                  style: const TextStyle(fontSize: 15),
                                 ),
-                              ],
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.calendar_today,
-                                  size: 20,
-                                  color: Colors.green[700],
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  tr('time_range'),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: DropdownButton<int>(
-                                    value: _selectedRangeIndex,
-                                    isExpanded: true,
-                                    underline: const SizedBox.shrink(),
-                                    items: List.generate(
-                                      TrackingModels.timeRanges.length,
-                                      (i) => DropdownMenuItem(
-                                        value: i,
-                                        child: Text(
-                                          _getTimeRangeLabel(i),
-                                          style: const TextStyle(fontSize: 15),
-                                        ),
-                                      ),
-                                    ),
-                                    onChanged: (i) async {
-                                      if (i != null) {
-                                        setState(() => _selectedRangeIndex = i);
-                                        await _saveSelectedRangeIndex(i);
-                                      }
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          // Friendly summary
-                          Container(
-                            margin: const EdgeInsets.only(bottom: 16),
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [Colors.blue[50]!, Colors.green[50]!],
                               ),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: Colors.green[200]!,
-                                width: 1,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(20.0),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.green[100],
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Icon(
-                                      Icons.insights,
-                                      color: Colors.green[700],
-                                      size: 28,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          tr('farm_health_summary'),
-                                          style: TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.green[800],
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${_getTimeRangeLabel(_selectedRangeIndex)}: $healthyPercent% healthy, $diseasedPercent% diseased.',
-                                          style: TextStyle(
-                                            fontSize: 15,
-                                            fontWeight: FontWeight.w500,
-                                            color: Colors.green[700],
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          tr('keep_tracking_message'),
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            color: Colors.green[600],
-                                            fontStyle: FontStyle.italic,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          // Trend Bar Chart
-                          Text(
-                            tr('farm_health_trend'),
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            height: 260,
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.04),
-                                  blurRadius: 8,
-                                ),
-                              ],
-                            ),
-                            child:
-                                chartData.isEmpty
-                                    ? Center(child: Text(tr('not_enough_data')))
-                                    : LineChart(
-                                      LineChartData(
-                                        minY: 0,
-                                        maxY:
-                                            chartData
-                                                .expand(
-                                                  (m) =>
-                                                      m.values.whereType<int>(),
-                                                )
-                                                .fold<double>(
-                                                  0,
-                                                  (prev, e) =>
-                                                      e > prev
-                                                          ? e.toDouble()
-                                                          : prev,
-                                                ) *
-                                            1.2,
-                                        lineBarsData: [
-                                          // Healthy line
-                                          LineChartBarData(
-                                            spots: [
-                                              for (
-                                                int i = 0;
-                                                i < chartData.length;
-                                                i++
-                                              )
-                                                FlSpot(
-                                                  i.toDouble(),
-                                                  (chartData[i]['healthy']
-                                                              as int?)
-                                                          ?.toDouble() ??
-                                                      0,
-                                                ),
-                                            ],
-                                            isCurved: true,
-                                            color:
-                                                TrackingModels
-                                                    .diseaseColors['healthy'],
-                                            barWidth: 4,
-                                            dotData: FlDotData(show: true),
-                                            belowBarData: BarAreaData(
-                                              show: false,
-                                            ),
-                                          ),
-                                          // Disease lines
-                                          for (final d
-                                              in TrackingModels.diseaseLabels)
-                                            LineChartBarData(
-                                              spots: [
-                                                for (
-                                                  int i = 0;
-                                                  i < chartData.length;
-                                                  i++
-                                                )
-                                                  FlSpot(
-                                                    i.toDouble(),
-                                                    (chartData[i][d] as int?)
-                                                            ?.toDouble() ??
-                                                        0,
-                                                  ),
-                                              ],
-                                              isCurved: true,
-                                              color:
-                                                  TrackingModels
-                                                      .diseaseColors[d],
-                                              barWidth: 4,
-                                              dotData: FlDotData(show: true),
-                                              belowBarData: BarAreaData(
-                                                show: false,
-                                              ),
-                                            ),
-                                        ],
-                                        titlesData: FlTitlesData(
-                                          show: true,
-                                          bottomTitles: AxisTitles(
-                                            sideTitles: SideTitles(
-                                              showTitles: true,
-                                              reservedSize: 48,
-                                              getTitlesWidget: (value, meta) {
-                                                if (value < 0 ||
-                                                    value >= chartData.length) {
-                                                  return const SizedBox.shrink();
-                                                }
-                                                final group =
-                                                    chartData[value
-                                                            .toInt()]['group']
-                                                        as String;
-                                                Widget labelWidget;
-                                                if (_selectedRangeIndex == 0) {
-                                                  int n =
-                                                      chartData.length > 24
-                                                          ? 3
-                                                          : 1;
-                                                  if (value.toInt() % n != 0 &&
-                                                      chartData.length > 12) {
-                                                    return const SizedBox.shrink();
-                                                  }
-                                                  if (group.length >= 7 &&
-                                                      group.contains('-')) {
-                                                    labelWidget =
-                                                        Transform.rotate(
-                                                          angle: -0.5708,
-                                                          child: Text(
-                                                            group.substring(5),
-                                                            style:
-                                                                const TextStyle(
-                                                                  fontSize: 12,
-                                                                ),
-                                                          ),
-                                                        );
-                                                  } else {
-                                                    labelWidget =
-                                                        Transform.rotate(
-                                                          angle: -0.5708,
-                                                          child: Text(
-                                                            group,
-                                                            style:
-                                                                const TextStyle(
-                                                                  fontSize: 12,
-                                                                ),
-                                                          ),
-                                                        );
-                                                  }
-                                                } else if (_selectedRangeIndex >=
-                                                        1 &&
-                                                    _selectedRangeIndex <= 4) {
-                                                  labelWidget =
-                                                      Transform.rotate(
-                                                        angle: -0.5708,
-                                                        child: Text(
-                                                          group,
-                                                          style:
-                                                              const TextStyle(
-                                                                fontSize: 12,
-                                                              ),
-                                                        ),
-                                                      );
-                                                } else {
-                                                  final year = int.parse(
-                                                    group.substring(0, 4),
-                                                  );
-                                                  final month = int.parse(
-                                                    group.substring(5),
-                                                  );
-                                                  final monthAbbr = DateFormat(
-                                                    'MMM',
-                                                  ).format(
-                                                    DateTime(year, month),
-                                                  );
-                                                  labelWidget =
-                                                      Transform.rotate(
-                                                        angle: -0.5708,
-                                                        child: Text(
-                                                          monthAbbr,
-                                                          style:
-                                                              const TextStyle(
-                                                                fontSize: 12,
-                                                              ),
-                                                        ),
-                                                      );
-                                                }
-                                                return Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                        top: 16,
-                                                      ),
-                                                  child: labelWidget,
-                                                );
-                                              },
-                                            ),
-                                          ),
-                                          leftTitles: AxisTitles(
-                                            sideTitles: SideTitles(
-                                              showTitles: true,
-                                              reservedSize: 32,
-                                              getTitlesWidget: (value, meta) {
-                                                if (value % 1 == 0) {
-                                                  return Text(
-                                                    value.toInt().toString(),
-                                                    style: const TextStyle(
-                                                      fontSize: 12,
-                                                    ),
-                                                  );
-                                                }
-                                                return const SizedBox.shrink();
-                                              },
-                                            ),
-                                          ),
-                                          topTitles: AxisTitles(
-                                            sideTitles: SideTitles(
-                                              showTitles: false,
-                                            ),
-                                          ),
-                                          rightTitles: AxisTitles(
-                                            sideTitles: SideTitles(
-                                              showTitles: false,
-                                            ),
-                                          ),
-                                        ),
-                                        gridData: FlGridData(
-                                          show: true,
-                                          drawVerticalLine: false,
-                                        ),
-                                        borderData: FlBorderData(show: false),
-                                      ),
-                                    ),
-                          ),
-                          const SizedBox(height: 12),
-                          // Legend
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: Row(
-                              children: [
-                                TrackingChart.buildLegendItem(
-                                  TrackingModels.diseaseColors['healthy']!,
-                                  TrackingModels.formatLabel('healthy'),
-                                ),
-                                for (final d in TrackingModels.diseaseLabels)
-                                  TrackingChart.buildLegendItem(
-                                    TrackingModels.diseaseColors[d]!,
-                                    TrackingModels.formatLabel(d),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 32),
-                          Text(
-                            tr('history'),
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            tr(
-                              'scans_from_period',
-                              namedArgs: {
-                                'period':
-                                    TrackingModels
-                                            .timeRanges[_selectedRangeIndex]['label']
-                                        as String,
-                              },
-                            ),
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: filteredSessions.length,
-                            itemBuilder: (context, index) {
-                              final session = filteredSessions[index];
-                              final date =
-                                  session['date'] != null
-                                      ? DateFormat(
-                                        'MMM d, yyyy – h:mma',
-                                      ).format(DateTime.parse(session['date']))
-                                      : '';
-                              final images = session['images'] as List? ?? [];
-
-                              return Card(
-                                margin: const EdgeInsets.symmetric(vertical: 6),
-                                child: ListTile(
-                                  leading:
-                                      images.isNotEmpty &&
-                                              images[0]['imageUrl'] != null &&
-                                              (images[0]['imageUrl'] as String)
-                                                  .isNotEmpty
-                                          ? CachedNetworkImage(
-                                            imageUrl: images[0]['imageUrl'],
-                                            width: 56,
-                                            height: 56,
-                                            fit: BoxFit.cover,
-                                            placeholder:
-                                                (context, url) => const Center(
-                                                  child:
-                                                      CircularProgressIndicator(),
-                                                ),
-                                            errorWidget:
-                                                (context, url, error) =>
-                                                    const Icon(
-                                                      Icons.broken_image,
-                                                      size: 40,
-                                                      color: Colors.grey,
-                                                    ),
-                                          )
-                                          : images.isNotEmpty &&
-                                              images[0]['imagePath'] != null
-                                          ? Image.file(
-                                            File(images[0]['imagePath']),
-                                            width: 56,
-                                            height: 56,
-                                            fit: BoxFit.cover,
-                                          )
-                                          : const Icon(Icons.image, size: 56),
-                                  title: Text(
-                                    tr('session', namedArgs: {'date': date}),
-                                  ),
-                                  subtitle: Text(
-                                    tr(
-                                      'image_count',
-                                      namedArgs: {
-                                        'count': images.length.toString(),
-                                      },
-                                    ),
-                                  ),
-                                  trailing: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: TrackingModels.getSourceColor(
-                                        session['source'],
-                                      ),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      TrackingModels.getSourceDisplayText(
-                                        session['source'],
-                                      ),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                  onLongPress:
-                                      session['source'] != 'completed' &&
-                                              session['source'] != 'reviewed'
-                                          ? () async {
-                                            final confirm = await showDialog<
-                                              bool
-                                            >(
-                                              context: context,
-                                              builder:
-                                                  (context) => AlertDialog(
-                                                    title: Text(
-                                                      tr('delete_session'),
-                                                    ),
-                                                    content: Text(
-                                                      tr(
-                                                        'delete_session_confirm',
-                                                      ),
-                                                    ),
-                                                    actions: [
-                                                      TextButton(
-                                                        onPressed:
-                                                            () => Navigator.of(
-                                                              context,
-                                                            ).pop(false),
-                                                        child: Text(
-                                                          tr('cancel'),
-                                                        ),
-                                                      ),
-                                                      TextButton(
-                                                        onPressed:
-                                                            () => Navigator.of(
-                                                              context,
-                                                            ).pop(true),
-                                                        child: Text(
-                                                          tr('delete'),
-                                                          style:
-                                                              const TextStyle(
-                                                                color:
-                                                                    Colors.red,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                            );
-                                            if (confirm == true) {
-                                              final images =
-                                                  (session['images']
-                                                      as List?) ??
-                                                  [];
-                                              bool imageDeleteError = false;
-                                              for (final img in images) {
-                                                try {
-                                                  final storagePath =
-                                                      img['storagePath']
-                                                          as String?;
-                                                  final imageUrl =
-                                                      img['imageUrl']
-                                                          as String?;
-
-                                                  if (storagePath != null &&
-                                                      storagePath.isNotEmpty) {
-                                                    // Preferred: delete by known storage path
-                                                    await FirebaseStorage
-                                                        .instance
-                                                        .ref()
-                                                        .child(storagePath)
-                                                        .delete();
-                                                  } else if (imageUrl != null &&
-                                                      imageUrl.isNotEmpty) {
-                                                    // If it's a Firebase URL, delete via URL
-                                                    if (imageUrl.startsWith(
-                                                          'gs://',
-                                                        ) ||
-                                                        imageUrl.startsWith(
-                                                          'https://firebasestorage.googleapis.com',
-                                                        )) {
-                                                      await FirebaseStorage
-                                                          .instance
-                                                          .refFromURL(imageUrl)
-                                                          .delete();
-                                                    } else {
-                                                      // Legacy Supabase cleanup (best-effort)
-                                                      final uri = Uri.parse(
-                                                        imageUrl,
-                                                      );
-                                                      final segments =
-                                                          uri.pathSegments;
-                                                      final bucketIndex =
-                                                          segments.indexOf(
-                                                            'mangosense',
-                                                          );
-                                                      if (bucketIndex != -1 &&
-                                                          bucketIndex + 1 <
-                                                              segments.length) {
-                                                        final supabase =
-                                                            Supabase
-                                                                .instance
-                                                                .client;
-                                                        final supabasePath =
-                                                            segments
-                                                                .sublist(
-                                                                  bucketIndex +
-                                                                      1,
-                                                                )
-                                                                .join('/');
-                                                        await supabase.storage
-                                                            .from('mangosense')
-                                                            .remove([
-                                                              supabasePath,
-                                                            ]);
-                                                      }
-                                                    }
-                                                  }
-                                                } catch (e) {
-                                                  imageDeleteError = true;
-                                                }
-                                              }
-                                              try {
-                                                if (session['source'] ==
-                                                    'pending') {
-                                                  final docId =
-                                                      session['sessionId'] ??
-                                                      session['id'];
-                                                  await FirebaseFirestore
-                                                      .instance
-                                                      .collection(
-                                                        'scan_requests',
-                                                      )
-                                                      .doc(docId)
-                                                      .delete();
-                                                } else {
-                                                  final docId =
-                                                      session['sessionId'] ??
-                                                      session['id'];
-                                                  await FirebaseFirestore
-                                                      .instance
-                                                      .collection('tracking')
-                                                      .doc(docId)
-                                                      .delete();
-                                                }
-                                                if (context.mounted) {
-                                                  ScaffoldMessenger.of(
-                                                    context,
-                                                  ).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text(
-                                                        imageDeleteError
-                                                            ? tr(
-                                                              'session_deleted_with_errors',
-                                                            )
-                                                            : tr(
-                                                              'session_deleted',
-                                                            ),
-                                                      ),
-                                                      backgroundColor:
-                                                          imageDeleteError
-                                                              ? Colors.orange
-                                                              : Colors.red,
-                                                    ),
-                                                  );
-                                                }
-                                              } catch (e) {
-                                                if (context.mounted) {
-                                                  ScaffoldMessenger.of(
-                                                    context,
-                                                  ).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text(
-                                                        tr(
-                                                          'failed_to_delete_session',
-                                                          args: [e.toString()],
-                                                        ),
-                                                      ),
-                                                      backgroundColor:
-                                                          Colors.red,
-                                                    ),
-                                                  );
-                                                }
-                                              }
-                                            }
-                                          }
-                                          : null,
-                                  onTap: () => _showSessionDetails(session),
-                                ),
-                              );
+                            ],
+                            onChanged: (i) async {
+                              if (i == null) return;
+                              if (i == 1) {
+                                await _pickCustomRange();
+                              } else {
+                                setState(() => _selectedRangeIndex = 0);
+                                await _saveSelectedRangeIndex(0);
+                              }
                             },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (filteredSessions.isEmpty) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline, color: Colors.grey),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              tr('no_tracked_scans'),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  // Friendly summary
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Colors.blue[50]!, Colors.green[50]!],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.green[200]!, width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.green[100],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.insights,
+                              color: Colors.green[700],
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  tr('farm_health_summary'),
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green[800],
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '${_getTimeRangeLabel(_selectedRangeIndex)}: $healthyPercent% healthy, $diseasedPercent% diseased.',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.green[700],
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  tr('keep_tracking_message'),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.green[600],
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
                     ),
                   ),
+                  // Trend Bar Chart
+                  Text(
+                    tr('farm_health_trend'),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 260,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 8,
+                        ),
+                      ],
+                    ),
+                    child:
+                        chartData.isEmpty
+                            ? Center(child: Text(tr('not_enough_data')))
+                            : LineChart(
+                              LineChartData(
+                                minY: 0,
+                                maxY:
+                                    chartData
+                                        .expand(
+                                          (m) => m.values.whereType<int>(),
+                                        )
+                                        .fold<double>(
+                                          0,
+                                          (prev, e) =>
+                                              e > prev ? e.toDouble() : prev,
+                                        ) *
+                                    1.2,
+                                lineBarsData: [
+                                  // Healthy line
+                                  LineChartBarData(
+                                    spots: [
+                                      for (int i = 0; i < chartData.length; i++)
+                                        FlSpot(
+                                          i.toDouble(),
+                                          (chartData[i]['healthy'] as int?)
+                                                  ?.toDouble() ??
+                                              0,
+                                        ),
+                                    ],
+                                    isCurved: true,
+                                    color:
+                                        TrackingModels.diseaseColors['healthy'],
+                                    barWidth: 4,
+                                    dotData: FlDotData(show: true),
+                                    belowBarData: BarAreaData(show: false),
+                                  ),
+                                  // Disease lines
+                                  for (final d in TrackingModels.diseaseLabels)
+                                    LineChartBarData(
+                                      spots: [
+                                        for (
+                                          int i = 0;
+                                          i < chartData.length;
+                                          i++
+                                        )
+                                          FlSpot(
+                                            i.toDouble(),
+                                            (chartData[i][d] as int?)
+                                                    ?.toDouble() ??
+                                                0,
+                                          ),
+                                      ],
+                                      isCurved: true,
+                                      color: TrackingModels.diseaseColors[d],
+                                      barWidth: 4,
+                                      dotData: FlDotData(show: true),
+                                      belowBarData: BarAreaData(show: false),
+                                    ),
+                                ],
+                                titlesData: FlTitlesData(
+                                  show: true,
+                                  bottomTitles: AxisTitles(
+                                    sideTitles: SideTitles(
+                                      showTitles: _selectedRangeIndex == 0,
+                                      reservedSize:
+                                          _selectedRangeIndex == 0 ? 48 : 0,
+                                      getTitlesWidget: (value, meta) {
+                                        if (value < 0 ||
+                                            value >= chartData.length) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        final group =
+                                            chartData[value.toInt()]['group']
+                                                as String;
+                                        Widget labelWidget;
+                                        if (_selectedRangeIndex == 0) {
+                                          int n = chartData.length > 24 ? 3 : 1;
+                                          if (value.toInt() % n != 0 &&
+                                              chartData.length > 12) {
+                                            return const SizedBox.shrink();
+                                          }
+                                          if (group.length >= 7 &&
+                                              group.contains('-')) {
+                                            labelWidget = Transform.rotate(
+                                              angle: -0.5708,
+                                              child: Text(
+                                                group.substring(5),
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            );
+                                          } else {
+                                            labelWidget = Transform.rotate(
+                                              angle: -0.5708,
+                                              child: Text(
+                                                group,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        } else if (_selectedRangeIndex >= 1 &&
+                                            _selectedRangeIndex <= 4) {
+                                          labelWidget = Transform.rotate(
+                                            angle: -0.5708,
+                                            child: Text(
+                                              group,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          );
+                                        } else {
+                                          final year = int.parse(
+                                            group.substring(0, 4),
+                                          );
+                                          final month = int.parse(
+                                            group.substring(5),
+                                          );
+                                          final monthAbbr = DateFormat(
+                                            'MMM',
+                                          ).format(DateTime(year, month));
+                                          labelWidget = Transform.rotate(
+                                            angle: -0.5708,
+                                            child: Text(
+                                              monthAbbr,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                        return Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: 16,
+                                          ),
+                                          child: labelWidget,
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                  leftTitles: AxisTitles(
+                                    sideTitles: SideTitles(
+                                      showTitles: true,
+                                      reservedSize: 32,
+                                      getTitlesWidget: (value, meta) {
+                                        if (value % 1 == 0) {
+                                          return Text(
+                                            value.toInt().toString(),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                            ),
+                                          );
+                                        }
+                                        return const SizedBox.shrink();
+                                      },
+                                    ),
+                                  ),
+                                  topTitles: AxisTitles(
+                                    sideTitles: SideTitles(showTitles: false),
+                                  ),
+                                  rightTitles: AxisTitles(
+                                    sideTitles: SideTitles(showTitles: false),
+                                  ),
+                                ),
+                                gridData: FlGridData(
+                                  show: true,
+                                  drawVerticalLine: false,
+                                ),
+                                borderData: FlBorderData(show: false),
+                              ),
+                            ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Legend
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        TrackingChart.buildLegendItem(
+                          TrackingModels.diseaseColors['healthy']!,
+                          TrackingModels.formatLabel('healthy'),
+                        ),
+                        for (final d in TrackingModels.diseaseLabels)
+                          TrackingChart.buildLegendItem(
+                            TrackingModels.diseaseColors[d]!,
+                            TrackingModels.formatLabel(d),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    tr('history'),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    tr(
+                      'scans_from_period',
+                      namedArgs: {
+                        'period': _getTimeRangeLabel(_selectedRangeIndex),
+                      },
+                    ),
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: filteredSessions.length,
+                    itemBuilder: (context, index) {
+                      final session = filteredSessions[index];
+                      final date =
+                          session['date'] != null
+                              ? DateFormat(
+                                'MMM d, yyyy – h:mma',
+                              ).format(DateTime.parse(session['date']))
+                              : '';
+                      final images = session['images'] as List? ?? [];
+
+                      return Card(
+                        margin: const EdgeInsets.symmetric(vertical: 6),
+                        child: ListTile(
+                          leading:
+                              images.isNotEmpty &&
+                                      images[0]['imageUrl'] != null &&
+                                      (images[0]['imageUrl'] as String)
+                                          .isNotEmpty
+                                  ? CachedNetworkImage(
+                                    imageUrl: images[0]['imageUrl'],
+                                    width: 56,
+                                    height: 56,
+                                    fit: BoxFit.cover,
+                                    placeholder:
+                                        (context, url) => const Center(
+                                          child: CircularProgressIndicator(),
+                                        ),
+                                    errorWidget:
+                                        (context, url, error) => const Icon(
+                                          Icons.broken_image,
+                                          size: 40,
+                                          color: Colors.grey,
+                                        ),
+                                  )
+                                  : images.isNotEmpty &&
+                                      images[0]['imagePath'] != null
+                                  ? Image.file(
+                                    File(images[0]['imagePath']),
+                                    width: 56,
+                                    height: 56,
+                                    fit: BoxFit.cover,
+                                  )
+                                  : const Icon(Icons.image, size: 56),
+                          title: Text(tr('session', namedArgs: {'date': date})),
+                          subtitle: Text(
+                            tr(
+                              'image_count',
+                              namedArgs: {'count': images.length.toString()},
+                            ),
+                          ),
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: TrackingModels.getSourceColor(
+                                session['source'],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              TrackingModels.getSourceDisplayText(
+                                session['source'],
+                              ),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          onLongPress:
+                              session['source'] != 'completed' &&
+                                      session['source'] != 'reviewed'
+                                  ? () async {
+                                    final confirm = await showDialog<bool>(
+                                      context: context,
+                                      builder:
+                                          (context) => AlertDialog(
+                                            title: Text(tr('delete_session')),
+                                            content: Text(
+                                              tr('delete_session_confirm'),
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed:
+                                                    () => Navigator.of(
+                                                      context,
+                                                    ).pop(false),
+                                                child: Text(tr('cancel')),
+                                              ),
+                                              TextButton(
+                                                onPressed:
+                                                    () => Navigator.of(
+                                                      context,
+                                                    ).pop(true),
+                                                child: Text(
+                                                  tr('delete'),
+                                                  style: const TextStyle(
+                                                    color: Colors.red,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                    );
+                                    if (confirm == true) {
+                                      final images =
+                                          (session['images'] as List?) ?? [];
+                                      bool imageDeleteError = false;
+                                      for (final img in images) {
+                                        try {
+                                          final storagePath =
+                                              img['storagePath'] as String?;
+                                          final imageUrl =
+                                              img['imageUrl'] as String?;
+
+                                          if (storagePath != null &&
+                                              storagePath.isNotEmpty) {
+                                            // Preferred: delete by known storage path
+                                            await FirebaseStorage.instance
+                                                .ref()
+                                                .child(storagePath)
+                                                .delete();
+                                          } else if (imageUrl != null &&
+                                              imageUrl.isNotEmpty) {
+                                            // If it's a Firebase URL, delete via URL
+                                            if (imageUrl.startsWith('gs://') ||
+                                                imageUrl.startsWith(
+                                                  'https://firebasestorage.googleapis.com',
+                                                )) {
+                                              await FirebaseStorage.instance
+                                                  .refFromURL(imageUrl)
+                                                  .delete();
+                                            } else {
+                                              // Legacy Supabase cleanup (best-effort)
+                                              final uri = Uri.parse(imageUrl);
+                                              final segments = uri.pathSegments;
+                                              final bucketIndex = segments
+                                                  .indexOf('mangosense');
+                                              if (bucketIndex != -1 &&
+                                                  bucketIndex + 1 <
+                                                      segments.length) {
+                                                final supabase =
+                                                    Supabase.instance.client;
+                                                final supabasePath = segments
+                                                    .sublist(bucketIndex + 1)
+                                                    .join('/');
+                                                await supabase.storage
+                                                    .from('mangosense')
+                                                    .remove([supabasePath]);
+                                              }
+                                            }
+                                          }
+                                        } catch (e) {
+                                          imageDeleteError = true;
+                                        }
+                                      }
+                                      try {
+                                        if (session['source'] == 'pending') {
+                                          final docId =
+                                              session['sessionId'] ??
+                                              session['id'];
+                                          await FirebaseFirestore.instance
+                                              .collection('scan_requests')
+                                              .doc(docId)
+                                              .delete();
+                                        } else {
+                                          final docId =
+                                              session['sessionId'] ??
+                                              session['id'];
+                                          await FirebaseFirestore.instance
+                                              .collection('tracking')
+                                              .doc(docId)
+                                              .delete();
+                                        }
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                imageDeleteError
+                                                    ? tr(
+                                                      'session_deleted_with_errors',
+                                                    )
+                                                    : tr('session_deleted'),
+                                              ),
+                                              backgroundColor:
+                                                  imageDeleteError
+                                                      ? Colors.orange
+                                                      : Colors.red,
+                                            ),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                tr(
+                                                  'failed_to_delete_session',
+                                                  args: [e.toString()],
+                                                ),
+                                              ),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    }
+                                  }
+                                  : null,
+                          onTap: () => _showSessionDetails(session),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
         );
       },
     );

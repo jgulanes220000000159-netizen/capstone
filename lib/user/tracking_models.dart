@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:easy_localization/easy_localization.dart';
 
 class TrackingModels {
@@ -23,12 +22,8 @@ class TrackingModels {
   ];
 
   static const List<Map<String, dynamic>> timeRanges = [
-    {'label': 'Show Everything', 'days': null},
     {'label': 'Last 7 Days', 'days': 7},
-    {'label': 'Last 30 Days', 'days': 30},
-    {'label': 'Last 60 Days', 'days': 60},
-    {'label': 'Last 90 Days', 'days': 90},
-    {'label': 'Last Year', 'days': 365},
+    {'label': 'Custom', 'days': null},
   ];
 
   static bool isRealDisease(String label) {
@@ -93,22 +88,54 @@ class TrackingModels {
 
   static List<Map<String, dynamic>> filterSessions(
     List<Map<String, dynamic>> sessions,
-    int selectedRangeIndex,
-  ) {
+    int selectedRangeIndex, {
+    DateTime? customStart,
+    DateTime? customEnd,
+  }) {
     if (sessions.isEmpty) return [];
     final now = DateTime.now();
     final days = timeRanges[selectedRangeIndex]['days'] as int?;
     if (days == null) {
-      // Show everything
-      return List<Map<String, dynamic>>.from(sessions);
+      // Custom range: if either date missing, show all
+      if (customStart == null || customEnd == null) {
+        return List<Map<String, dynamic>>.from(sessions);
+      }
+      final startInclusive = DateTime(
+        customStart.year,
+        customStart.month,
+        customStart.day,
+      );
+      final endInclusive = DateTime(
+        customEnd.year,
+        customEnd.month,
+        customEnd.day,
+      );
+      final filtered =
+          sessions.where((session) {
+            final dateStr = session['date'];
+            if (dateStr == null) return false;
+            final parsed = DateTime.tryParse(dateStr);
+            if (parsed == null) return false;
+            final d = DateTime(parsed.year, parsed.month, parsed.day);
+            return !d.isBefore(startInclusive) && !d.isAfter(endInclusive);
+          }).toList();
+      return filtered;
     }
+    // Last 7 days: inclusive range from (today - days + 1) to today
+    final startInclusive = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: days - 1));
+    final endInclusive = DateTime(now.year, now.month, now.day);
     final filtered =
         sessions.where((session) {
           final dateStr = session['date'];
           if (dateStr == null) return false;
-          final date = DateTime.tryParse(dateStr);
-          if (date == null) return false;
-          return now.difference(date).inDays.abs() < days;
+          final parsed = DateTime.tryParse(dateStr);
+          if (parsed == null) return false;
+          final d = DateTime(parsed.year, parsed.month, parsed.day);
+          return !d.isBefore(startInclusive) && !d.isAfter(endInclusive);
         }).toList();
     return filtered;
   }

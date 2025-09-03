@@ -1,18 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
+// fl_chart is not used directly here; charts are built in TrackingPage
 import 'package:intl/intl.dart';
 import 'tracking_models.dart';
 
 class TrackingChart {
   // Helper to get the start date for the selected range
-  static DateTime rangeStartDate(int selectedRangeIndex) {
+  static DateTime rangeStartDate(
+    int selectedRangeIndex, {
+    DateTime? customStart,
+  }) {
     final days = TrackingModels.timeRanges[selectedRangeIndex]['days'] as int?;
     if (days == null) {
-      // Show Everything: return a very early date
-      return DateTime(1970);
+      // Custom: use provided start or fallback far past
+      return customStart != null
+          ? DateTime(customStart.year, customStart.month, customStart.day)
+          : DateTime(1970);
     }
     final now = DateTime.now();
-    return now.subtract(Duration(days: days - 1));
+    return DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).subtract(Duration(days: days - 1));
   }
 
   // Group scans for charting based on selected range
@@ -31,89 +40,13 @@ class TrackingChart {
   // Aggregate chart data for the selected range
   static List<Map<String, dynamic>> chartData(
     List<Map<String, dynamic>> scans,
-    int selectedRangeIndex,
-  ) {
-    final start = rangeStartDate(selectedRangeIndex);
-    final now = DateTime.now();
-    // Show Everything: group by month (or by year if >24 months)
+    int selectedRangeIndex, {
+    DateTime? customStart,
+    DateTime? customEnd,
+  }) {
+    final start = rangeStartDate(selectedRangeIndex, customStart: customStart);
+    // Last 7 days (index 0): group by day
     if (selectedRangeIndex == 0) {
-      // Find earliest and latest scan dates
-      if (scans.isEmpty) return [];
-      final dates =
-          scans
-              .map((s) => DateTime.tryParse(s['date'] ?? ''))
-              .whereType<DateTime>()
-              .toList();
-      if (dates.isEmpty) return [];
-      dates.sort();
-      final first = dates.first;
-      final last = dates.last;
-      final monthsBetween =
-          (last.year - first.year) * 12 + (last.month - first.month) + 1;
-      if (monthsBetween > 24) {
-        // Group by year
-        final years = <String>[];
-        for (int y = first.year; y <= last.year; y++) {
-          years.add(y.toString());
-        }
-        final Map<String, Map<String, int>> data = {
-          for (final y in years)
-            y: {
-              'healthy': 0,
-              ...{for (var d in TrackingModels.diseaseLabels) d: 0},
-            },
-        };
-        for (final scan in scans) {
-          final label = (scan['disease'] ?? '').toLowerCase();
-          if (label == 'tip_burn' || label == 'unknown') continue;
-          final dateStr = scan['date'];
-          if (dateStr == null) continue;
-          final date = DateTime.tryParse(dateStr);
-          if (date == null) continue;
-          final groupKey = date.year.toString();
-          if (!data.containsKey(groupKey)) continue;
-          if (label == 'healthy') {
-            data[groupKey]!['healthy'] = (data[groupKey]!['healthy'] ?? 0) + 1;
-          } else if (TrackingModels.isRealDisease(label)) {
-            data[groupKey]![label] = (data[groupKey]![label] ?? 0) + 1;
-          }
-        }
-        return years.map((y) => {'group': y, ...data[y]!}).toList();
-      } else {
-        // Group by month
-        final months = <String>[];
-        DateTime d = DateTime(first.year, first.month);
-        while (d.isBefore(DateTime(last.year, last.month + 1))) {
-          months.add(DateFormat('yyyy-MM').format(d));
-          d = DateTime(d.year, d.month + 1);
-        }
-        final Map<String, Map<String, int>> data = {
-          for (final m in months)
-            m: {
-              'healthy': 0,
-              ...{for (var d in TrackingModels.diseaseLabels) d: 0},
-            },
-        };
-        for (final scan in scans) {
-          final label = (scan['disease'] ?? '').toLowerCase();
-          if (label == 'tip_burn' || label == 'unknown') continue;
-          final dateStr = scan['date'];
-          if (dateStr == null) continue;
-          final date = DateTime.tryParse(dateStr);
-          if (date == null) continue;
-          final groupKey = DateFormat('yyyy-MM').format(date);
-          if (!data.containsKey(groupKey)) continue;
-          if (label == 'healthy') {
-            data[groupKey]!['healthy'] = (data[groupKey]!['healthy'] ?? 0) + 1;
-          } else if (TrackingModels.isRealDisease(label)) {
-            data[groupKey]![label] = (data[groupKey]![label] ?? 0) + 1;
-          }
-        }
-        return months.map((m) => {'group': m, ...data[m]!}).toList();
-      }
-    }
-    // Last 7 days: group by day
-    if (selectedRangeIndex == 1) {
       final groups = List.generate(7, (i) {
         final d = start.add(Duration(days: i));
         return DateFormat('yyyy-MM-dd').format(d);
@@ -142,47 +75,94 @@ class TrackingChart {
       }
       return groups.map((g) => {'group': g, ...data[g]!}).toList();
     }
-    // Last 30/60/90 days: group by week
-    if (selectedRangeIndex >= 2 && selectedRangeIndex <= 4) {
-      final days = TrackingModels.timeRanges[selectedRangeIndex]['days'] as int;
-      final weeks = (days / 7).ceil();
-      // Defensive: ensure weekLabels and chartData are always the same length
-      final weekLabels = chartWeekLabels(weeks);
-      final List<Map<String, dynamic>> chartData = List.generate(
-        weekLabels.length,
-        (i) => {
-          'group': weekLabels[i],
-          'healthy': 0,
-          ...{for (var d in TrackingModels.diseaseLabels) d: 0},
-        },
+    // Custom range (index 1): adapt grouping by span
+    if (selectedRangeIndex == 1) {
+      if (customStart == null || customEnd == null) return [];
+      final startDay = DateTime(
+        customStart.year,
+        customStart.month,
+        customStart.day,
       );
-      for (final scan in scans) {
-        final label = (scan['disease'] ?? '').toLowerCase();
-        if (label == 'tip_burn' || label == 'unknown') continue;
-        final dateStr = scan['date'];
-        if (dateStr == null) continue;
-        final date = DateTime.tryParse(dateStr);
-        if (date == null) continue;
-        final weekIndex = ((date.difference(start).inDays) / 7).floor();
-        if (weekIndex < 0 || weekIndex >= weekLabels.length) continue;
-        if (label == 'healthy') {
-          chartData[weekIndex]['healthy'] =
-              (chartData[weekIndex]['healthy'] as int) + 1;
-        } else if (TrackingModels.isRealDisease(label)) {
-          chartData[weekIndex][label] =
-              (chartData[weekIndex][label] as int) + 1;
+      final endDay = DateTime(customEnd.year, customEnd.month, customEnd.day);
+      final totalDays = endDay.difference(startDay).inDays + 1;
+
+      // <= 31 days: group by day
+      if (totalDays <= 31) {
+        final groups = List.generate(totalDays, (i) {
+          final d = startDay.add(Duration(days: i));
+          return DateFormat('yyyy-MM-dd').format(d);
+        });
+        final Map<String, Map<String, int>> data = {
+          for (final g in groups)
+            g: {
+              'healthy': 0,
+              ...{for (var d in TrackingModels.diseaseLabels) d: 0},
+            },
+        };
+        for (final scan in scans) {
+          final label = (scan['disease'] ?? '').toLowerCase();
+          if (label == 'tip_burn' || label == 'unknown') continue;
+          final dateStr = scan['date'];
+          if (dateStr == null) continue;
+          final date = DateTime.tryParse(dateStr);
+          if (date == null) continue;
+          final d = DateTime(date.year, date.month, date.day);
+          if (d.isBefore(startDay) || d.isAfter(endDay)) continue;
+          final groupKey = DateFormat('yyyy-MM-dd').format(d);
+          if (!data.containsKey(groupKey)) continue;
+          if (label == 'healthy') {
+            data[groupKey]!['healthy'] = (data[groupKey]!['healthy'] ?? 0) + 1;
+          } else if (TrackingModels.isRealDisease(label)) {
+            data[groupKey]![label] = (data[groupKey]![label] ?? 0) + 1;
+          }
         }
+        return groups.map((g) => {'group': g, ...data[g]!}).toList();
       }
-      return chartData;
-    }
-    // Last year: group by month
-    if (selectedRangeIndex == 5) {
-      final months = last12Months(now);
+
+      // <= 180 days: group by week from start
+      if (totalDays <= 180) {
+        final weeks = (totalDays / 7).ceil();
+        final weekLabels = chartWeekLabels(weeks);
+        final List<Map<String, dynamic>> out = List.generate(
+          weekLabels.length,
+          (i) => {
+            'group': weekLabels[i],
+            'healthy': 0,
+            ...{for (var d in TrackingModels.diseaseLabels) d: 0},
+          },
+        );
+        for (final scan in scans) {
+          final label = (scan['disease'] ?? '').toLowerCase();
+          if (label == 'tip_burn' || label == 'unknown') continue;
+          final dateStr = scan['date'];
+          if (dateStr == null) continue;
+          final date = DateTime.tryParse(dateStr);
+          if (date == null) continue;
+          final d = DateTime(date.year, date.month, date.day);
+          if (d.isBefore(startDay) || d.isAfter(endDay)) continue;
+          final weekIndex = ((d.difference(startDay).inDays) / 7).floor();
+          if (weekIndex < 0 || weekIndex >= weekLabels.length) continue;
+          if (label == 'healthy') {
+            out[weekIndex]['healthy'] = (out[weekIndex]['healthy'] as int) + 1;
+          } else if (TrackingModels.isRealDisease(label)) {
+            out[weekIndex][label] = (out[weekIndex][label] as int) + 1;
+          }
+        }
+        return out;
+      }
+
+      // > 180 days: group by month
+      final months = <String>[];
+      DateTime d = DateTime(startDay.year, startDay.month, 1);
+      while (!d.isAfter(DateTime(endDay.year, endDay.month, 1))) {
+        months.add(DateFormat('yyyy-MM').format(d));
+        d = DateTime(d.year, d.month + 1, 1);
+      }
       final Map<String, Map<String, int>> data = {
         for (final m in months)
           m: {
             'healthy': 0,
-            ...{for (var d in TrackingModels.diseaseLabels) d: 0},
+            ...{for (var dd in TrackingModels.diseaseLabels) dd: 0},
           },
       };
       for (final scan in scans) {
@@ -192,7 +172,9 @@ class TrackingChart {
         if (dateStr == null) continue;
         final date = DateTime.tryParse(dateStr);
         if (date == null) continue;
-        final groupKey = DateFormat('yyyy-MM').format(date);
+        final dd = DateTime(date.year, date.month, date.day);
+        if (dd.isBefore(startDay) || dd.isAfter(endDay)) continue;
+        final groupKey = DateFormat('yyyy-MM').format(dd);
         if (!data.containsKey(groupKey)) continue;
         if (label == 'healthy') {
           data[groupKey]!['healthy'] = (data[groupKey]!['healthy'] ?? 0) + 1;
