@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'dart:io';
 import 'detection_screen.dart';
 import 'detection_painter.dart';
@@ -136,7 +137,7 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
       physics: const NeverScrollableScrollPhysics(),
       itemCount: groupedEntries.length,
       itemBuilder: (context, index) {
-        final label = groupedEntries[index].key;
+        // final label = groupedEntries[index].key;
         final detections = groupedEntries[index].value;
         final count = detections.length;
         final percentage = count / totalLeaves;
@@ -260,9 +261,13 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
       return Scaffold(
         backgroundColor: Colors.white,
         appBar: AppBar(
-          title: const Text(
-            'Processing Images',
-            style: TextStyle(color: Colors.white),
+          title: Text(
+            tr('processing_images'),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           centerTitle: true,
           backgroundColor: Colors.green,
@@ -302,7 +307,8 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
                 ),
                 const SizedBox(height: 32),
                 Text(
-                  'Analyzing Images',
+                  tr('analyzing_images'),
+                  textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -311,12 +317,18 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Processing image $_processedImages of ${widget.imagePaths.length}',
+                  tr(
+                    'processing_image_of_total',
+                    namedArgs: {
+                      'current': _processedImages.toString(),
+                      'total': widget.imagePaths.length.toString(),
+                    },
+                  ),
                   style: TextStyle(fontSize: 18, color: Colors.grey[700]),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Please wait while we analyze your images...',
+                  tr('processing_please_wait'),
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 16, color: Colors.grey[600]),
                 ),
@@ -358,14 +370,14 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 360;
 
-    final overallResults = _getOverallResults();
+    // final overallResults = _getOverallResults();
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
         title: Text(
-          'Analysis Results',
+          tr('analysis_results'),
           style: TextStyle(
-            fontSize: isSmallScreen ? 14 : 16,
+            fontSize: isSmallScreen ? 18 : 20,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -396,8 +408,8 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
                 ),
                 tooltip:
                     showBoundingBoxes
-                        ? 'Hide Bounding Boxes'
-                        : 'Show Bounding Boxes',
+                        ? tr('hide_bounding_boxes')
+                        : tr('show_bounding_boxes'),
               ),
             ),
           ),
@@ -547,7 +559,7 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              'Detected Issues',
+                              tr('detected_issues'),
                               style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
@@ -564,7 +576,15 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                '${(_resultsCache[_currentIndex] ?? []).length} found',
+                                tr(
+                                  'found_count',
+                                  namedArgs: {
+                                    'count':
+                                        (_resultsCache[_currentIndex] ?? [])
+                                            .length
+                                            .toString(),
+                                  },
+                                ),
                                 style: const TextStyle(
                                   color: Colors.green,
                                   fontWeight: FontWeight.bold,
@@ -609,7 +629,7 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
                     );
                   },
                   icon: const Icon(Icons.arrow_back),
-                  label: const Text('Previous'),
+                  label: Text(tr('previous')),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.green,
@@ -628,7 +648,7 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
                     );
                   },
                   icon: const Icon(Icons.arrow_forward),
-                  label: const Text('Next'),
+                  label: Text(tr('next')),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,
@@ -655,17 +675,15 @@ class _DetectionCarouselScreenState extends State<DetectionCarouselScreen> {
                       );
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Please wait for all images to be processed',
-                          ),
+                        SnackBar(
+                          content: Text(tr('wait_for_processing')),
                           backgroundColor: Colors.red,
                         ),
                       );
                     }
                   },
                   icon: const Icon(Icons.check),
-                  label: const Text('Done'),
+                  label: Text(tr('done')),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     foregroundColor: Colors.white,

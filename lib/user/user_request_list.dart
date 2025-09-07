@@ -20,11 +20,39 @@ class _UserRequestListState extends State<UserRequestList> {
   // Remove the bounding box preference for list view - we don't want bounding boxes in the list
   // bool _showBoundingBoxes = true;
 
+  // Track which completed requests were already seen (to hide the "New" badge)
+  Set<String> _seenCompletedIds = <String>{};
+
   @override
   void initState() {
     super.initState();
     // Remove bounding box preference loading for list view
     // _loadBoundingBoxPreference();
+    _loadSeenCompleted();
+  }
+
+  Future<void> _loadSeenCompleted() async {
+    try {
+      final box = await Hive.openBox('userRequestsSeenBox');
+      final saved = box.get('seenCompletedIds', defaultValue: []);
+      if (saved is List) {
+        setState(() {
+          _seenCompletedIds = saved.map((e) => e.toString()).toSet();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _markCompletedSeen(String id) async {
+    if (id.isEmpty) return;
+    if (_seenCompletedIds.contains(id)) return;
+    setState(() {
+      _seenCompletedIds.add(id);
+    });
+    try {
+      final box = await Hive.openBox('userRequestsSeenBox');
+      await box.put('seenCompletedIds', _seenCompletedIds.toList());
+    } catch (_) {}
   }
 
   // Remove these methods as they're not needed for list view
@@ -126,21 +154,28 @@ class _UserRequestListState extends State<UserRequestList> {
 
   @override
   Widget build(BuildContext context) {
-    // Sort requests by submittedAt descending (most recent first)
+    // Sort: for completed/reviewed use reviewedAt; otherwise use submittedAt (latest first)
     final sortedRequests = [...widget.requests];
+    DateTime? _prefDate(Map<String, dynamic> m) {
+      final status = (m['status'] ?? '').toString();
+      if ((status == 'completed' || status == 'reviewed') &&
+          m['reviewedAt'] != null &&
+          m['reviewedAt'].toString().isNotEmpty) {
+        return DateTime.tryParse(m['reviewedAt'].toString());
+      }
+      if (m['submittedAt'] != null && m['submittedAt'].toString().isNotEmpty) {
+        return DateTime.tryParse(m['submittedAt'].toString());
+      }
+      return null;
+    }
+
     sortedRequests.sort((a, b) {
-      final dateA =
-          a['submittedAt'] != null && a['submittedAt'].toString().isNotEmpty
-              ? DateTime.tryParse(a['submittedAt'].toString())
-              : null;
-      final dateB =
-          b['submittedAt'] != null && b['submittedAt'].toString().isNotEmpty
-              ? DateTime.tryParse(b['submittedAt'].toString())
-              : null;
+      final dateA = _prefDate(a);
+      final dateB = _prefDate(b);
       if (dateA == null && dateB == null) return 0;
       if (dateA == null) return 1;
       if (dateB == null) return -1;
-      return dateB.compareTo(dateA); // Descending
+      return dateB.compareTo(dateA); // Descending (latest on top)
     });
     return ListView.builder(
       padding: const EdgeInsets.all(16),
@@ -168,7 +203,7 @@ class _UserRequestListState extends State<UserRequestList> {
             ).format(DateTime.parse(submittedAt))
             : submittedAt;
     final reviewedAt = request['reviewedAt']?.toString() ?? '';
-    final isCompleted = status == 'completed';
+    final isCompleted = status == 'completed' || status == 'reviewed';
     final images = (request['images'] as List?) ?? [];
     final totalImages = images.length;
     final totalDetections = diseaseSummary.length;
@@ -180,12 +215,22 @@ class _UserRequestListState extends State<UserRequestList> {
             : '';
     final displayPath = (imageUrl.isNotEmpty) ? imageUrl : imagePath;
 
+    final String requestId =
+        (request['id'] ?? request['requestId'] ?? '').toString();
+    final bool isNewCompleted =
+        isCompleted &&
+        requestId.isNotEmpty &&
+        !_seenCompletedIds.contains(requestId);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       elevation: 2,
       child: InkWell(
-        onTap: () {
+        onTap: () async {
+          if (isNewCompleted) {
+            await _markCompletedSeen(requestId);
+          }
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -233,29 +278,57 @@ class _UserRequestListState extends State<UserRequestList> {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color:
-                                status == 'completed'
-                                    ? Colors.green.withOpacity(0.1)
-                                    : Colors.orange.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            _formatStatusLabel(status),
-                            style: TextStyle(
-                              color:
-                                  status == 'completed'
-                                      ? Colors.green
-                                      : Colors.orange,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    isCompleted
+                                        ? Colors.green.withOpacity(0.1)
+                                        : Colors.orange.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                _formatStatusLabel(status),
+                                style: TextStyle(
+                                  color:
+                                      isCompleted
+                                          ? Colors.green
+                                          : Colors.orange,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
                             ),
-                          ),
+                            if (isNewCompleted) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: Colors.red.withOpacity(0.3),
+                                  ),
+                                ),
+                                child: const Text(
+                                  'New',
+                                  style: TextStyle(
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ],
                     ),

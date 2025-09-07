@@ -163,12 +163,33 @@ class _ProfilePageState extends State<ProfilePage> {
       imageQuality: 85,
     );
     if (pickedFile != null) {
-      setState(() {
-        _profileImage = File(pickedFile.path);
-      });
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: Text(tr('change_profile_photo')),
+              content: Text(tr('confirm_change_profile_photo')),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(tr('cancel')),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text(tr('update')),
+                ),
+              ],
+            ),
+      );
+      if (confirmed == true) {
+        if (!mounted) return;
+        setState(() {
+          _profileImage = File(pickedFile.path);
+        });
 
-      // Upload to Firebase Storage
-      await _uploadProfileImage(pickedFile.path);
+        // Upload to Firebase Storage
+        await _uploadProfileImage(pickedFile.path);
+      }
     }
   }
 

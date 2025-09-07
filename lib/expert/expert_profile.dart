@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../routes.dart';
+// import '../routes.dart';
 import '../about_app_page.dart';
 import '../user/login_page.dart';
 import 'package:image_picker/image_picker.dart';
@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:hive/hive.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:easy_localization/easy_localization.dart';
 
 class ExpertProfile extends StatefulWidget {
   const ExpertProfile({Key? key}) : super(key: key);
@@ -140,12 +141,33 @@ class _ExpertProfileState extends State<ExpertProfile> {
       imageQuality: 85,
     );
     if (pickedFile != null) {
-      setState(() {
-        _profileImage = File(pickedFile.path);
-      });
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: Text(tr('change_profile_photo')),
+              content: Text(tr('confirm_change_profile_photo')),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text(tr('cancel')),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text(tr('update')),
+                ),
+              ],
+            ),
+      );
+      if (confirmed == true) {
+        if (!mounted) return;
+        setState(() {
+          _profileImage = File(pickedFile.path);
+        });
 
-      // Upload to Firebase Storage
-      await _uploadProfileImage(pickedFile.path);
+        // Upload to Firebase Storage
+        await _uploadProfileImage(pickedFile.path);
+      }
     }
   }
 

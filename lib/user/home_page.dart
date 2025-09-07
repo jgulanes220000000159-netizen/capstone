@@ -14,6 +14,7 @@ import 'package:hive/hive.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/services.dart';
 import 'tracking_page.dart';
+import 'dart:async';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -38,6 +39,11 @@ class _HomePageState extends State<HomePage> {
   int _pendingRequests = 0;
   int _completedRequests = 0;
   bool _loadingRequests = true;
+  // Live subscription for request counts
+  StreamSubscription<QuerySnapshot>? _requestCountsSub;
+  StreamSubscription? _seenBoxSub;
+  int _unseenCompleted = 0;
+  Set<String> _lastCompletedIds = <String>{};
 
   // Cache request counts to Hive for offline access
   Future<void> _cacheRequestCounts(int pending, int completed) async {
@@ -79,8 +85,8 @@ class _HomePageState extends State<HomePage> {
       int completed = 0;
       for (var doc in query.docs) {
         final status = doc['status'];
-        if (status == 'pending') pending++;
-        if (status == 'completed') completed++;
+        if (status == 'pending' || status == 'pending_review') pending++;
+        if (status == 'completed' || status == 'reviewed') completed++;
       }
 
       // Cache the counts for offline access
@@ -103,16 +109,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  final List<Widget> _pages = [
-    // Home
-    Container(), // Placeholder for home content
-    // Scan
-    const ScanPage(),
-    // My Requests
-    const UserRequestTabbedList(),
-    // Tracking (new page)
-    const TrackingPage(),
-  ];
+  List<Widget> _pages = [];
 
   int get _pendingCount =>
       _reviewManager.pendingReviews
@@ -124,6 +121,92 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _loadUserData();
     _loadDiseaseInfo();
+    _loadRequestCounts();
+    _subscribeToRequestCounts();
+    _pages = [
+      Container(),
+      const ScanPage(),
+      const UserRequestTabbedList(),
+      const TrackingPage(),
+    ];
+  }
+
+  void _subscribeToRequestCounts() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      _requestCountsSub?.cancel();
+      _requestCountsSub = FirebaseFirestore.instance
+          .collection('scan_requests')
+          .where('userId', isEqualTo: user.uid)
+          .snapshots()
+          .listen((snapshot) async {
+            int pending = 0;
+            int completed = 0;
+            final currentCompletedIds = <String>{};
+            for (final doc in snapshot.docs) {
+              final data = doc.data() as Map<String, dynamic>;
+              final status = data['status'];
+              if (status == 'pending' || status == 'pending_review') {
+                pending++;
+              } else if (status == 'completed' || status == 'reviewed') {
+                completed++;
+                final id =
+                    (data['id'] ?? data['requestId'] ?? doc.id).toString();
+                if (id.isNotEmpty) currentCompletedIds.add(id);
+              }
+            }
+            _lastCompletedIds = currentCompletedIds;
+            int unseen = 0;
+            try {
+              final box = await Hive.openBox('userRequestsSeenBox');
+              final saved = box.get('seenCompletedIds', defaultValue: []);
+              final seen =
+                  saved is List
+                      ? saved.map((e) => e.toString()).toSet()
+                      : <String>{};
+              unseen =
+                  currentCompletedIds.where((id) => !seen.contains(id)).length;
+            } catch (_) {}
+            if (mounted) {
+              setState(() {
+                _pendingRequests = pending;
+                _completedRequests = completed;
+                _loadingRequests = false;
+                _unseenCompleted = unseen;
+              });
+            }
+            await _cacheRequestCounts(pending, completed);
+          });
+      // watch Hive for local seen updates to clear badge instantly
+      try {
+        final box = await Hive.openBox('userRequestsSeenBox');
+        _seenBoxSub?.cancel();
+        _seenBoxSub = box.watch(key: 'seenCompletedIds').listen((_) async {
+          int unseen = 0;
+          try {
+            final saved = box.get('seenCompletedIds', defaultValue: []);
+            final seen =
+                saved is List
+                    ? saved.map((e) => e.toString()).toSet()
+                    : <String>{};
+            unseen = _lastCompletedIds.where((id) => !seen.contains(id)).length;
+          } catch (_) {}
+          if (mounted) {
+            setState(() {
+              _unseenCompleted = unseen;
+            });
+          }
+        });
+      } catch (_) {}
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    _requestCountsSub?.cancel();
+    _seenBoxSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadUserData() async {
@@ -311,9 +394,9 @@ class _HomePageState extends State<HomePage> {
                     children: [
                       Icon(Icons.pending, color: Colors.orange, size: 32),
                       const SizedBox(height: 4),
-                      const Text(
-                        'Pending',
-                        style: TextStyle(fontWeight: FontWeight.w600),
+                      Text(
+                        tr('pending'),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       Text(
                         '$pending',
@@ -331,9 +414,9 @@ class _HomePageState extends State<HomePage> {
                     children: [
                       Icon(Icons.check_circle, color: Colors.green, size: 32),
                       const SizedBox(height: 4),
-                      const Text(
-                        'Completed',
-                        style: TextStyle(fontWeight: FontWeight.w600),
+                      Text(
+                        tr('completed'),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       Text(
                         '$completed',
@@ -525,14 +608,21 @@ class _HomePageState extends State<HomePage> {
                             final diseaseNames =
                                 diseaseDocs
                                     .map((doc) => doc['name'] as String)
-                                    .toList();
-                            final diseaseImages = [
-                              'assets/diseases/anthracnose.jpg',
-                              'assets/diseases/backterial_blackspot1.jpg',
-                              'assets/diseases/dieback.jpg',
-                              'assets/diseases/powdery_mildew3.jpg',
-                              'assets/diseases/healthy.jpg',
-                            ];
+                                    .toList()
+                                  ..sort(
+                                    (a, b) => a.toLowerCase().compareTo(
+                                      b.toLowerCase(),
+                                    ),
+                                  );
+                            final Map<String, String> diseaseImageMap = {
+                              'anthracnose': 'assets/diseases/anthracnose.jpg',
+                              'backterial_blackspot':
+                                  'assets/diseases/backterial_blackspot1.jpg',
+                              'dieback': 'assets/diseases/dieback.jpg',
+                              'powdery_mildew':
+                                  'assets/diseases/powdery_mildew3.jpg',
+                              'healthy': 'assets/diseases/healthy.jpg',
+                            };
                             return SingleChildScrollView(
                               physics: const BouncingScrollPhysics(),
                               child: Column(
@@ -585,16 +675,12 @@ class _HomePageState extends State<HomePage> {
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-                                  // Disease cards (from Firestore)
-                                  for (
-                                    int i = 0;
-                                    i < diseaseNames.length &&
-                                        i < diseaseImages.length;
-                                    i++
-                                  )
+                                  // Disease cards (from Firestore) - match image by name
+                                  for (final name in diseaseNames)
                                     _buildDiseaseCard(
-                                      diseaseNames[i],
-                                      diseaseImages[i],
+                                      name,
+                                      diseaseImageMap[name.toLowerCase()] ??
+                                          'assets/diseases/healthy.jpg',
                                     ),
                                   const SizedBox(height: 16),
                                   Padding(
@@ -649,7 +735,7 @@ class _HomePageState extends State<HomePage> {
                       clipBehavior: Clip.none,
                       children: [
                         const Icon(Icons.list_alt, size: 28),
-                        if (_pendingCount > 0)
+                        if (_unseenCompleted > 0)
                           Positioned(
                             right: -8,
                             top: -8,
@@ -669,7 +755,9 @@ class _HomePageState extends State<HomePage> {
                               ),
                               child: Center(
                                 child: Text(
-                                  _pendingCount > 9 ? '9+' : '$_pendingCount',
+                                  _unseenCompleted > 9
+                                      ? '9+'
+                                      : '$_unseenCompleted',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 13,

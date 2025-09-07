@@ -26,6 +26,8 @@ class _ScanRequestListState extends State<ScanRequestList>
   bool _isLoading = true;
   List<Map<String, dynamic>> _pendingRequests = [];
   List<Map<String, dynamic>> _completedRequests = [];
+  // Track which pending requests have been opened (to hide "New" badge)
+  Set<String> _seenPendingIds = <String>{};
 
   @override
   void initState() {
@@ -38,6 +40,30 @@ class _ScanRequestListState extends State<ScanRequestList>
       }
     });
     _fetchRequests();
+    _loadSeenPending();
+  }
+
+  Future<void> _loadSeenPending() async {
+    try {
+      final box = await Hive.openBox('expertRequestsSeenBox');
+      final saved = box.get('seenPendingIds', defaultValue: []);
+      if (saved is List) {
+        setState(() {
+          _seenPendingIds = saved.map((e) => e.toString()).toSet();
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _markPendingSeen(String id) async {
+    if (id.isEmpty || _seenPendingIds.contains(id)) return;
+    setState(() {
+      _seenPendingIds.add(id);
+    });
+    try {
+      final box = await Hive.openBox('expertRequestsSeenBox');
+      await box.put('seenPendingIds', _seenPendingIds.toList());
+    } catch (_) {}
   }
 
   Future<void> _fetchRequests() async {
@@ -226,6 +252,13 @@ class _ScanRequestListState extends State<ScanRequestList>
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: () async {
+          // Mark pending as seen when expert opens it
+          final id = (request['id'] ?? request['requestId'] ?? '').toString();
+          if ((request['status'] == 'pending' ||
+                  request['status'] == 'pending_review') &&
+              id.isNotEmpty) {
+            await _markPendingSeen(id);
+          }
           final updatedRequest = await Navigator.push(
             context,
             MaterialPageRoute(
@@ -357,16 +390,60 @@ class _ScanRequestListState extends State<ScanRequestList>
                 ),
               ),
               // Status indicator
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: isCompleted ? Colors.green : Colors.orange,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  isCompleted ? 'Completed' : 'Pending',
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isCompleted ? Colors.green : Colors.orange,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      isCompleted ? 'Completed' : 'Pending',
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ),
+                  if ((request['status'] == 'pending' ||
+                      request['status'] == 'pending_review')) ...[
+                    const SizedBox(width: 6),
+                    Builder(
+                      builder: (context) {
+                        final id =
+                            (request['id'] ?? request['requestId'] ?? '')
+                                .toString();
+                        final isNew =
+                            id.isNotEmpty && !_seenPendingIds.contains(id);
+                        return isNew
+                            ? Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Colors.red.withOpacity(0.3),
+                                ),
+                              ),
+                              child: const Text(
+                                'New',
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            )
+                            : const SizedBox.shrink();
+                      },
+                    ),
+                  ],
+                ],
               ),
             ],
           ),
@@ -440,15 +517,16 @@ class _ScanRequestListState extends State<ScanRequestList>
                         indicatorColor: Colors.white,
                         labelColor: Colors.white,
                         unselectedLabelColor: Colors.white70,
-                        tabs: const [
-                          Tab(text: 'Pending'),
-                          Tab(text: 'Completed'),
+                        tabs: [
+                          Tab(text: 'Pending (${filteredPending.length})'),
+                          Tab(text: 'Completed (${filteredCompleted.length})'),
                         ],
                       ),
                     ),
                   ],
                 ),
               ),
+              // Removed separate totals row; counts are shown in tab labels
               Expanded(
                 child: TabBarView(
                   controller: _tabController,

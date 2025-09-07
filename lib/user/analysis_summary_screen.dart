@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'dart:io';
-import 'dart:convert';
-import 'package:path_provider/path_provider.dart';
-import 'package:uuid/uuid.dart';
+// import 'dart:convert';
+// import 'package:path_provider/path_provider.dart';
+// import 'package:uuid/uuid.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -11,11 +12,11 @@ import 'package:image/image.dart' as img;
 import 'tflite_detector.dart';
 import 'detection_painter.dart';
 import 'detection_screen.dart';
-import 'detection_carousel_screen.dart';
+// import 'detection_carousel_screen.dart';
 import 'detection_result_card.dart';
-import 'tracking_page.dart';
-import '../shared/user_profile.dart';
-import '../shared/review_manager.dart';
+// import 'tracking_page.dart';
+// import '../shared/user_profile.dart';
+// import '../shared/review_manager.dart';
 
 class AnalysisSummaryScreen extends StatefulWidget {
   final Map<int, List<DetectionResult>> allResults;
@@ -35,7 +36,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
   final Map<String, Size> imageSizes = {};
   bool showBoundingBoxes = false;
   bool _isSubmitting = false;
-  final ReviewManager _reviewManager = ReviewManager();
+  // final ReviewManager _reviewManager = ReviewManager();
 
   @override
   void initState() {
@@ -113,12 +114,12 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     setState(() {
       _isSubmitting = true;
     });
-    _showSendingDialog(context, "Sending to expert...");
+    _showSendingDialog(context, tr('sending_to_expert'));
     try {
-      final _userProfile = UserProfile();
+      // final _userProfile = UserProfile();
       final user = FirebaseAuth.instance.currentUser;
       final userId = user?.uid ?? 'unknown';
-      final _reviewManager = ReviewManager();
+      // final _reviewManager = ReviewManager();
 
       // --- Upload images to Firebase Storage and get URLs ---
       final List<Map<String, String>> uploadedImages = [];
@@ -183,15 +184,12 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
             resultList.add({
               'disease': result.label,
               'confidence': result.confidence,
-              'boundingBox':
-                  result.boundingBox != null
-                      ? {
-                        'left': result.boundingBox.left,
-                        'top': result.boundingBox.top,
-                        'right': result.boundingBox.right,
-                        'bottom': result.boundingBox.bottom,
-                      }
-                      : null,
+              'boundingBox': {
+                'left': result.boundingBox.left,
+                'top': result.boundingBox.top,
+                'right': result.boundingBox.right,
+                'bottom': result.boundingBox.bottom,
+              },
             });
           }
         } else {
@@ -248,15 +246,15 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop(); // Dismiss dialog
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Analysis sent for review successfully!'),
+          SnackBar(
+            content: Text(tr('analysis_sent_successfully')),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(bottom: 70, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
+            margin: const EdgeInsets.only(bottom: 70, left: 16, right: 16),
+            shape: const RoundedRectangleBorder(
               borderRadius: BorderRadius.all(Radius.circular(12)),
             ),
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 2),
           ),
         );
         Navigator.of(context).popUntil((route) => route.isFirst);
@@ -266,14 +264,16 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
         Navigator.of(context, rootNavigator: true).pop(); // Dismiss dialog
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error sending for review: $e'),
+            content: Text(
+              tr('error_sending_for_review', namedArgs: {'error': '$e'}),
+            ),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(bottom: 70, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
+            margin: const EdgeInsets.only(bottom: 70, left: 16, right: 16),
+            shape: const RoundedRectangleBorder(
               borderRadius: BorderRadius.all(Radius.circular(12)),
             ),
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -286,15 +286,15 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     }
   }
 
-  String _getSeverityLevel(String disease) {
-    final avgConfidence = _getDiseasePercentage(
-      disease,
-      _getOverallDiseaseCount(),
-    );
-    if (avgConfidence > 0.8) return 'high';
-    if (avgConfidence > 0.5) return 'medium';
-    return 'low';
-  }
+  // String _getSeverityLevel(String disease) {
+  //   final avgConfidence = _getDiseasePercentage(
+  //     disease,
+  //     _getOverallDiseaseCount(),
+  //   );
+  //   if (avgConfidence > 0.8) return 'high';
+  //   if (avgConfidence > 0.5) return 'medium';
+  //   return 'low';
+  // }
 
   String _formatLabel(String label) {
     switch (label.toLowerCase()) {
@@ -714,41 +714,41 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     );
   }
 
-  Widget _buildStatusSection(String title, List<String> items) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.green,
-          ),
-        ),
-        const SizedBox(height: 8),
-        ...items.map(
-          (item) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.check_circle_outline,
-                  size: 20,
-                  color: Colors.green,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(item, style: const TextStyle(fontSize: 14)),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  // Widget _buildStatusSection(String title, List<String> items) {
+  //   return Column(
+  //     crossAxisAlignment: CrossAxisAlignment.start,
+  //     children: [
+  //       Text(
+  //         title,
+  //         style: const TextStyle(
+  //           fontSize: 16,
+  //           fontWeight: FontWeight.bold,
+  //           color: Colors.green,
+  //         ),
+  //       ),
+  //       const SizedBox(height: 8),
+  //       ...items.map(
+  //         (item) => Padding(
+  //           padding: const EdgeInsets.only(bottom: 8),
+  //           child: Row(
+  //             crossAxisAlignment: CrossAxisAlignment.start,
+  //             children: [
+  //               const Icon(
+  //                 Icons.check_circle_outline,
+  //                 size: 20,
+  //                 color: Colors.green,
+  //               ),
+  //               const SizedBox(width: 8),
+  //               Expanded(
+  //                 child: Text(item, style: const TextStyle(fontSize: 14)),
+  //               ),
+  //             ],
+  //           ),
+  //         ),
+  //       ),
+  //     ],
+  //   );
+  // }
 
   Widget _buildImageGrid() {
     if (imageSizes.isEmpty) {
@@ -814,7 +814,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                                   size: 32,
                                 ),
                                 onPressed: () => Navigator.of(context).pop(),
-                                tooltip: 'Back',
+                                tooltip: tr('back'),
                               ),
                             ),
                           ),
@@ -904,9 +904,9 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     setState(() {
       _isSubmitting = true;
     });
-    _showSendingDialog(context, "Adding to tracking...");
+    _showSendingDialog(context, tr('adding_to_tracking'));
     try {
-      final _userProfile = UserProfile();
+      // final _userProfile = UserProfile();
       final user = FirebaseAuth.instance.currentUser;
       final userId = user?.uid ?? 'unknown';
       final box = await Hive.openBox('trackingBox');
@@ -968,15 +968,15 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop(); // Dismiss dialog
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Analysis added to tracking!'),
+          SnackBar(
+            content: Text(tr('analysis_added_to_tracking')),
             backgroundColor: Colors.blue,
             behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(bottom: 70, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
+            margin: const EdgeInsets.only(bottom: 70, left: 16, right: 16),
+            shape: const RoundedRectangleBorder(
               borderRadius: BorderRadius.all(Radius.circular(12)),
             ),
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 2),
           ),
         );
         Navigator.of(context).popUntil((route) => route.isFirst);
@@ -986,14 +986,16 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
         Navigator.of(context, rootNavigator: true).pop(); // Dismiss dialog
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error adding to tracking: $e'),
+            content: Text(
+              tr('error_adding_to_tracking', namedArgs: {'error': '$e'}),
+            ),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating,
-            margin: EdgeInsets.only(bottom: 70, left: 16, right: 16),
-            shape: RoundedRectangleBorder(
+            margin: const EdgeInsets.only(bottom: 70, left: 16, right: 16),
+            shape: const RoundedRectangleBorder(
               borderRadius: BorderRadius.all(Radius.circular(12)),
             ),
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -1022,7 +1024,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
-        title: const Text('Analysis Summary'),
+        title: Text(tr('analysis_summary')),
         centerTitle: true,
         backgroundColor: Colors.green,
         elevation: 0,
@@ -1185,7 +1187,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                         child: ElevatedButton.icon(
                           onPressed: _addToTracking,
                           icon: const Icon(Icons.save),
-                          label: const Text('Add to Tracking'),
+                          label: Text(tr('add_to_tracking')),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.grey[700],
                             foregroundColor: Colors.white,
@@ -1203,7 +1205,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                         child: ElevatedButton.icon(
                           onPressed: _sendForExternalReview,
                           icon: const Icon(Icons.send),
-                          label: const Text('Send for Review'),
+                          label: Text(tr('send_for_review')),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green,
                             foregroundColor: Colors.white,

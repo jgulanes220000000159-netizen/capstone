@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../shared/review_manager.dart';
-import 'dart:async';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -10,7 +9,9 @@ import 'user_request_list.dart';
 import 'user_request_detail.dart';
 
 class UserRequestTabbedList extends StatefulWidget {
-  const UserRequestTabbedList({Key? key}) : super(key: key);
+  final int initialTabIndex;
+  const UserRequestTabbedList({Key? key, this.initialTabIndex = 0})
+    : super(key: key);
 
   @override
   State<UserRequestTabbedList> createState() => _UserRequestTabbedListState();
@@ -92,7 +93,11 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialTabIndex.clamp(0, 1),
+    );
   }
 
   @override
@@ -151,7 +156,10 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
                   indicatorColor: Colors.white,
                   labelColor: Colors.white,
                   unselectedLabelColor: Colors.white70,
-                  tabs: [Tab(text: tr('pending')), Tab(text: tr('completed'))],
+                  tabs: [
+                    Tab(text: '${tr('pending')} (0)'),
+                    Tab(text: '${tr('completed')} (0)'),
+                  ],
                 ),
               ),
               Expanded(
@@ -201,7 +209,10 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
                 indicatorColor: Colors.white,
                 labelColor: Colors.white,
                 unselectedLabelColor: Colors.white70,
-                tabs: [Tab(text: tr('pending')), Tab(text: tr('completed'))],
+                tabs: [
+                  Tab(text: '${tr('pending')} (${pending.length})'),
+                  Tab(text: '${tr('completed')} (${completed.length})'),
+                ],
               ),
             ),
             Expanded(

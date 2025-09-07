@@ -51,7 +51,7 @@ class AboutAppPage extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            'mango',
+                            'Mango',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 32,

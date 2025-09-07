@@ -22,6 +22,8 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
   int _selectedIndex = 0;
   int _requestsInitialTab = 0; // 0 for pending, 1 for completed
   int _pendingNotifications = 0; // Track pending notifications
+  Set<String> _lastPendingIds = <String>{};
+  StreamSubscription? _seenPendingWatch;
 
   List<Widget> _pages = [];
 
@@ -29,7 +31,8 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
   void initState() {
     super.initState();
     _updatePages();
-    _loadNotificationCount(); // Load notification count
+    // Start live unseen pending subscription; do not preload stale counts
+    _subscribePendingUnseen();
   }
 
   void _updatePages() {
@@ -45,46 +48,80 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
     setState(() {
       _selectedIndex = index;
     });
-
-    // Clear notifications when Requests tab is clicked
-    if (index == 1) {
-      _clearNotifications();
-    }
   }
 
   // Load notification count from Hive
-  Future<void> _loadNotificationCount() async {
+  // Removed: count is set solely by unseen-pending subscription
+
+  // Subscribe to pending unseen (ids not marked as seen locally)
+  void _subscribePendingUnseen() async {
     try {
-      final notificationBox = await Hive.openBox('notificationBox');
-      final count = notificationBox.get(
-        'pendingNotifications',
-        defaultValue: 0,
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+      FirebaseFirestore.instance.collection('scan_requests').snapshots().listen(
+        (snapshot) async {
+          final pendingIds = <String>{};
+          for (final doc in snapshot.docs) {
+            final data = doc.data();
+            final status = data['status'];
+            final expertUid = data['expertUid'];
+            final isPending = status == 'pending' || status == 'pending_review';
+            final isUnassigned =
+                expertUid == null || expertUid.toString().isEmpty;
+            final isAssignedToMe = expertUid == user.uid;
+            if (isPending && (isUnassigned || isAssignedToMe)) {
+              final id = (data['id'] ?? data['requestId'] ?? doc.id).toString();
+              if (id.isNotEmpty) pendingIds.add(id);
+            }
+          }
+          _lastPendingIds = pendingIds;
+          // Initialize baseline once so historical backlog doesn't count as new
+          final box = await Hive.openBox('expertRequestsSeenBox');
+          final bool baselineSet =
+              box.get('pendingBaselineSet', defaultValue: false) as bool;
+          final savedList = box.get('seenPendingIds', defaultValue: []);
+          if (!baselineSet && (savedList is List ? savedList.isEmpty : true)) {
+            await box.put('seenPendingIds', pendingIds.toList());
+            await box.put('pendingBaselineSet', true);
+          }
+          int unseen = await _computePendingUnseen();
+          _updateNotificationCount(unseen);
+          // Watch local seen set for immediate updates
+          _seenPendingWatch?.cancel();
+          _seenPendingWatch = box.watch(key: 'seenPendingIds').listen((
+            _,
+          ) async {
+            int unseen2 = await _computePendingUnseen();
+            _updateNotificationCount(unseen2);
+          });
+        },
       );
-      setState(() {
-        _pendingNotifications = count;
-      });
-    } catch (e) {
-      // print('Error loading notification count: $e');
-    }
+    } catch (_) {}
   }
 
-  // Save notification count to Hive
-  Future<void> _saveNotificationCount(int count) async {
+  Future<int> _computePendingUnseen() async {
     try {
-      final notificationBox = await Hive.openBox('notificationBox');
-      await notificationBox.put('pendingNotifications', count);
-    } catch (e) {
-      // print('Error saving notification count: $e');
+      final box = await Hive.openBox('expertRequestsSeenBox');
+      final saved = box.get('seenPendingIds', defaultValue: []);
+      final seen =
+          saved is List ? saved.map((e) => e.toString()).toSet() : <String>{};
+      return _lastPendingIds.where((id) => !seen.contains(id)).length;
+    } catch (_) {
+      return _lastPendingIds.length;
     }
   }
 
-  // Clear notifications when Requests tab is clicked
-  void _clearNotifications() async {
-    await _saveNotificationCount(0);
+  void _updateNotificationCount(int count) {
+    if (!mounted) return;
     setState(() {
-      _pendingNotifications = 0;
+      _pendingNotifications = count;
     });
   }
+
+  // Removed: no longer persisting badge count
+
+  // Clear notifications when Requests tab is clicked
+  // Removed: do not clear on navigation; clearing happens per-card open
 
   void _navigateToRequests(int tabIndex) {
     setState(() {
@@ -92,7 +129,7 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
       _selectedIndex = 1; // Switch to Requests tab
       _updatePages();
     });
-    _clearNotifications(); // Clear notifications when navigating to requests
+    // Do not auto-clear; Clear when opening individual pending card
   }
 
   @override
@@ -287,19 +324,8 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
   }
 
   // Debug tracking variables
-  int _lastPendingCount = 0;
+  // int _lastPendingCount = 0; // removed: do not override badge from here
   // int _lastCompletedCount = 0; // unused
-
-  // Update notification count
-  void _updateNotificationCount(int newCount) {
-    // Find the parent dashboard to update notification count
-    final dashboard = context.findAncestorStateOfType<_ExpertDashboardState>();
-    if (dashboard != null) {
-      dashboard._pendingNotifications = newCount;
-      dashboard._saveNotificationCount(newCount);
-      dashboard.setState(() {});
-    }
-  }
 
   @override
   void initState() {
@@ -377,6 +403,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
       firstDate: DateTime(1970),
       lastDate: DateTime.now(),
       initialDateRange: initialRange,
+      locale: const Locale('en'),
     );
     if (picked != null) {
       setState(() {
@@ -591,11 +618,8 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
         // print('Pending request - expertUid: ...');
       }
 
-      // Update notification count if pending requests changed
-      if (_lastPendingCount != pendingDocs.length) {
-        _updateNotificationCount(pendingDocs.length);
-        _lastPendingCount = pendingDocs.length;
-      }
+      // Do not update the bottom nav badge here. Badge is managed in
+      // the parent dashboard via unseen-pending logic only.
 
       // Calculate average response time using fixed logic
       double totalResponseTime = 0.0;
@@ -965,7 +989,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                                       child: Text(
                                         _customStartDate != null &&
                                                 _customEndDate != null
-                                            ? 'Custom: ${DateFormat('MMM d').format(_customStartDate!)} – ${DateFormat('MMM d').format(_customEndDate!)}'
+                                            ? 'Custom: ${DateFormat('MMM d', 'en').format(_customStartDate!)} – ${DateFormat('MMM d', 'en').format(_customEndDate!)}'
                                             : 'Custom',
                                       ),
                                     ),
