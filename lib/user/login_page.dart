@@ -3,9 +3,6 @@ import 'home_page.dart';
 import 'register_page.dart';
 import '../expert/expert_dashboard.dart';
 import '../test_account.dart';
-import '../admin/models/admin_user.dart';
-import '../admin/screens/admin_dashboard.dart';
-import '../admin/screens/admin_login.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:mailer/mailer.dart';
@@ -722,27 +719,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ],
                     ),
-                    // Secret admin login button (bottom right)
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: TextButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const AdminLogin(),
-                            ),
-                          );
-                        },
-                        child: const Text(
-                          'Admin',
-                          style: TextStyle(
-                            color: Color.fromARGB(20, 255, 255, 255),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ),
+                    // Admin login removed (migrated to web)
                   ],
                 ),
               ),

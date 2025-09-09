@@ -48,9 +48,6 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/v19.tflite
-    - assets/labels.txt
-    - assets/v21.tflite
     - assets/labelsv2.txt
     - assets/v24.tflite
     - assets/logo.png

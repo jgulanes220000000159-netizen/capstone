@@ -5,7 +5,6 @@ import 'user/home_page.dart';
 import 'user/register_page.dart';
 import 'expert/scan_request_list.dart';
 import 'test_account.dart';
-import 'admin/screens/admin_login.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'expert/expert_dashboard.dart';
@@ -320,7 +319,6 @@ class CapstoneApp extends StatelessWidget {
               '/register': (context) => const RegisterPage(),
               '/user-home': (context) => const HomePage(),
               '/expert-home': (context) => const ExpertDashboard(),
-              '/admin-login': (context) => const AdminLogin(),
             },
           ),
     );
