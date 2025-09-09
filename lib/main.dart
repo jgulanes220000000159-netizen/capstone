@@ -89,9 +89,55 @@ void main() async {
 }
 
 // FCM background handler
+@pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  // You can handle background notification logic here
+  try {
+    // Initialize local notifications in background isolate
+    final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+        FlutterLocalNotificationsPlugin();
+    const AndroidInitializationSettings initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const InitializationSettings initializationSettings =
+        InitializationSettings(android: initializationSettingsAndroid);
+    await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+    // Ensure channel exists
+    const AndroidNotificationChannel defaultChannel =
+        AndroidNotificationChannel(
+          'high_importance',
+          'High Importance Notifications',
+          description:
+              'Used for important notifications like reviews and requests',
+          importance: Importance.high,
+        );
+    final androidPlugin =
+        flutterLocalNotificationsPlugin
+            .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin
+            >();
+    await androidPlugin?.createNotificationChannel(defaultChannel);
+
+    final String title =
+        message.notification?.title ??
+        (message.data['title']?.toString() ?? 'Notification');
+    final String body =
+        message.notification?.body ?? (message.data['body']?.toString() ?? '');
+
+    await flutterLocalNotificationsPlugin.show(
+      message.hashCode,
+      title,
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'high_importance',
+          'High Importance Notifications',
+          importance: Importance.max,
+          priority: Priority.high,
+        ),
+      ),
+    );
+  } catch (_) {}
 }
 
 class CapstoneApp extends StatelessWidget {
@@ -134,21 +180,23 @@ class CapstoneApp extends StatelessWidget {
       }
     }
 
-    // Subscribe experts to topic 'experts' for broadcast notifications with local toggle
+    // Subscribe users to topics with local toggle
     try {
       final userBox = Hive.box('userBox');
       final profile = userBox.get('userProfile') as Map?;
       final role = profile != null ? profile['role'] as String? : null;
       final settingsBox = Hive.box('settings');
       final notificationsEnabled =
-          settingsBox.get('enableNotifications', defaultValue: true) as bool;
-      if (role == 'expert') {
-        if (notificationsEnabled) {
+          settingsBox.get('enableNotifications', defaultValue: false) as bool;
+      if (notificationsEnabled) {
+        await FirebaseMessaging.instance.subscribeToTopic('all_users');
+        if (role == 'expert') {
           await FirebaseMessaging.instance.subscribeToTopic('experts');
         } else {
           await FirebaseMessaging.instance.unsubscribeFromTopic('experts');
         }
       } else {
+        await FirebaseMessaging.instance.unsubscribeFromTopic('all_users');
         await FirebaseMessaging.instance.unsubscribeFromTopic('experts');
       }
     } catch (_) {}
@@ -171,14 +219,16 @@ class CapstoneApp extends StatelessWidget {
         final role = profile != null ? profile['role'] as String? : null;
         final settingsBox = Hive.box('settings');
         final notificationsEnabled =
-            settingsBox.get('enableNotifications', defaultValue: true) as bool;
-        if (role == 'expert') {
-          if (notificationsEnabled) {
+            settingsBox.get('enableNotifications', defaultValue: false) as bool;
+        if (notificationsEnabled) {
+          await FirebaseMessaging.instance.subscribeToTopic('all_users');
+          if (role == 'expert') {
             await FirebaseMessaging.instance.subscribeToTopic('experts');
           } else {
             await FirebaseMessaging.instance.unsubscribeFromTopic('experts');
           }
         } else {
+          await FirebaseMessaging.instance.unsubscribeFromTopic('all_users');
           await FirebaseMessaging.instance.unsubscribeFromTopic('experts');
         }
       } catch (_) {}
@@ -189,7 +239,7 @@ class CapstoneApp extends StatelessWidget {
       try {
         final settingsBox = Hive.box('settings');
         final enabled =
-            settingsBox.get('enableNotifications', defaultValue: true) as bool;
+            settingsBox.get('enableNotifications', defaultValue: false) as bool;
         if (!enabled) return;
       } catch (_) {}
       RemoteNotification? notification = message.notification;

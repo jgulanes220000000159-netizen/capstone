@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:hive/hive.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({Key? key}) : super(key: key);
@@ -20,7 +21,7 @@ class ProfilePage extends StatefulWidget {
 class _ProfilePageState extends State<ProfilePage> {
   File? _profileImage;
   final ImagePicker _picker = ImagePicker();
-  bool _notificationsEnabled = true;
+  bool _notificationsEnabled = false;
 
   // User data variables
   String _userName = 'Loading...';
@@ -41,7 +42,7 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final settingsBox = Hive.box('settings');
       _notificationsEnabled =
-          settingsBox.get('enableNotifications', defaultValue: true) as bool;
+          settingsBox.get('enableNotifications', defaultValue: false) as bool;
     } catch (_) {}
   }
 
@@ -856,6 +857,21 @@ class _ProfilePageState extends State<ProfilePage> {
                                           .update({
                                             'enableNotifications': value,
                                           });
+                                    }
+                                  } catch (_) {}
+                                  // Apply topic change immediately (farmers -> all_users)
+                                  try {
+                                    if (value) {
+                                      await FirebaseMessaging.instance
+                                          .subscribeToTopic('all_users');
+                                      // keep farmers off experts
+                                      await FirebaseMessaging.instance
+                                          .unsubscribeFromTopic('experts');
+                                    } else {
+                                      await FirebaseMessaging.instance
+                                          .unsubscribeFromTopic('all_users');
+                                      await FirebaseMessaging.instance
+                                          .unsubscribeFromTopic('experts');
                                     }
                                   } catch (_) {}
                                 },

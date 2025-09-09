@@ -29,6 +29,7 @@ class _UserRequestListState extends State<UserRequestList> {
     // Remove bounding box preference loading for list view
     // _loadBoundingBoxPreference();
     _loadSeenCompleted();
+    _seedBaselineIfNeeded();
   }
 
   Future<void> _loadSeenCompleted() async {
@@ -40,6 +41,31 @@ class _UserRequestListState extends State<UserRequestList> {
           _seenCompletedIds = saved.map((e) => e.toString()).toSet();
         });
       }
+    } catch (_) {}
+  }
+
+  // Mark all current completed IDs as seen on first run so old items don't show as New
+  Future<void> _seedBaselineIfNeeded() async {
+    try {
+      final box = await Hive.openBox('userRequestsSeenBox');
+      final bool baselineSet =
+          box.get('completedBaselineSet', defaultValue: false) as bool;
+      final savedList = box.get('seenCompletedIds', defaultValue: []);
+      final bool noSaved = savedList is List ? savedList.isEmpty : true;
+      if (baselineSet || !noSaved) return;
+      final completedIds = <String>{};
+      for (final req in widget.requests) {
+        final status = (req['status'] ?? '').toString();
+        if (status == 'completed' || status == 'reviewed') {
+          final id = (req['id'] ?? req['requestId'] ?? '').toString();
+          if (id.isNotEmpty) completedIds.add(id);
+        }
+      }
+      await box.put('seenCompletedIds', completedIds.toList());
+      await box.put('completedBaselineSet', true);
+      setState(() {
+        _seenCompletedIds = completedIds;
+      });
     } catch (_) {}
   }
 

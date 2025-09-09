@@ -157,6 +157,18 @@ class _HomePageState extends State<HomePage> {
               }
             }
             _lastCompletedIds = currentCompletedIds;
+            // One-time baseline: on fresh install, mark existing completed as seen
+            try {
+              final box = await Hive.openBox('userRequestsSeenBox');
+              final bool baselineSet =
+                  box.get('completedBaselineSet', defaultValue: false) as bool;
+              final savedList = box.get('seenCompletedIds', defaultValue: []);
+              final bool noSaved = savedList is List ? savedList.isEmpty : true;
+              if (!baselineSet && noSaved) {
+                await box.put('seenCompletedIds', currentCompletedIds.toList());
+                await box.put('completedBaselineSet', true);
+              }
+            } catch (_) {}
             int unseen = 0;
             try {
               final box = await Hive.openBox('userRequestsSeenBox');

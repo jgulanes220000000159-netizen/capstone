@@ -21,7 +21,7 @@ class ExpertProfile extends StatefulWidget {
 class _ExpertProfileState extends State<ExpertProfile> {
   File? _profileImage;
   final ImagePicker _picker = ImagePicker();
-  bool _notificationsEnabled = true;
+  bool _notificationsEnabled = false;
 
   // User data variables
   String _userName = 'Loading...';
@@ -41,7 +41,7 @@ class _ExpertProfileState extends State<ExpertProfile> {
     try {
       final settingsBox = Hive.box('settings');
       final enabled =
-          settingsBox.get('enableNotifications', defaultValue: true) as bool;
+          settingsBox.get('enableNotifications', defaultValue: false) as bool;
       _notificationsEnabled = enabled;
     } catch (_) {}
   }
@@ -946,12 +946,16 @@ class _ExpertProfileState extends State<ExpertProfile> {
                                           });
                                     } catch (_) {}
                                   }
-                                  // Apply topic change immediately
+                                  // Apply topic change immediately (experts -> all_users + experts)
                                   try {
                                     if (value) {
                                       await FirebaseMessaging.instance
+                                          .subscribeToTopic('all_users');
+                                      await FirebaseMessaging.instance
                                           .subscribeToTopic('experts');
                                     } else {
+                                      await FirebaseMessaging.instance
+                                          .unsubscribeFromTopic('all_users');
                                       await FirebaseMessaging.instance
                                           .unsubscribeFromTopic('experts');
                                     }

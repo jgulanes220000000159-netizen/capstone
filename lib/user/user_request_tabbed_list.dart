@@ -133,8 +133,12 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
       return const Center(child: Text('Not logged in'));
     }
 
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: _loadRequestsWithFallback(user.uid),
+    return StreamBuilder<QuerySnapshot>(
+      stream:
+          FirebaseFirestore.instance
+              .collection('scan_requests')
+              .where('userId', isEqualTo: user.uid)
+              .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -144,7 +148,12 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
           return _buildWithOfflineFallback();
         }
 
-        final allRequests = snapshot.data ?? [];
+        final docs = snapshot.data?.docs ?? [];
+        final allRequests =
+            docs.map((d) => d.data() as Map<String, dynamic>).toList();
+
+        // Cache requests for offline fallback
+        _cacheRequestsToHive(allRequests);
         if (allRequests.isEmpty) {
           return Column(
             children: [
