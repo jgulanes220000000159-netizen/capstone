@@ -15,7 +15,7 @@
         <!--Notif test area-->
                 <meta-data
                     android:name="com.google.firebase.messaging.default_notification_channel_id"
-                    android:value="high_importance" />
+                    android:value="high_importance_v2" />
                 <meta-data
                     android:name="com.google.firebase.messaging.default_notification_icon"
                     android:resource="@mipmap/ic_launcher" />

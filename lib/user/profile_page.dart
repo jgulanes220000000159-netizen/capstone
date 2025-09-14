@@ -41,8 +41,11 @@ class _ProfilePageState extends State<ProfilePage> {
     _loadTotalScanCount();
     try {
       final settingsBox = Hive.box('settings');
+      if (!settingsBox.containsKey('enableNotifications')) {
+        settingsBox.put('enableNotifications', true);
+      }
       _notificationsEnabled =
-          settingsBox.get('enableNotifications', defaultValue: false) as bool;
+          settingsBox.get('enableNotifications', defaultValue: true) as bool;
     } catch (_) {}
   }
 

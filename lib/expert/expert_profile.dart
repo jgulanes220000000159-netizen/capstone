@@ -40,8 +40,11 @@ class _ExpertProfileState extends State<ExpertProfile> {
     _saveFcmTokenToFirestore();
     try {
       final settingsBox = Hive.box('settings');
+      if (!settingsBox.containsKey('enableNotifications')) {
+        settingsBox.put('enableNotifications', true);
+      }
       final enabled =
-          settingsBox.get('enableNotifications', defaultValue: false) as bool;
+          settingsBox.get('enableNotifications', defaultValue: true) as bool;
       _notificationsEnabled = enabled;
     } catch (_) {}
   }

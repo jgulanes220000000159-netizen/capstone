@@ -43,7 +43,7 @@ void main() async {
 
   // Create Android notification channel (Android 8+)
   const AndroidNotificationChannel defaultChannel = AndroidNotificationChannel(
-    'high_importance',
+    'high_importance_v2',
     'High Importance Notifications',
     description: 'Used for important notifications like reviews and requests',
     importance: Importance.high,
@@ -104,7 +104,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     // Ensure channel exists
     const AndroidNotificationChannel defaultChannel =
         AndroidNotificationChannel(
-          'high_importance',
+          'high_importance_v2',
           'High Importance Notifications',
           description:
               'Used for important notifications like reviews and requests',
@@ -117,25 +117,26 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
             >();
     await androidPlugin?.createNotificationChannel(defaultChannel);
 
-    final String title =
-        message.notification?.title ??
-        (message.data['title']?.toString() ?? 'Notification');
-    final String body =
-        message.notification?.body ?? (message.data['body']?.toString() ?? '');
+    // Avoid duplicates: if FCM includes a notification payload, Android will
+    // display it automatically in background. Only show for data-only messages.
+    if (message.notification == null) {
+      final String title = message.data['title']?.toString() ?? 'Notification';
+      final String body = message.data['body']?.toString() ?? '';
 
-    await flutterLocalNotificationsPlugin.show(
-      message.hashCode,
-      title,
-      body,
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'high_importance',
-          'High Importance Notifications',
-          importance: Importance.max,
-          priority: Priority.high,
+      await flutterLocalNotificationsPlugin.show(
+        message.hashCode,
+        title,
+        body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'high_importance_v2',
+            'High Importance Notifications',
+            importance: Importance.max,
+            priority: Priority.high,
+          ),
         ),
-      ),
-    );
+      );
+    }
   } catch (_) {}
 }
 
@@ -168,14 +169,34 @@ class CapstoneApp extends StatelessWidget {
     String? token = await FirebaseMessaging.instance.getToken();
     // Store token for the signed-in user (farmer or expert)
     final user = FirebaseAuth.instance.currentUser;
-    if (user != null && token != null) {
+    String? role;
+    if (user != null) {
       try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .update({'fcmToken': token});
+        // Ensure token is saved
+        if (token != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({'fcmToken': token}, SetOptions(merge: true));
+        }
+        // Fetch role and server-side notification preference
+        final userDoc =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(user.uid)
+                .get();
+        final data = userDoc.data();
+        role = data != null ? data['role'] as String? : null;
+        // If server flag missing, default to true so backend won't gate out
+        final serverEnabled = data != null ? data['enableNotifications'] : null;
+        if (serverEnabled == null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .set({'enableNotifications': true}, SetOptions(merge: true));
+        }
       } catch (_) {
-        // ignore write errors silently for now
+        // ignore read/write errors silently for now
       }
     }
 
@@ -183,10 +204,15 @@ class CapstoneApp extends StatelessWidget {
     try {
       final userBox = Hive.box('userBox');
       final profile = userBox.get('userProfile') as Map?;
-      final role = profile != null ? profile['role'] as String? : null;
+      role = role ?? (profile != null ? profile['role'] as String? : null);
       final settingsBox = Hive.box('settings');
+      // Ensure default is enabled if not yet set
+      final hasKey = settingsBox.containsKey('enableNotifications');
+      if (!hasKey) {
+        await settingsBox.put('enableNotifications', true);
+      }
       final notificationsEnabled =
-          settingsBox.get('enableNotifications', defaultValue: false) as bool;
+          settingsBox.get('enableNotifications', defaultValue: true) as bool;
       if (notificationsEnabled) {
         await FirebaseMessaging.instance.subscribeToTopic('all_users');
         if (role == 'expert') {
@@ -218,7 +244,7 @@ class CapstoneApp extends StatelessWidget {
         final role = profile != null ? profile['role'] as String? : null;
         final settingsBox = Hive.box('settings');
         final notificationsEnabled =
-            settingsBox.get('enableNotifications', defaultValue: false) as bool;
+            settingsBox.get('enableNotifications', defaultValue: true) as bool;
         if (notificationsEnabled) {
           await FirebaseMessaging.instance.subscribeToTopic('all_users');
           if (role == 'expert') {
@@ -238,7 +264,7 @@ class CapstoneApp extends StatelessWidget {
       try {
         final settingsBox = Hive.box('settings');
         final enabled =
-            settingsBox.get('enableNotifications', defaultValue: false) as bool;
+            settingsBox.get('enableNotifications', defaultValue: true) as bool;
         if (!enabled) return;
       } catch (_) {}
       RemoteNotification? notification = message.notification;
@@ -252,7 +278,7 @@ class CapstoneApp extends StatelessWidget {
           notification.body,
           NotificationDetails(
             android: AndroidNotificationDetails(
-              'high_importance',
+              'high_importance_v2',
               'High Importance Notifications',
               importance: Importance.max,
               priority: Priority.high,
