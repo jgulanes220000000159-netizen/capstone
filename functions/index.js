@@ -32,6 +32,9 @@ exports.notifyExpertsOnNewRequest = functions.firestore
     const status = data.status || "pending";
     if (status !== "pending" && status !== "pending_review") return null;
 
+    // If already notified for experts, skip
+    if (data.expertsNotified === true) return null;
+
     const userName = data.userName || "A farmer";
     const requestId = context.params.requestId;
 
@@ -52,6 +55,14 @@ exports.notifyExpertsOnNewRequest = functions.firestore
       },
     });
 
+    // Mark as notified to prevent duplicates
+    try {
+      await db
+        .collection("scan_requests")
+        .doc(requestId)
+        .set({ expertsNotified: true }, { merge: true });
+    } catch (_) {}
+
     return null;
   });
 
@@ -71,6 +82,9 @@ exports.notifyExpertsOnPendingUpdate = functions.firestore
 
     if (!becamePending) return null;
 
+    // If experts already notified, skip
+    if (after.expertsNotified === true) return null;
+
     const userName = after.userName || before.userName || "A farmer";
     const requestId = context.params.requestId;
 
@@ -86,6 +100,14 @@ exports.notifyExpertsOnPendingUpdate = functions.firestore
         userName: String(userName || ""),
       },
     });
+
+    // Mark as notified to prevent duplicates
+    try {
+      await db
+        .collection("scan_requests")
+        .doc(requestId)
+        .set({ expertsNotified: true }, { merge: true });
+    } catch (_) {}
 
     return null;
   });
@@ -107,6 +129,9 @@ exports.notifyUserOnReviewCompleted = functions.firestore
     ) {
       return null;
     }
+
+    // If already notified user for completion, skip
+    if (after.userNotifiedCompleted === true) return null;
 
     const userId = after.userId || before.userId;
     if (!userId) return null;
@@ -137,5 +162,13 @@ exports.notifyUserOnReviewCompleted = functions.firestore
     };
 
     await sendToTokens([token], payload);
+
+    // Mark as notified to prevent duplicates
+    try {
+      await db
+        .collection("scan_requests")
+        .doc(requestId)
+        .set({ userNotifiedCompleted: true }, { merge: true });
+    } catch (_) {}
     return null;
   });
