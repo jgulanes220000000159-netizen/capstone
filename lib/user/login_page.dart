@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'home_page.dart';
 import 'register_page.dart';
 import '../expert/expert_dashboard.dart';
-import '../test_account.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:mailer/mailer.dart';
 import 'package:mailer/smtp_server.dart';
 import 'package:hive/hive.dart';
-import '../expert/scan_request_list.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 class LoginPage extends StatefulWidget {
@@ -144,6 +143,17 @@ class _LoginPageState extends State<LoginPage> {
             'userId': user.uid,
           });
 
+          // Persist FCM token for notifications
+          try {
+            final token = await FirebaseMessaging.instance.getToken();
+            if (token != null) {
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .set({'fcmToken': token}, SetOptions(merge: true));
+            }
+          } catch (_) {}
+
           // Navigate based on role
           if (role == 'expert') {
             Navigator.pushReplacement(
@@ -176,6 +186,17 @@ class _LoginPageState extends State<LoginPage> {
               .collection('users')
               .doc(user.uid)
               .set(newUserData);
+
+          // Save FCM token for new users
+          try {
+            final token = await FirebaseMessaging.instance.getToken();
+            if (token != null) {
+              await FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(user.uid)
+                  .set({'fcmToken': token}, SetOptions(merge: true));
+            }
+          } catch (_) {}
 
           // Save login state and user info to Hive
           final userBox = await Hive.openBox('userBox');
@@ -291,6 +312,16 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               );
             } else if (role == 'farmer') {
+              // Ensure FCM token is saved so server can notify
+              try {
+                final token = await FirebaseMessaging.instance.getToken();
+                if (token != null) {
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.uid)
+                      .set({'fcmToken': token}, SetOptions(merge: true));
+                }
+              } catch (_) {}
               // Save login state and user info to Hive
               final userBox = await Hive.openBox('userBox');
               await userBox.put('isLoggedIn', true);
@@ -310,6 +341,16 @@ class _LoginPageState extends State<LoginPage> {
                 (route) => false,
               );
             } else if (role == 'expert') {
+              // Ensure FCM token is saved for expert too
+              try {
+                final token = await FirebaseMessaging.instance.getToken();
+                if (token != null) {
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.uid)
+                      .set({'fcmToken': token}, SetOptions(merge: true));
+                }
+              } catch (_) {}
               // Save login state and expert info to Hive
               final userBox = await Hive.openBox('userBox');
               await userBox.put('isLoggedIn', true);
