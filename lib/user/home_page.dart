@@ -543,6 +543,7 @@ class _HomePageState extends State<HomePage> {
         statusBarBrightness: Brightness.light,
       ),
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         body: SafeArea(
           child: Column(
             children: [

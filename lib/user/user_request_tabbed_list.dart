@@ -23,6 +23,8 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   final ReviewManager _reviewManager = ReviewManager();
+  final FocusNode _searchFocusNode = FocusNode();
+  Stream<QuerySnapshot>? _requestsStream;
 
   // Add missing _buildSearchBar method
   Widget _buildSearchBar() {
@@ -44,6 +46,7 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
         children: [
           TextField(
             controller: _searchController,
+            focusNode: _searchFocusNode,
             decoration: InputDecoration(
               hintText: tr('search'),
               prefixIcon: const Icon(Icons.search, color: Colors.grey),
@@ -67,10 +70,18 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
               ),
               contentPadding: const EdgeInsets.symmetric(vertical: 0),
             ),
+            keyboardType: TextInputType.text,
+            textInputAction: TextInputAction.search,
+            enableSuggestions: false,
+            autocorrect: false,
             onChanged: (value) {
-              setState(() {
-                _searchQuery = value;
-              });
+              _searchQuery = value;
+              // Avoid rebuilding the StreamBuilder while typing; only refresh inner lists
+              if (mounted) setState(() {});
+              // Keep focus
+              if (!_searchFocusNode.hasFocus) {
+                _searchFocusNode.requestFocus();
+              }
             },
           ),
           const SizedBox(height: 4),
@@ -98,11 +109,20 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
       vsync: this,
       initialIndex: widget.initialTabIndex.clamp(0, 1),
     );
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _requestsStream =
+          FirebaseFirestore.instance
+              .collection('scan_requests')
+              .where('userId', isEqualTo: user.uid)
+              .snapshots();
+    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -134,11 +154,7 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
     }
 
     return StreamBuilder<QuerySnapshot>(
-      stream:
-          FirebaseFirestore.instance
-              .collection('scan_requests')
-              .where('userId', isEqualTo: user.uid)
-              .snapshots(),
+      stream: _requestsStream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -210,6 +226,7 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
         );
         return Column(
           children: [
+            // Keep search bar outside of TabBarView rebuilds to avoid losing focus
             _buildSearchBar(),
             Container(
               color: Colors.green,
