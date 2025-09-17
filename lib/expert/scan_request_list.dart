@@ -111,13 +111,46 @@ class _ScanRequestListState extends State<ScanRequestList>
     List<Map<String, dynamic>> requests,
   ) {
     if (_searchQuery.isEmpty) return requests;
+    final query = _searchQuery.trim().toLowerCase();
     return requests.where((request) {
-      final userName = request['userId'].toString().toLowerCase();
-      final diseaseSummary = request['diseaseSummary']
-          .map((d) => d['disease'].toString().toLowerCase())
-          .join(' ');
-      return userName.contains(_searchQuery.toLowerCase()) ||
-          diseaseSummary.contains(_searchQuery.toLowerCase());
+      final userName =
+          (request['userName'] ?? request['userId'] ?? '')
+              .toString()
+              .toLowerCase();
+      final email = (request['email'] ?? '').toString().toLowerCase();
+
+      String diseases = '';
+      final summary = request['diseaseSummary'];
+      if (summary is List) {
+        diseases = summary
+            .map((d) {
+              if (d is Map) {
+                final raw =
+                    (d['label'] ?? d['disease'] ?? d['name'] ?? '').toString();
+                return raw.replaceAll('_', ' ').toLowerCase();
+              }
+              return '';
+            })
+            .where((s) => s.isNotEmpty)
+            .join(' ');
+      }
+
+      final submittedAt =
+          (request['submittedAt'] ?? '').toString().toLowerCase();
+      final reviewedAt = (request['reviewedAt'] ?? '').toString().toLowerCase();
+      final status = (request['status'] ?? '').toString().toLowerCase();
+      final id =
+          (request['id'] ?? request['requestId'] ?? '')
+              .toString()
+              .toLowerCase();
+
+      return userName.contains(query) ||
+          email.contains(query) ||
+          diseases.contains(query) ||
+          submittedAt.contains(query) ||
+          reviewedAt.contains(query) ||
+          status.contains(query) ||
+          id.contains(query);
     }).toList();
   }
 
