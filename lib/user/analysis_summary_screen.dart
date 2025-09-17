@@ -390,7 +390,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      '$count found',
+                      tr('found_count', namedArgs: {'count': '$count'}),
                       style: TextStyle(
                         color: color,
                         fontWeight: FontWeight.bold,
@@ -407,7 +407,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Percentage of Total Leaves',
+                          tr('percentage_of_total_leaves'),
                           style: TextStyle(
                             color: Colors.grey[600],
                             fontSize: 14,
@@ -458,8 +458,8 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                     const SizedBox(width: 8),
                     Text(
                       isHealthy || disease.toLowerCase() == 'tip_burn'
-                          ? 'N/A'
-                          : 'See Recommendation',
+                          ? tr('not_applicable')
+                          : tr('see_recommendation'),
                       style: TextStyle(
                         color: color,
                         fontWeight: FontWeight.bold,
@@ -598,8 +598,8 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                         ),
                         const SizedBox(height: 20),
                         if (info != null) ...[
-                          const Text(
-                            'Symptoms',
+                          Text(
+                            tr('symptoms'),
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -616,8 +616,8 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                             ),
                           ),
                           const SizedBox(height: 16),
-                          const Text(
-                            'Treatment & Recommendations',
+                          Text(
+                            tr('treatment_and_recommendations'),
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -634,7 +634,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                             ),
                           ),
                         ] else ...[
-                          const Text('No detailed information available.'),
+                          Text(tr('no_detailed_information')),
                         ],
                       ],
                     ),
@@ -673,9 +673,9 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                               size: 24,
                             ),
                             const SizedBox(width: 12),
-                            const Expanded(
+                            Expanded(
                               child: Text(
-                                'Healthy Leaves',
+                                tr('healthy_leaves'),
                                 style: TextStyle(
                                   fontSize: 24,
                                   fontWeight: FontWeight.bold,
@@ -689,9 +689,9 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                           ],
                         ),
                         const SizedBox(height: 40),
-                        const Center(
+                        Center(
                           child: Text(
-                            'N/A',
+                            tr('not_applicable'),
                             style: TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
@@ -700,9 +700,9 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Center(
+                        Center(
                           child: Text(
-                            'No additional information for healthy leaves.',
+                            tr('no_additional_info_healthy_leaves'),
                             style: TextStyle(fontSize: 16, color: Colors.grey),
                           ),
                         ),
@@ -1045,8 +1045,8 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                 icon: Icon(Icons.visibility, color: Colors.white),
                 tooltip:
                     showBoundingBoxes
-                        ? 'Hide Bounding Boxes'
-                        : 'Show Bounding Boxes',
+                        ? tr('hide_bounding_boxes')
+                        : tr('show_bounding_boxes'),
               ),
             ),
           ),
@@ -1072,7 +1072,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Total Images',
+                                    tr('total_images'),
                                     style: TextStyle(
                                       color: Colors.grey[600],
                                       fontSize: 14,
@@ -1099,7 +1099,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Total Leaves',
+                                    tr('total_leaves'),
                                     style: TextStyle(
                                       color: Colors.grey[600],
                                       fontSize: 14,
@@ -1120,7 +1120,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Analyzed Images',
+                          tr('analyzed_images'),
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -1135,7 +1135,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                   Padding(
                     padding: const EdgeInsets.all(16),
                     child: Text(
-                      'Disease Summary',
+                      tr('disease_summary'),
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,

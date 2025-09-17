@@ -151,5 +151,16 @@
   "error_adding_to_tracking": "Error adding to tracking: {error}",
   "change_profile_photo": "Change profile photo",
   "confirm_change_profile_photo": "Are you sure you want to update your profile photo?",
-  "update": "Update"
+  "update": "Update",
+
+  "total_images": "Total Images",
+  "total_leaves": "Total Leaves",
+  "analyzed_images": "Analyzed Images",
+  "symptoms": "Symptoms",
+  "treatment_and_recommendations": "Treatment & Recommendations",
+  "no_detailed_information": "No detailed information available.",
+  "healthy_leaves": "Healthy Leaves",
+  "not_applicable": "N/A",
+  "no_additional_info_healthy_leaves": "No additional information for healthy leaves.",
+  "see_recommendation": "See Recommendation"
 }

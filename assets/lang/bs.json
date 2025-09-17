@@ -154,5 +154,16 @@
   "error_adding_to_tracking": "Sayop sa pagdugang sa pagsubaybay: {error}",
   "change_profile_photo": "Usba ang hulagway sa profile",
   "confirm_change_profile_photo": "Sigurado ka nga gusto nimong i-update ang hulagway sa imong profile?",
-  "update": "I-update"
+  "update": "I-update",
+
+  "total_images": "Kinatibuk-ang Hulagway",
+  "total_leaves": "Kinatibuk-ang mga Dahon",
+  "analyzed_images": "Gianalisar nga mga Hulagway",
+  "symptoms": "Mga Sintomas",
+  "treatment_and_recommendations": "Tambal ug mga Rekomendasyon",
+  "no_detailed_information": "Walay detalyadong impormasyon.",
+  "healthy_leaves": "Himsog nga mga Dahon",
+  "not_applicable": "Dili Aplikable",
+  "no_additional_info_healthy_leaves": "Walay dugang impormasyon para sa himsog nga mga dahon.",
+  "see_recommendation": "Tan-awa ang Rekomendasyon"
 }

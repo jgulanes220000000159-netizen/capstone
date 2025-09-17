@@ -154,5 +154,16 @@
   "error_adding_to_tracking": "Error sa pagdagdag sa pagsubaybay: {error}",
   "change_profile_photo": "Palitan ang larawan ng profile",
   "confirm_change_profile_photo": "Sigurado ka bang gusto mong i-update ang larawan ng iyong profile?",
-  "update": "I-update"
+  "update": "I-update",
+
+  "total_images": "Kabuuang Larawan",
+  "total_leaves": "Kabuuang Dahon",
+  "analyzed_images": "Nasuring mga Larawan",
+  "symptoms": "Mga Sintomas",
+  "treatment_and_recommendations": "Paggamot at Mga Rekomendasyon",
+  "no_detailed_information": "Walang detalyadong impormasyon.",
+  "healthy_leaves": "Malulusog na Dahon",
+  "not_applicable": "Hindi naaangkop",
+  "no_additional_info_healthy_leaves": "Walang karagdagang impormasyon para sa malulusog na dahon.",
+  "see_recommendation": "Tingnan ang Rekomendasyon"
 }

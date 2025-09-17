@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'tflite_detector.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'detection_painter.dart';
 
 class DetectionResultCard extends StatelessWidget {
@@ -382,7 +383,7 @@ class DetectionResultCard extends StatelessWidget {
                         const SizedBox(height: 4),
                         if (percentage != null) ...[
                           Text(
-                            'Percentage of Total Leaves',
+                            tr('percentage_of_total_leaves'),
                             style: TextStyle(
                               fontSize: 14,
                               color: Colors.grey[700],
@@ -436,8 +437,8 @@ class DetectionResultCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     Text(
                       isHealthy || result.label.toLowerCase() == 'tip_burn'
-                          ? 'N/A'
-                          : 'See Recommendation',
+                          ? tr('not_applicable')
+                          : tr('see_recommendation'),
                       style: TextStyle(
                         color: diseaseColor,
                         fontWeight: FontWeight.bold,
