@@ -18,6 +18,8 @@ class _RegisterPageState extends State<RegisterPage> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   bool _isLoading = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   void _handleRegister() async {
     setState(() {
@@ -102,11 +104,13 @@ class _RegisterPageState extends State<RegisterPage> {
     required String label,
     required TextEditingController controller,
     bool isPassword = false,
+    bool? obscureText,
+    Widget? suffixIcon,
     IconData? prefixIcon,
   }) {
-    return TextField(
+    return TextFormField(
       controller: controller,
-      obscureText: isPassword,
+      obscureText: isPassword ? (obscureText ?? true) : false,
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
         labelText: label,
@@ -121,6 +125,7 @@ class _RegisterPageState extends State<RegisterPage> {
         ),
         prefixIcon:
             prefixIcon != null ? Icon(prefixIcon, color: Colors.white70) : null,
+        suffixIcon: suffixIcon,
       ),
     );
   }
@@ -222,6 +227,20 @@ class _RegisterPageState extends State<RegisterPage> {
                   label: 'Password',
                   controller: _passwordController,
                   isPassword: true,
+                  obscureText: _obscurePassword,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_off
+                          : Icons.visibility,
+                      color: Colors.white70,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _obscurePassword = !_obscurePassword;
+                      });
+                    },
+                  ),
                   prefixIcon: Icons.lock,
                 ),
                 const SizedBox(height: 16),
@@ -229,6 +248,20 @@ class _RegisterPageState extends State<RegisterPage> {
                   label: 'Confirm Password',
                   controller: _confirmPasswordController,
                   isPassword: true,
+                  obscureText: _obscureConfirmPassword,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscureConfirmPassword
+                          ? Icons.visibility_off
+                          : Icons.visibility,
+                      color: Colors.white70,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _obscureConfirmPassword = !_obscureConfirmPassword;
+                      });
+                    },
+                  ),
                   prefixIcon: Icons.lock_outline,
                 ),
                 const SizedBox(height: 30),
