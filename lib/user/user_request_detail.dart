@@ -24,6 +24,272 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
     _loadBoundingBoxPreference();
   }
 
+  void _openImageViewer(int initialIndex) {
+    final images = (widget.request['images'] as List?) ?? [];
+    if (images.isEmpty) return;
+    int currentIndex = initialIndex;
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.85),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            final img = images[currentIndex] as Map<String, dynamic>;
+            final imageUrl = (img['imageUrl'] ?? '').toString();
+            final imagePath =
+                (img['path'] ?? img['imagePath'] ?? '').toString();
+            final displayPath = imageUrl.isNotEmpty ? imageUrl : imagePath;
+            final detections =
+                (img['results'] as List?)
+                    ?.where(
+                      (d) =>
+                          d != null &&
+                          d['disease'] != null &&
+                          d['confidence'] != null,
+                    )
+                    .toList() ??
+                [];
+
+            return Dialog(
+              backgroundColor: Colors.black,
+              insetPadding: const EdgeInsets.all(12),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final widgetW = constraints.maxWidth;
+                  final widgetH = constraints.maxHeight;
+
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _buildImageWidget(displayPath, fit: BoxFit.contain),
+                      if (_showBoundingBoxes && detections.isNotEmpty)
+                        Builder(
+                          builder: (context) {
+                            final storedImageWidth = img['imageWidth'] as num?;
+                            final storedImageHeight =
+                                img['imageHeight'] as num?;
+
+                            if (storedImageWidth != null &&
+                                storedImageHeight != null) {
+                              final imgSize = Size(
+                                storedImageWidth.toDouble(),
+                                storedImageHeight.toDouble(),
+                              );
+                              final imgW = imgSize.width;
+                              final imgH = imgSize.height;
+                              final widgetAspect = widgetW / widgetH;
+                              final imageAspect = imgW / imgH;
+                              double displayW, displayH, dx = 0, dy = 0;
+                              if (widgetAspect > imageAspect) {
+                                displayH = widgetH;
+                                displayW = widgetH * imageAspect;
+                                dx = (widgetW - displayW) / 2;
+                              } else {
+                                displayW = widgetW;
+                                displayH = widgetW / imageAspect;
+                                dy = (widgetH - displayH) / 2;
+                              }
+
+                              return CustomPaint(
+                                painter: DetectionPainter(
+                                  results:
+                                      detections
+                                          .where(
+                                            (d) => d['boundingBox'] != null,
+                                          )
+                                          .map((d) {
+                                            final left =
+                                                (d['boundingBox']['left']
+                                                        as num)
+                                                    .toDouble();
+                                            final top =
+                                                (d['boundingBox']['top'] as num)
+                                                    .toDouble();
+                                            final right =
+                                                (d['boundingBox']['right']
+                                                        as num)
+                                                    .toDouble();
+                                            final bottom =
+                                                (d['boundingBox']['bottom']
+                                                        as num)
+                                                    .toDouble();
+                                            return DetectionResult(
+                                              label: d['disease'],
+                                              confidence: d['confidence'],
+                                              boundingBox: Rect.fromLTRB(
+                                                left,
+                                                top,
+                                                right,
+                                                bottom,
+                                              ),
+                                            );
+                                          })
+                                          .toList(),
+                                  originalImageSize: imgSize,
+                                  displayedImageSize: Size(displayW, displayH),
+                                  displayedImageOffset: Offset(dx, dy),
+                                ),
+                                size: Size(widgetW, widgetH),
+                              );
+                            } else {
+                              return FutureBuilder<Size>(
+                                future: _getImageSize(
+                                  displayPath.startsWith('http') &&
+                                          displayPath.isNotEmpty
+                                      ? NetworkImage(displayPath)
+                                      : FileImage(File(displayPath)),
+                                ),
+                                builder: (context, snapshot) {
+                                  if (!snapshot.hasData) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  final imgSize = snapshot.data!;
+                                  final imgW = imgSize.width;
+                                  final imgH = imgSize.height;
+                                  final widgetAspect = widgetW / widgetH;
+                                  final imageAspect = imgW / imgH;
+                                  double displayW, displayH, dx = 0, dy = 0;
+                                  if (widgetAspect > imageAspect) {
+                                    displayH = widgetH;
+                                    displayW = widgetH * imageAspect;
+                                    dx = (widgetW - displayW) / 2;
+                                  } else {
+                                    displayW = widgetW;
+                                    displayH = widgetW / imageAspect;
+                                    dy = (widgetH - displayH) / 2;
+                                  }
+
+                                  return CustomPaint(
+                                    painter: DetectionPainter(
+                                      results:
+                                          detections
+                                              .where(
+                                                (d) => d['boundingBox'] != null,
+                                              )
+                                              .map((d) {
+                                                final left =
+                                                    (d['boundingBox']['left']
+                                                            as num)
+                                                        .toDouble();
+                                                final top =
+                                                    (d['boundingBox']['top']
+                                                            as num)
+                                                        .toDouble();
+                                                final right =
+                                                    (d['boundingBox']['right']
+                                                            as num)
+                                                        .toDouble();
+                                                final bottom =
+                                                    (d['boundingBox']['bottom']
+                                                            as num)
+                                                        .toDouble();
+                                                return DetectionResult(
+                                                  label: d['disease'],
+                                                  confidence: d['confidence'],
+                                                  boundingBox: Rect.fromLTRB(
+                                                    left,
+                                                    top,
+                                                    right,
+                                                    bottom,
+                                                  ),
+                                                );
+                                              })
+                                              .toList(),
+                                      originalImageSize: imgSize,
+                                      displayedImageSize: Size(
+                                        displayW,
+                                        displayH,
+                                      ),
+                                      displayedImageOffset: Offset(dx, dy),
+                                    ),
+                                    size: Size(widgetW, widgetH),
+                                  );
+                                },
+                              );
+                            }
+                          },
+                        ),
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ),
+                      Positioned(
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: IconButton(
+                            iconSize: 36,
+                            color: Colors.white,
+                            icon: const Icon(Icons.chevron_left),
+                            onPressed:
+                                currentIndex > 0
+                                    ? () {
+                                      setStateDialog(() {
+                                        currentIndex -= 1;
+                                      });
+                                    }
+                                    : null,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: IconButton(
+                            iconSize: 36,
+                            color: Colors.white,
+                            icon: const Icon(Icons.chevron_right),
+                            onPressed:
+                                currentIndex < images.length - 1
+                                    ? () {
+                                      setStateDialog(() {
+                                        currentIndex += 1;
+                                      });
+                                    }
+                                    : null,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: 8,
+                        left: 0,
+                        right: 0,
+                        child: Center(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.6),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '${currentIndex + 1} / ${images.length}',
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _loadBoundingBoxPreference() async {
     final box = await Hive.openBox('userBox');
     final savedPreference = box.get('showBoundingBoxes');
@@ -617,6 +883,93 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                                 onPressed:
                                                     () =>
                                                         Navigator.pop(context),
+                                              ),
+                                            ),
+                                            // Navigation: Previous
+                                            Positioned(
+                                              left: 0,
+                                              top: 0,
+                                              bottom: 0,
+                                              child: Center(
+                                                child: IconButton(
+                                                  iconSize: 36,
+                                                  color: Colors.white,
+                                                  icon: const Icon(
+                                                    Icons.chevron_left,
+                                                  ),
+                                                  onPressed:
+                                                      idx > 0
+                                                          ? () {
+                                                            Navigator.pop(
+                                                              context,
+                                                            );
+                                                            Future.microtask(
+                                                              () =>
+                                                                  _openImageViewer(
+                                                                    idx - 1,
+                                                                  ),
+                                                            );
+                                                          }
+                                                          : null,
+                                                ),
+                                              ),
+                                            ),
+                                            // Navigation: Next
+                                            Positioned(
+                                              right: 0,
+                                              top: 0,
+                                              bottom: 0,
+                                              child: Center(
+                                                child: IconButton(
+                                                  iconSize: 36,
+                                                  color: Colors.white,
+                                                  icon: const Icon(
+                                                    Icons.chevron_right,
+                                                  ),
+                                                  onPressed:
+                                                      idx < images.length - 1
+                                                          ? () {
+                                                            Navigator.pop(
+                                                              context,
+                                                            );
+                                                            Future.microtask(
+                                                              () =>
+                                                                  _openImageViewer(
+                                                                    idx + 1,
+                                                                  ),
+                                                            );
+                                                          }
+                                                          : null,
+                                                ),
+                                              ),
+                                            ),
+                                            // Index indicator
+                                            Positioned(
+                                              bottom: 8,
+                                              left: 0,
+                                              right: 0,
+                                              child: Center(
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 6,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.black
+                                                        .withOpacity(0.6),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          12,
+                                                        ),
+                                                  ),
+                                                  child: Text(
+                                                    '${idx + 1} / ${images.length}',
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                ),
                                               ),
                                             ),
                                           ],
