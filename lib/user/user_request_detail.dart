@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -367,6 +368,21 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
           style: TextStyle(color: Colors.white),
         ),
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.visibility, color: Colors.white),
+            tooltip:
+                _showBoundingBoxes
+                    ? tr('hide_bounding_boxes')
+                    : tr('show_bounding_boxes'),
+            onPressed: () async {
+              setState(() {
+                _showBoundingBoxes = !_showBoundingBoxes;
+              });
+              await _saveBoundingBoxPreference(_showBoundingBoxes);
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -478,42 +494,14 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Submitted Images',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            const Text(
-                              'Show Bounding Boxes',
-                              style: TextStyle(fontSize: 14),
-                            ),
-                            const SizedBox(width: 8),
-                            Switch(
-                              value: _showBoundingBoxes,
-                              onChanged: (value) async {
-                                print('🔄 Toggle switch changed to: $value');
-                                setState(() {
-                                  _showBoundingBoxes = value;
-                                });
-                                await _saveBoundingBoxPreference(value);
-                                print(
-                                  '🔄 Bounding boxes preference saved: $value',
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
+                    const Text(
+                      'Submitted Images',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
+                    const SizedBox(height: 8),
                     const SizedBox(height: 8),
                     GridView.builder(
                       shrinkWrap: true,

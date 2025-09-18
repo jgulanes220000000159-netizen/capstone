@@ -41,6 +41,16 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
   @override
   void initState() {
     super.initState();
+    // sync from persistent preference used across farmer screens
+    Future.microtask(() async {
+      final box = await Hive.openBox('userBox');
+      final pref = box.get('showBoundingBoxes');
+      if (pref is bool && mounted) {
+        setState(() {
+          showBoundingBoxes = pref;
+        });
+      }
+    });
   }
 
   Map<String, int> _getOverallDiseaseCount() {
@@ -1043,10 +1053,13 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                 shape: BoxShape.circle,
               ),
               child: IconButton(
-                onPressed: () {
+                onPressed: () async {
                   setState(() {
                     showBoundingBoxes = !showBoundingBoxes;
                   });
+                  // persist same as detail page for consistency
+                  final box = await Hive.openBox('userBox');
+                  await box.put('showBoundingBoxes', showBoundingBoxes);
                 },
                 icon: Icon(Icons.visibility, color: Colors.white),
                 tooltip:
