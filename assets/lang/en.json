@@ -162,5 +162,15 @@
   "healthy_leaves": "Healthy Leaves",
   "not_applicable": "N/A",
   "no_additional_info_healthy_leaves": "No additional information for healthy leaves.",
-  "see_recommendation": "See Recommendation"
+  "see_recommendation": "See Recommendation",
+  "pm_regular_pruning": "Regular pruning",
+  "pm_proper_spacing": "Proper spacing between plants",
+  "pm_adequate_ventilation": "Adequate ventilation",
+  "pm_regular_watering": "Regular watering",
+  "pm_proper_fertilization": "Proper fertilization",
+  "pm_pest_monitoring": "Pest monitoring",
+  "pm_soil_testing": "Soil testing",
+  "pm_crop_rotation": "Crop rotation",
+  "pm_remove_infected_leaves": "Remove infected leaves",
+  "pm_improve_air_circulation": "Improve air circulation"
 }

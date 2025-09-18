@@ -19,6 +19,29 @@ class UserRequestDetail extends StatefulWidget {
 class _UserRequestDetailState extends State<UserRequestDetail> {
   bool _showBoundingBoxes = true;
 
+  String _translatePreventiveMeasure(String english) {
+    // Map known expert defaults to localization keys
+    final Map<String, String> map = {
+      'Regular pruning': 'pm_regular_pruning',
+      'Proper spacing between plants': 'pm_proper_spacing',
+      'Adequate ventilation': 'pm_adequate_ventilation',
+      'Regular watering': 'pm_regular_watering',
+      'Proper fertilization': 'pm_proper_fertilization',
+      'Pest monitoring': 'pm_pest_monitoring',
+      'Soil testing': 'pm_soil_testing',
+      'Crop rotation': 'pm_crop_rotation',
+      'Remove infected leaves': 'pm_remove_infected_leaves',
+      'Improve air circulation': 'pm_improve_air_circulation',
+    };
+
+    final key = map[english];
+    if (key != null) {
+      return tr(key);
+    }
+    // Fallback: return original text if we don't recognize it
+    return english;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -308,10 +331,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
 
   Widget build(BuildContext context) {
     final diseaseSummary = (widget.request['diseaseSummary'] as List?) ?? [];
-    final mainDisease =
-        (diseaseSummary.isNotEmpty && diseaseSummary[0]['name'] != null)
-            ? diseaseSummary[0]['name']
-            : 'Unknown';
+    // Removed unused mainDisease variable
     final status = widget.request['status'] ?? '';
     final submittedAt = widget.request['submittedAt'] ?? '';
     // Format date
@@ -1568,9 +1588,9 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Preventive Measures',
-                                style: TextStyle(
+                              Text(
+                                tr('preventive_measures'),
+                                style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -1585,7 +1605,11 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                             [])
                                         .map<Widget>((measure) {
                                           return Chip(
-                                            label: Text(measure.toString()),
+                                            label: Text(
+                                              _translatePreventiveMeasure(
+                                                measure.toString(),
+                                              ),
+                                            ),
                                             backgroundColor: Colors.green
                                                 .withOpacity(0.1),
                                           );

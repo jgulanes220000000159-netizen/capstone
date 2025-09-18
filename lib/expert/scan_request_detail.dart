@@ -65,7 +65,6 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
     'Proper fertilization',
     'Pest monitoring',
     'Soil testing',
-    'Crop rotation',
   ];
 
   @override

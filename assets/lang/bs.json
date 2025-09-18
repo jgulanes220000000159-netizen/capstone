@@ -91,12 +91,11 @@
   "date": "Petsa:",
   "unknown": "Wala Mahibalo",
   "image_count": "{count} hulagway",
-  "expert_review": "Review sa Eksperto",
   "reviewed_by": "Gitan-aw ni: {name}",
   "comment": "Komento:",
-  "treatment_plan": "Plano sa Tambal:",
+
   "no_treatment_specified": "Walay gitino nga tambal",
-  "precautions": "Paglikay:",
+
   "results": "Mga Resulta:",
   "close": "Isira",
   "not_logged_in": "Walay naka-login",
@@ -112,7 +111,6 @@
   "scans_from_period": "Mga scan gikan sa '{period}'",
   "reviewing": "Gisusi",
   "pending_review": "Nagpaabot nga Review",
-  "tracking": "Gisubaybayan",
   "show_everything": "Ipakita Tanan",
   "last_7_days": "Solud sa 7 Adlaw",
   "last_30_days": "Solud sa 30 Adlaw",
@@ -165,5 +163,15 @@
   "healthy_leaves": "Himsog nga mga Dahon",
   "not_applicable": "Dili Aplikable",
   "no_additional_info_healthy_leaves": "Walay dugang impormasyon para sa himsog nga mga dahon.",
-  "see_recommendation": "Tan-awa ang Rekomendasyon"
+  "see_recommendation": "Tan-awa ang Rekomendasyon",
+  "pm_regular_pruning": "Regular nga pruning",
+  "pm_proper_spacing": "Hustong gilay-on sa mga tanom",
+  "pm_adequate_ventilation": "Saktong bentilasyon",
+  "pm_regular_watering": "Regular nga pagdilig",
+  "pm_proper_fertilization": "Hustong pag-abono",
+  "pm_pest_monitoring": "Pagsubay sa peste",
+  "pm_soil_testing": "Pagsusi sa yuta",
+  "pm_crop_rotation": "Pag-ilis-ilis sa tanom (crop rotation)",
+  "pm_remove_infected_leaves": "Kuhaa ang naapektuhang mga dahon",
+  "pm_improve_air_circulation": "Paayua ang sirkulasyon sa hangin"
 }

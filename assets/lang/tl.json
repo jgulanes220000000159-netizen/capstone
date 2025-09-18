@@ -165,5 +165,15 @@
   "healthy_leaves": "Malulusog na Dahon",
   "not_applicable": "Hindi naaangkop",
   "no_additional_info_healthy_leaves": "Walang karagdagang impormasyon para sa malulusog na dahon.",
-  "see_recommendation": "Tingnan ang Rekomendasyon"
+  "see_recommendation": "Tingnan ang Rekomendasyon",
+  "pm_regular_pruning": "Regular na pagriprisa (pruning)",
+  "pm_proper_spacing": "Tamang agwat sa pagitan ng mga tanim",
+  "pm_adequate_ventilation": "Sapat na bentilasyon",
+  "pm_regular_watering": "Regular na pagdidilig",
+  "pm_proper_fertilization": "Tamang paglalagay ng abono",
+  "pm_pest_monitoring": "Pagsubaybay sa peste",
+  "pm_soil_testing": "Pagsusuri ng lupa",
+  "pm_crop_rotation": "Pagpapalit-palit ng tanim (crop rotation)",
+  "pm_remove_infected_leaves": "Alisin ang mga apektadong dahon",
+  "pm_improve_air_circulation": "Pagpapabuti ng sirkulasyon ng hangin"
 }
