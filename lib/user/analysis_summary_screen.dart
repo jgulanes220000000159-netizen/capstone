@@ -41,7 +41,6 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
   @override
   void initState() {
     super.initState();
-    _loadImageSizes();
   }
 
   Map<String, int> _getOverallDiseaseCount() {
@@ -751,7 +750,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
   // }
 
   Widget _buildImageGrid() {
-    if (imageSizes.isEmpty) {
+    if (showBoundingBoxes && imageSizes.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -857,7 +856,9 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                     borderRadius: BorderRadius.circular(12),
                     child: Image.file(File(imagePath), fit: BoxFit.cover),
                   ),
-                  if (showBoundingBoxes && results.isNotEmpty)
+                  if (showBoundingBoxes &&
+                      results.isNotEmpty &&
+                      imageSizes.isNotEmpty)
                     CustomPaint(
                       painter: DetectionPainter(
                         results: results,
@@ -1012,6 +1013,11 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
   Widget build(BuildContext context) {
     final diseaseCounts = _getOverallDiseaseCount();
     final totalDetections = diseaseCounts.values.fold(0, (a, b) => a + b);
+    // Kick off image size loading only when needed (first build), avoid blocking transition
+    if (showBoundingBoxes && imageSizes.isEmpty) {
+      // Defer loading sizes to next microtask to avoid layout jank
+      Future.microtask(() => _loadImageSizes());
+    }
 
     // Sort diseases by percentage in descending order
     final sortedDiseases =
