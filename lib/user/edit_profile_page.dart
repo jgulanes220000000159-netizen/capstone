@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:mime/mime.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
@@ -82,7 +83,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
             .child('profile')
             .child('${user.uid}.jpg');
 
-        await ref.putFile(file);
+        final detectedMime = lookupMimeType(file.path) ?? 'image/jpeg';
+        await ref.putFile(file, SettableMetadata(contentType: detectedMime));
         final url = await ref.getDownloadURL();
         return url;
       }

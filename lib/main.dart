@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'user/login_page.dart';
 import 'user/home_page.dart';
@@ -76,13 +78,25 @@ void main() async {
     startLocale = Locale(localeCode);
   }
 
-  runApp(
-    EasyLocalization(
-      supportedLocales: const [Locale('en'), Locale('bs'), Locale('tl')],
-      path: 'assets/lang',
-      fallbackLocale: const Locale('en'),
-      startLocale: startLocale,
-      child: const CapstoneApp(),
+  runZonedGuarded(
+    () {
+      runApp(
+        EasyLocalization(
+          supportedLocales: const [Locale('en'), Locale('bs'), Locale('tl')],
+          path: 'assets/lang',
+          fallbackLocale: const Locale('en'),
+          startLocale: startLocale,
+          child: const CapstoneApp(),
+        ),
+      );
+    },
+    (error, stack) {
+      // Optionally forward to a crash reporter here in release.
+    },
+    zoneSpecification: ZoneSpecification(
+      print: (self, parent, zone, line) {
+        if (!kReleaseMode) parent.print(zone, line);
+      },
     ),
   );
 }

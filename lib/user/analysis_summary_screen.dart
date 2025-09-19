@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:mime/mime.dart';
 import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
 import 'tflite_detector.dart';
@@ -138,7 +139,8 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
             '${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
         final storagePath = 'leaf/$fileName';
         final ref = FirebaseStorage.instance.ref().child(storagePath);
-        await ref.putFile(file);
+        final detectedMime = lookupMimeType(file.path) ?? 'image/jpeg';
+        await ref.putFile(file, SettableMetadata(contentType: detectedMime));
         final downloadUrl = await ref.getDownloadURL();
         uploadedImages.add({'url': downloadUrl, 'path': storagePath});
       }
@@ -933,7 +935,8 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
             '${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
         final storagePath = 'leaf/$fileName';
         final ref = FirebaseStorage.instance.ref().child(storagePath);
-        await ref.putFile(file);
+        final detectedMime = lookupMimeType(file.path) ?? 'image/jpeg';
+        await ref.putFile(file, SettableMetadata(contentType: detectedMime));
         final downloadUrl = await ref.getDownloadURL();
         uploadedImages2.add({'url': downloadUrl, 'path': storagePath});
       }

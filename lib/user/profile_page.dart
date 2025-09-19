@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:mime/mime.dart';
 import 'package:hive/hive.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -207,7 +208,8 @@ class _ProfilePageState extends State<ProfilePage> {
             .child('profile')
             .child('${user.uid}.jpg');
 
-        await ref.putFile(file);
+        final detectedMime = lookupMimeType(file.path) ?? 'image/jpeg';
+        await ref.putFile(file, SettableMetadata(contentType: detectedMime));
         final url = await ref.getDownloadURL();
 
         // Update Firestore with new image URL
