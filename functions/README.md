@@ -4,6 +4,7 @@
 
 - `notifyExpertsOnNewRequest`: Sends a notification to all users with role `expert` when a new `scan_requests/{id}` document is created with `status: 'pending'` or `'pending_review'`.
 - `notifyUserOnReviewCompleted`: Sends a notification to the requesting user when a `scan_requests/{id}` document transitions to `status: 'completed'` or `'reviewed'`.
+- `notifyUserOnApproval`: Sends an email notification to users when their account status changes from `pending` to `active` (account approved).
 
 ## Prerequisites
 
@@ -18,6 +19,17 @@ cd functions
 npm install
 firebase deploy --only functions
 ```
+
+## Email Setup
+
+For email notifications to work, you need to configure email credentials:
+
+```bash
+# Set up Gmail credentials
+firebase functions:config:set email.user="your-email@gmail.com" email.password="your-app-password"
+```
+
+See `EMAIL_SETUP.md` for detailed instructions.
 
 ## Test locally (emulator)
 
