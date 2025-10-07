@@ -23,8 +23,6 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  bool _acceptTerms = false;
-  bool _acceptPrivacy = false;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   // Password strength tracking
@@ -33,23 +31,28 @@ class _RegisterPageState extends State<RegisterPage> {
 
   // Password strength calculation
   void _calculatePasswordStrength(String password) {
-    int score = 0;
-    if (password.length >= 8) score++;
-    if (password.contains(RegExp(r'[A-Z]'))) score++;
-    if (password.contains(RegExp(r'[a-z]'))) score++;
-    if (password.contains(RegExp(r'[0-9]'))) score++;
-    if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) score++;
+    bool hasLength = password.length >= 8;
+    bool hasUppercase = password.contains(RegExp(r'[A-Z]'));
+    bool hasLowercase = password.contains(RegExp(r'[a-z]'));
+    bool hasNumber = password.contains(RegExp(r'[0-9]'));
+    bool hasSpecialChar = password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'));
 
     setState(() {
-      if (score < 2) {
+      // Check if all required criteria are met (length, uppercase, lowercase, number)
+      bool meetsRequirements =
+          hasLength && hasUppercase && hasLowercase && hasNumber;
+
+      if (!hasLength || (!hasUppercase && !hasLowercase && !hasNumber)) {
         _passwordStrength = 'Weak';
         _passwordStrengthColor = Colors.red;
-      } else if (score < 4) {
+      } else if (!meetsRequirements) {
         _passwordStrength = 'Medium';
         _passwordStrengthColor = Colors.orange;
       } else {
-        _passwordStrength = 'Strong';
-        _passwordStrengthColor = Colors.green;
+        // All requirements met, check if it has special characters for bonus
+        _passwordStrength = hasSpecialChar ? 'Strong' : 'Good';
+        _passwordStrengthColor =
+            hasSpecialChar ? Colors.green : Colors.lightGreen;
       }
     });
   }
@@ -79,9 +82,11 @@ class _RegisterPageState extends State<RegisterPage> {
     if (value == null || value.trim().isEmpty) {
       return 'Please enter your phone number';
     }
-    final phoneRegex = RegExp(r'^\+?[1-9]\d{1,14}$');
-    if (!phoneRegex.hasMatch(value.replaceAll(RegExp(r'[\s\-\(\)]'), ''))) {
-      return 'Please enter a valid phone number';
+    // Philippine phone number validation: 09XXXXXXXXX (11 digits starting with 09)
+    final phoneRegex = RegExp(r'^09\d{9}$');
+    String cleanNumber = value.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+    if (!phoneRegex.hasMatch(cleanNumber)) {
+      return 'Please enter a valid Philippine mobile number (09XXXXXXXXX)';
     }
     return null;
   }
@@ -128,18 +133,6 @@ class _RegisterPageState extends State<RegisterPage> {
 
   void _handleRegister() async {
     if (!_formKey.currentState!.validate()) {
-      return;
-    }
-
-    if (!_acceptTerms || !_acceptPrivacy) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please accept the Terms of Service and Privacy Policy',
-          ),
-          backgroundColor: Colors.orange,
-        ),
-      );
       return;
     }
 
@@ -249,13 +242,17 @@ class _RegisterPageState extends State<RegisterPage> {
               children: [
                 Icon(Icons.error, color: Colors.red, size: 28),
                 SizedBox(width: 12),
-                Text(
-                  'Registration Failed',
-                  style: TextStyle(color: Colors.red),
+                Expanded(
+                  child: Text(
+                    'Registration Failed',
+                    style: TextStyle(color: Colors.red),
+                  ),
                 ),
               ],
             ),
-            content: Text(message, style: TextStyle(fontSize: 16)),
+            content: SingleChildScrollView(
+              child: Text(message, style: TextStyle(fontSize: 16)),
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
@@ -538,27 +535,49 @@ class _RegisterPageState extends State<RegisterPage> {
                           'Password Strength: ',
                           style: TextStyle(color: Colors.white70, fontSize: 12),
                         ),
-                        Text(
-                          _passwordStrength,
-                          style: TextStyle(
-                            color: _passwordStrengthColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: _passwordStrengthColor,
+                              width: 1,
+                            ),
+                          ),
+                          child: Text(
+                            _passwordStrength,
+                            style: TextStyle(
+                              color: _passwordStrengthColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    LinearProgressIndicator(
-                      value:
-                          _passwordStrength == 'Weak'
-                              ? 0.3
-                              : _passwordStrength == 'Medium'
-                              ? 0.6
-                              : 1.0,
-                      backgroundColor: Colors.white24,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        _passwordStrengthColor,
+                    Container(
+                      height: 6,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(3),
+                        border: Border.all(color: Colors.white30, width: 1),
+                      ),
+                      child: LinearProgressIndicator(
+                        value:
+                            _passwordStrength == 'Weak'
+                                ? 0.3
+                                : _passwordStrength == 'Medium'
+                                ? 0.6
+                                : 1.0,
+                        backgroundColor: Colors.white24,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          _passwordStrengthColor,
+                        ),
+                        borderRadius: BorderRadius.circular(3),
                       ),
                     ),
                   ],
@@ -585,67 +604,6 @@ class _RegisterPageState extends State<RegisterPage> {
                     prefixIcon: Icons.lock_outline,
                   ),
                   const SizedBox(height: 20),
-                  // Terms and Privacy Checkboxes
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: _acceptTerms,
-                        onChanged: (value) {
-                          setState(() {
-                            _acceptTerms = value ?? false;
-                          });
-                        },
-                        activeColor: Colors.white,
-                        checkColor: Colors.green,
-                      ),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _acceptTerms = !_acceptTerms;
-                            });
-                          },
-                          child: Text(
-                            'I accept the Terms of Service',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: _acceptPrivacy,
-                        onChanged: (value) {
-                          setState(() {
-                            _acceptPrivacy = value ?? false;
-                          });
-                        },
-                        activeColor: Colors.white,
-                        checkColor: Colors.green,
-                      ),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _acceptPrivacy = !_acceptPrivacy;
-                            });
-                          },
-                          child: Text(
-                            'I accept the Privacy Policy',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
                   const SizedBox(height: 30),
                   // Register Button
                   SizedBox(

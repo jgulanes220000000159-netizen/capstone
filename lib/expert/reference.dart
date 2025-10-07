@@ -10,8 +10,6 @@ import 'package:hive/hive.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'dart:async'; // Added for StreamSubscription
 import 'package:intl/intl.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
-import '../shared/connectivity_debug_widget.dart';
 
 class ExpertDashboard extends StatefulWidget {
   const ExpertDashboard({Key? key}) : super(key: key);
@@ -174,9 +172,6 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
               getTitle(),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            const Spacer(),
-            // Debug connectivity widget
-            const ConnectivityDebugWidget(),
           ],
         ),
       ),
@@ -266,7 +261,6 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
   // double _averageResponseTime = 0.0; // superseded by filtered average
   List<Map<String, dynamic>> _recentReviews = [];
   bool _isOffline = false;
-  bool _isLoading = true;
   StreamSubscription<QuerySnapshot>? _streamSubscription;
 
   // Time range state for the response time chart (0: Last 7 Days, 1: Custom)
@@ -336,7 +330,6 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
   @override
   void initState() {
     super.initState();
-    _loadCachedDataFirst(); // Load cached data immediately for instant display
     _loadExpertStats();
     _loadRangePrefs();
   }
@@ -345,72 +338,6 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
   void dispose() {
     _streamSubscription?.cancel();
     super.dispose();
-  }
-
-  // Check network connectivity
-  Future<bool> _checkNetworkConnectivity() async {
-    try {
-      final connectivityResult = await Connectivity().checkConnectivity();
-      return connectivityResult == ConnectivityResult.wifi ||
-          connectivityResult == ConnectivityResult.mobile ||
-          connectivityResult == ConnectivityResult.ethernet;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  // Load cached data first for immediate display
-  Future<void> _loadCachedDataFirst() async {
-    try {
-      final statsBox = await Hive.openBox('expertStatsBox');
-      final cachedData = statsBox.get('expertStats');
-
-      if (cachedData != null && mounted) {
-        setState(() {
-          _expertName = cachedData['expertName'] ?? 'Expert';
-          _totalCompleted = cachedData['totalCompleted'] ?? 0;
-          _pendingRequests = cachedData['pendingRequests'] ?? 0;
-
-          // Parse cached reviews and ensure dates are DateTime objects
-          final cachedReviews = List<Map<String, dynamic>>.from(
-            cachedData['recentReviews'] ?? [],
-          );
-          _recentReviews =
-              cachedReviews.map((review) {
-                final dateValue = review['date'];
-                DateTime? parsedDate;
-
-                if (dateValue is DateTime) {
-                  parsedDate = dateValue;
-                } else if (dateValue is String) {
-                  try {
-                    parsedDate = DateTime.parse(dateValue);
-                  } catch (e) {
-                    parsedDate = null;
-                  }
-                }
-
-                return {
-                  'date': parsedDate,
-                  'responseTime': review['responseTime'],
-                  'disease': review['disease'],
-                };
-              }).toList();
-
-          _isLoading = false; // Show cached data immediately
-        });
-      } else if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
   }
 
   // Clean up old cached data to prevent memory buildup
@@ -490,24 +417,15 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
   }
 
   Future<void> _loadExpertStats() async {
+    // Force clear cache to get fresh calculation
+    await _clearCache();
+
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         setState(() => _isOffline = true);
         return;
       }
-
-      // Check connectivity first
-      bool isOnline = await _checkNetworkConnectivity();
-      if (!isOnline) {
-        // Load cached data when offline
-        await _loadCachedStats();
-        setState(() => _isOffline = true);
-        return;
-      }
-
-      // Only clear cache when we're sure we can get fresh data
-      await _clearCache();
 
       // Get expert name
       final userBox = await Hive.openBox('userBox');
@@ -640,33 +558,10 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
           _expertName = cachedData['expertName'] ?? 'Expert';
           _totalCompleted = cachedData['totalCompleted'] ?? 0;
           _pendingRequests = cachedData['pendingRequests'] ?? 0;
-
-          // Parse cached reviews and ensure dates are DateTime objects
-          final cachedReviews = List<Map<String, dynamic>>.from(
+          // cachedData['averageResponseTime'] is not used directly in UI
+          _recentReviews = List<Map<String, dynamic>>.from(
             cachedData['recentReviews'] ?? [],
           );
-          _recentReviews =
-              cachedReviews.map((review) {
-                final dateValue = review['date'];
-                DateTime? parsedDate;
-
-                if (dateValue is DateTime) {
-                  parsedDate = dateValue;
-                } else if (dateValue is String) {
-                  try {
-                    parsedDate = DateTime.parse(dateValue);
-                  } catch (e) {
-                    parsedDate = null;
-                  }
-                }
-
-                return {
-                  'date': parsedDate,
-                  'responseTime': review['responseTime'],
-                  'disease': review['disease'],
-                };
-              }).toList();
-
           _isOffline = true;
         });
       }
@@ -821,22 +716,6 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // Show loading state initially
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading dashboard...'),
-            ],
-          ),
-        ),
-      );
-    }
-
     return StreamBuilder<QuerySnapshot>(
       stream:
           FirebaseFirestore.instance
@@ -857,13 +736,6 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
               _updateStatsFromStream(snapshot.data!.docs);
             });
           }
-        } else if (snapshot.hasError) {
-          // Handle stream errors by setting offline mode
-          if (!_isOffline) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              setState(() => _isOffline = true);
-            });
-          }
         }
 
         return Scaffold(
@@ -872,6 +744,35 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Offline indicator banner
+                if (_isOffline)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 8,
+                      horizontal: 16,
+                    ),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.wifi_off, color: Colors.orange, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Offline mode - Showing cached data',
+                          style: TextStyle(
+                            color: Colors.orange[700],
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 // Welcome Section
                 Card(
                   color: Colors.green[50],
