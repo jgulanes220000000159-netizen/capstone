@@ -174,9 +174,6 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
               getTitle(),
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
-            const Spacer(),
-            // Debug connectivity widget
-            const ConnectivityDebugWidget(),
           ],
         ),
       ),
