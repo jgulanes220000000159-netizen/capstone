@@ -23,6 +23,7 @@ class TrackingModels {
 
   static const List<Map<String, dynamic>> timeRanges = [
     {'label': 'Last 7 Days', 'days': 7},
+    {'label': 'Monthly', 'days': 30},
     {'label': 'Custom', 'days': null},
   ];
 
@@ -91,10 +92,27 @@ class TrackingModels {
     int selectedRangeIndex, {
     DateTime? customStart,
     DateTime? customEnd,
+    int? monthlyYear,
+    int? monthlyMonth,
   }) {
     if (sessions.isEmpty) return [];
     final now = DateTime.now();
     final days = timeRanges[selectedRangeIndex]['days'] as int?;
+    if (selectedRangeIndex == 1 &&
+        monthlyYear != null &&
+        monthlyMonth != null) {
+      // Monthly: strict calendar month filter
+      final startInclusive = DateTime(monthlyYear, monthlyMonth, 1);
+      final endInclusive = DateTime(monthlyYear, monthlyMonth + 1, 0);
+      return sessions.where((session) {
+        final dateStr = session['date'];
+        if (dateStr == null) return false;
+        final parsed = DateTime.tryParse(dateStr);
+        if (parsed == null) return false;
+        final d = DateTime(parsed.year, parsed.month, parsed.day);
+        return !d.isBefore(startInclusive) && !d.isAfter(endInclusive);
+      }).toList();
+    }
     if (days == null) {
       // Custom range: if either date missing, show all
       if (customStart == null || customEnd == null) {

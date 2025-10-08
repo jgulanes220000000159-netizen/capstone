@@ -19,9 +19,11 @@ class TrackingPage extends StatefulWidget {
 }
 
 class _TrackingPageState extends State<TrackingPage> {
-  int _selectedRangeIndex = 0; // 0: Last 7 Days, 1: Custom
+  int _selectedRangeIndex = 0; // 0: Last 7 Days, 1: Monthly, 2: Custom
   DateTime? _customStartDate;
   DateTime? _customEndDate;
+  int? _monthlyYear;
+  int? _monthlyMonth; // 1-12
 
   @override
   void didChangeDependencies() {
@@ -45,6 +47,12 @@ class _TrackingPageState extends State<TrackingPage> {
     if (endStr != null) {
       _customEndDate = DateTime.tryParse(endStr);
     }
+    final y = box.get('monthlyYear');
+    final m = box.get('monthlyMonth');
+    if (y is int && m is int) {
+      _monthlyYear = y;
+      _monthlyMonth = m;
+    }
   }
 
   Future<void> _saveSelectedRangeIndex(int idx) async {
@@ -61,6 +69,186 @@ class _TrackingPageState extends State<TrackingPage> {
     await box.put(
       'customEndDate',
       DateTime(end.year, end.month, end.day).toIso8601String(),
+    );
+  }
+
+  Future<void> _saveMonthly(int year, int month) async {
+    final box = await Hive.openBox('trackingBox');
+    await box.put('monthlyYear', year);
+    await box.put('monthlyMonth', month);
+  }
+
+  Future<DateTime?> _showMonthYearPicker({
+    required BuildContext context,
+    required DateTime initialDate,
+    required DateTime firstDate,
+    required DateTime lastDate,
+  }) async {
+    DateTime selectedDate = initialDate;
+
+    return await showDialog<DateTime>(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Select Month and Year'),
+              content: SizedBox(
+                width: 300,
+                height: 400,
+                child: Column(
+                  children: [
+                    // Year selector
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back_ios),
+                          onPressed:
+                              selectedDate.year > firstDate.year
+                                  ? () {
+                                    setState(() {
+                                      selectedDate = DateTime(
+                                        selectedDate.year - 1,
+                                        selectedDate.month,
+                                      );
+                                    });
+                                  }
+                                  : null,
+                        ),
+                        Text(
+                          '${selectedDate.year}',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.arrow_forward_ios),
+                          onPressed:
+                              selectedDate.year < lastDate.year
+                                  ? () {
+                                    setState(() {
+                                      selectedDate = DateTime(
+                                        selectedDate.year + 1,
+                                        selectedDate.month,
+                                      );
+                                    });
+                                  }
+                                  : null,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    // Month grid
+                    Expanded(
+                      child: GridView.builder(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                              childAspectRatio: 2,
+                            ),
+                        itemCount: 12,
+                        itemBuilder: (context, index) {
+                          final month = index + 1;
+                          final isSelected = selectedDate.month == month;
+                          final monthDate = DateTime(selectedDate.year, month);
+                          final isDisabled =
+                              monthDate.isBefore(
+                                DateTime(firstDate.year, firstDate.month),
+                              ) ||
+                              monthDate.isAfter(
+                                DateTime(lastDate.year, lastDate.month),
+                              );
+
+                          const monthNames = [
+                            'Jan',
+                            'Feb',
+                            'Mar',
+                            'Apr',
+                            'May',
+                            'Jun',
+                            'Jul',
+                            'Aug',
+                            'Sep',
+                            'Oct',
+                            'Nov',
+                            'Dec',
+                          ];
+
+                          return InkWell(
+                            onTap:
+                                isDisabled
+                                    ? null
+                                    : () {
+                                      setState(() {
+                                        selectedDate = DateTime(
+                                          selectedDate.year,
+                                          month,
+                                        );
+                                      });
+                                    },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color:
+                                    isSelected
+                                        ? const Color(0xFF2D7204)
+                                        : isDisabled
+                                        ? Colors.grey.shade200
+                                        : Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color:
+                                      isSelected
+                                          ? const Color(0xFF2D7204)
+                                          : Colors.grey.shade300,
+                                  width: isSelected ? 2 : 1,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                monthNames[index],
+                                style: TextStyle(
+                                  color:
+                                      isDisabled
+                                          ? Colors.grey.shade400
+                                          : isSelected
+                                          ? Colors.white
+                                          : Colors.black87,
+                                  fontWeight:
+                                      isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, selectedDate),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2D7204),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -94,6 +282,12 @@ class _TrackingPageState extends State<TrackingPage> {
       case 0:
         return tr('last_7_days');
       case 1:
+        if (_monthlyYear != null && _monthlyMonth != null) {
+          final dt = DateTime(_monthlyYear!, _monthlyMonth!, 1);
+          return DateFormat('MMMM yyyy').format(dt);
+        }
+        return tr('monthly');
+      case 2:
         if (_customStartDate != null && _customEndDate != null) {
           final s = DateFormat('MMM d').format(_customStartDate!);
           final e = DateFormat('MMM d').format(_customEndDate!);
@@ -484,6 +678,8 @@ class _TrackingPageState extends State<TrackingPage> {
           _selectedRangeIndex,
           customStart: _customStartDate,
           customEnd: _customEndDate,
+          monthlyYear: _monthlyYear,
+          monthlyMonth: _monthlyMonth,
         );
         final flatScans = TrackingModels.flattenScans(filteredSessions);
         final chartData = TrackingChart.chartData(
@@ -491,6 +687,8 @@ class _TrackingPageState extends State<TrackingPage> {
           _selectedRangeIndex,
           customStart: _customStartDate,
           customEnd: _customEndDate,
+          monthlyYear: _monthlyYear,
+          monthlyMonth: _monthlyMonth,
         );
         final overallCounts = TrackingModels.overallHealthyAndDiseases(
           flatScans,
@@ -567,14 +765,43 @@ class _TrackingPageState extends State<TrackingPage> {
                                   style: const TextStyle(fontSize: 15),
                                 ),
                               ),
+                              DropdownMenuItem(
+                                value: 2,
+                                child: Text(
+                                  _getTimeRangeLabel(2),
+                                  style: const TextStyle(fontSize: 15),
+                                ),
+                              ),
                             ],
                             onChanged: (i) async {
                               if (i == null) return;
                               if (i == 1) {
+                                // Show custom month-year picker
+                                final now = DateTime.now();
+                                final picked = await _showMonthYearPicker(
+                                  context: context,
+                                  initialDate: DateTime(
+                                    _monthlyYear ?? now.year,
+                                    _monthlyMonth ?? now.month,
+                                    1,
+                                  ),
+                                  firstDate: DateTime(2020, 1),
+                                  lastDate: DateTime(now.year, now.month),
+                                );
+                                if (picked != null) {
+                                  setState(() {
+                                    _monthlyYear = picked.year;
+                                    _monthlyMonth = picked.month;
+                                    _selectedRangeIndex = 1;
+                                  });
+                                  await _saveSelectedRangeIndex(1);
+                                  await _saveMonthly(picked.year, picked.month);
+                                }
+                              } else if (i == 2) {
                                 await _pickCustomRange();
                               } else {
-                                setState(() => _selectedRangeIndex = 0);
-                                await _saveSelectedRangeIndex(0);
+                                setState(() => _selectedRangeIndex = i);
+                                await _saveSelectedRangeIndex(i);
                               }
                             },
                           ),

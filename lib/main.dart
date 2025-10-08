@@ -17,6 +17,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter/services.dart';
 import 'shared/connectivity_service.dart';
 import 'shared/no_internet_banner.dart';
+import 'package:month_year_picker/month_year_picker.dart';
 
 void main() {
   runZonedGuarded(
@@ -27,6 +28,11 @@ void main() {
       try {
         // Ensure Firestore offline cache is enabled
         await FirebaseFirestore.instance.enablePersistence();
+      } catch (_) {}
+
+      // Set Firebase Auth persistence to LOCAL (default)
+      try {
+        await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
       } catch (_) {}
       await Hive.initFlutter();
       await Hive.openBox('reviews'); // Open a box for review/request data
@@ -39,6 +45,48 @@ void main() {
         url: dotenv.env['SUPABASE_URL']!,
         anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
       );
+
+      // Keep Hive login state in sync with Firebase Auth
+      try {
+        bool isFirstAuthCheck = true;
+        FirebaseAuth.instance.authStateChanges().listen((user) async {
+          // Skip the very first null event during app startup
+          // Firebase Auth takes a moment to restore the session
+          if (isFirstAuthCheck && user == null) {
+            isFirstAuthCheck = false;
+            return;
+          }
+          isFirstAuthCheck = false;
+
+          final box = Hive.box('userBox');
+          if (user == null) {
+            // User actually signed out (not just app starting)
+            await box.put('isLoggedIn', false);
+            await box.delete('userProfile');
+            return;
+          }
+          await box.put('isLoggedIn', true);
+          // Ensure minimal profile is saved locally for routing
+          Map? profile = box.get('userProfile') as Map?;
+          if (profile == null || profile['userId'] != user.uid) {
+            try {
+              final doc =
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.uid)
+                      .get();
+              final data = doc.data() ?? {};
+              final updated = {
+                'userId': user.uid,
+                'fullName': data['fullName'] ?? profile?['fullName'] ?? '',
+                'email': data['email'] ?? profile?['email'] ?? user.email ?? '',
+                'role': data['role'] ?? profile?['role'],
+              };
+              await box.put('userProfile', updated);
+            } catch (_) {}
+          }
+        });
+      } catch (_) {}
 
       // --- FCM Notification Setup ---
       final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -171,20 +219,25 @@ class CapstoneApp extends StatelessWidget {
 
   Future<Widget> _getStartPage() async {
     final box = Hive.box('userBox');
-    final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
-    final firebaseUser = FirebaseAuth.instance.currentUser;
+    // Keep reading local role/profile for quicker routing while Firebase restores
+    // Wait for Firebase Auth to restore session (up to 3 seconds)
+    final firebaseUser = await FirebaseAuth.instance
+        .authStateChanges()
+        .first
+        .timeout(
+          const Duration(seconds: 3),
+          onTimeout: () => FirebaseAuth.instance.currentUser,
+        );
 
-    // Require an actual Firebase session; if none, go to Login
+    Map? profile = box.get('userProfile') as Map?;
+    String? role = profile != null ? profile['role'] as String? : null;
+
+    // If no Firebase user yet, do NOT wipe local state; show Login
     if (firebaseUser == null) {
-      if (isLoggedIn) {
-        await box.put('isLoggedIn', false);
-      }
       return const LoginPage();
     }
 
-    // Firebase user exists: ensure we have a role and route
-    Map? profile = box.get('userProfile') as Map?;
-    String? role = profile != null ? profile['role'] as String? : null;
+    // Firebase user exists: ensure we have a role and route (prefer cached, fetch if missing)
     if (role == null) {
       try {
         final userDoc =
@@ -204,9 +257,11 @@ class CapstoneApp extends StatelessWidget {
             'role': role,
           };
           await box.put('userProfile', updated);
+          await box.put('isLoggedIn', true);
         }
       } catch (_) {}
     }
+
     if (role == 'expert') return const ExpertDashboard();
     if (role == 'farmer') return const HomePage();
     return const LoginPage();
@@ -375,7 +430,10 @@ class CapstoneApp extends StatelessWidget {
           ),
         ),
       ),
-      localizationsDelegates: context.localizationDelegates,
+      localizationsDelegates: [
+        ...context.localizationDelegates,
+        MonthYearPickerLocalizations.delegate,
+      ],
       supportedLocales: context.supportedLocales,
       locale: context.locale,
       home: FutureBuilder<Widget>(

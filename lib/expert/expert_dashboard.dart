@@ -269,10 +269,12 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
   bool _isLoading = true;
   StreamSubscription<QuerySnapshot>? _streamSubscription;
 
-  // Time range state for the response time chart (0: Last 7 Days, 1: Custom)
+  // Time range state for the response time chart (0: Last 7 Days, 1: Monthly, 2: Custom)
   int _selectedRangeIndex = 0;
   DateTime? _customStartDate;
   DateTime? _customEndDate;
+  int? _monthlyYear;
+  int? _monthlyMonth;
   int? _lastStreamDocsCount;
 
   // Filter reviews according to the selected range
@@ -292,31 +294,51 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
           (a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime),
         );
     }
-    if (_customStartDate == null || _customEndDate == null) {
-      // No custom bounds chosen, return all sorted
-      return List<Map<String, dynamic>>.from(_recentReviews)..sort(
-        (a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime),
-      );
+    if (_selectedRangeIndex == 1 &&
+        _monthlyYear != null &&
+        _monthlyMonth != null) {
+      // Monthly filter
+      final startOfMonth = DateTime(_monthlyYear!, _monthlyMonth!, 1);
+      final endOfMonth = DateTime(_monthlyYear!, _monthlyMonth! + 1, 0);
+      return _recentReviews.where((r) {
+          final d = r['date'] as DateTime?;
+          if (d == null) return false;
+          final dayOnly = DateTime(d.year, d.month, d.day);
+          return !dayOnly.isBefore(startOfMonth) &&
+              !dayOnly.isAfter(endOfMonth);
+        }).toList()
+        ..sort(
+          (a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime),
+        );
     }
-    final s = DateTime(
-      _customStartDate!.year,
-      _customStartDate!.month,
-      _customStartDate!.day,
-    );
-    final e = DateTime(
-      _customEndDate!.year,
-      _customEndDate!.month,
-      _customEndDate!.day,
-    );
-    return _recentReviews.where((r) {
-        final d = r['date'] as DateTime?;
-        if (d == null) return false;
-        final dayOnly = DateTime(d.year, d.month, d.day);
-        return !dayOnly.isBefore(s) && !dayOnly.isAfter(e);
-      }).toList()
-      ..sort(
-        (a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime),
+    if (_selectedRangeIndex == 2 &&
+        _customStartDate != null &&
+        _customEndDate != null) {
+      // Custom range filter
+      final s = DateTime(
+        _customStartDate!.year,
+        _customStartDate!.month,
+        _customStartDate!.day,
       );
+      final e = DateTime(
+        _customEndDate!.year,
+        _customEndDate!.month,
+        _customEndDate!.day,
+      );
+      return _recentReviews.where((r) {
+          final d = r['date'] as DateTime?;
+          if (d == null) return false;
+          final dayOnly = DateTime(d.year, d.month, d.day);
+          return !dayOnly.isBefore(s) && !dayOnly.isAfter(e);
+        }).toList()
+        ..sort(
+          (a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime),
+        );
+    }
+    // Fallback: return all sorted
+    return List<Map<String, dynamic>>.from(
+      _recentReviews,
+    )..sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
   }
 
   double _filteredAverageHours() {
@@ -433,11 +455,17 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
       final idx = box.get('selectedRangeIndex', defaultValue: 0);
       final startStr = box.get('customStartDate') as String?;
       final endStr = box.get('customEndDate') as String?;
+      final y = box.get('monthlyYear');
+      final m = box.get('monthlyMonth');
       setState(() {
-        _selectedRangeIndex = (idx is int && idx >= 0 && idx <= 1) ? idx : 0;
+        _selectedRangeIndex = (idx is int && idx >= 0 && idx <= 2) ? idx : 0;
         _customStartDate =
             startStr != null ? DateTime.tryParse(startStr) : null;
         _customEndDate = endStr != null ? DateTime.tryParse(endStr) : null;
+        if (y is int && m is int) {
+          _monthlyYear = y;
+          _monthlyMonth = m;
+        }
       });
     } catch (_) {}
   }
@@ -463,6 +491,188 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
     } catch (_) {}
   }
 
+  Future<void> _saveMonthly(int year, int month) async {
+    try {
+      final box = await Hive.openBox('expertFilterBox');
+      await box.put('monthlyYear', year);
+      await box.put('monthlyMonth', month);
+    } catch (_) {}
+  }
+
+  Future<DateTime?> _showMonthYearPicker({
+    required BuildContext context,
+    required DateTime initialDate,
+    required DateTime firstDate,
+    required DateTime lastDate,
+  }) async {
+    DateTime selectedDate = initialDate;
+
+    return await showDialog<DateTime>(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('Select Month and Year'),
+              content: SizedBox(
+                width: 300,
+                height: 400,
+                child: Column(
+                  children: [
+                    // Year selector
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.arrow_back_ios),
+                          onPressed:
+                              selectedDate.year > firstDate.year
+                                  ? () {
+                                    setState(() {
+                                      selectedDate = DateTime(
+                                        selectedDate.year - 1,
+                                        selectedDate.month,
+                                      );
+                                    });
+                                  }
+                                  : null,
+                        ),
+                        Text(
+                          '${selectedDate.year}',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.arrow_forward_ios),
+                          onPressed:
+                              selectedDate.year < lastDate.year
+                                  ? () {
+                                    setState(() {
+                                      selectedDate = DateTime(
+                                        selectedDate.year + 1,
+                                        selectedDate.month,
+                                      );
+                                    });
+                                  }
+                                  : null,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    // Month grid
+                    Expanded(
+                      child: GridView.builder(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                              childAspectRatio: 2,
+                            ),
+                        itemCount: 12,
+                        itemBuilder: (context, index) {
+                          final month = index + 1;
+                          final isSelected = selectedDate.month == month;
+                          final monthDate = DateTime(selectedDate.year, month);
+                          final isDisabled =
+                              monthDate.isBefore(
+                                DateTime(firstDate.year, firstDate.month),
+                              ) ||
+                              monthDate.isAfter(
+                                DateTime(lastDate.year, lastDate.month),
+                              );
+
+                          const monthNames = [
+                            'Jan',
+                            'Feb',
+                            'Mar',
+                            'Apr',
+                            'May',
+                            'Jun',
+                            'Jul',
+                            'Aug',
+                            'Sep',
+                            'Oct',
+                            'Nov',
+                            'Dec',
+                          ];
+
+                          return InkWell(
+                            onTap:
+                                isDisabled
+                                    ? null
+                                    : () {
+                                      setState(() {
+                                        selectedDate = DateTime(
+                                          selectedDate.year,
+                                          month,
+                                        );
+                                      });
+                                    },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color:
+                                    isSelected
+                                        ? const Color(0xFF2D7204)
+                                        : isDisabled
+                                        ? Colors.grey.shade200
+                                        : Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color:
+                                      isSelected
+                                          ? const Color(0xFF2D7204)
+                                          : Colors.grey.shade300,
+                                  width: isSelected ? 2 : 1,
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                monthNames[index],
+                                style: TextStyle(
+                                  color:
+                                      isDisabled
+                                          ? Colors.grey.shade400
+                                          : isSelected
+                                          ? Colors.white
+                                          : Colors.black87,
+                                  fontWeight:
+                                      isSelected
+                                          ? FontWeight.bold
+                                          : FontWeight.normal,
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, null),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, selectedDate),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2D7204),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('OK'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _pickCustomRange() async {
     final initialRange =
         _customStartDate != null && _customEndDate != null
@@ -482,9 +692,9 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
       setState(() {
         _customStartDate = picked.start;
         _customEndDate = picked.end;
-        _selectedRangeIndex = 1;
+        _selectedRangeIndex = 2;
       });
-      await _saveRangeIndex(1);
+      await _saveRangeIndex(2);
       await _saveCustomRange(picked.start, picked.end);
     }
   }
@@ -1086,6 +1296,24 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                                     DropdownMenuItem(
                                       value: 1,
                                       child: Text(
+                                        _monthlyYear != null &&
+                                                _monthlyMonth != null
+                                            ? DateFormat(
+                                              'MMMM yyyy',
+                                              'en',
+                                            ).format(
+                                              DateTime(
+                                                _monthlyYear!,
+                                                _monthlyMonth!,
+                                                1,
+                                              ),
+                                            )
+                                            : 'Monthly',
+                                      ),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 2,
+                                      child: Text(
                                         _customStartDate != null &&
                                                 _customEndDate != null
                                             ? 'Custom: ${DateFormat('MMM d', 'en').format(_customStartDate!)} – ${DateFormat('MMM d', 'en').format(_customEndDate!)}'
@@ -1096,6 +1324,31 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                                   onChanged: (i) async {
                                     if (i == null) return;
                                     if (i == 1) {
+                                      // Show custom month-year picker
+                                      final now = DateTime.now();
+                                      final picked = await _showMonthYearPicker(
+                                        context: context,
+                                        initialDate: DateTime(
+                                          _monthlyYear ?? now.year,
+                                          _monthlyMonth ?? now.month,
+                                          1,
+                                        ),
+                                        firstDate: DateTime(2020, 1),
+                                        lastDate: DateTime(now.year, now.month),
+                                      );
+                                      if (picked != null) {
+                                        setState(() {
+                                          _monthlyYear = picked.year;
+                                          _monthlyMonth = picked.month;
+                                          _selectedRangeIndex = 1;
+                                        });
+                                        await _saveRangeIndex(1);
+                                        await _saveMonthly(
+                                          picked.year,
+                                          picked.month,
+                                        );
+                                      }
+                                    } else if (i == 2) {
                                       await _pickCustomRange();
                                     } else {
                                       setState(() => _selectedRangeIndex = 0);
@@ -1148,21 +1401,43 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                                                 ),
                                               );
                                         }
-                                        if (_customStartDate == null ||
-                                            _customEndDate == null)
-                                          return true;
-                                        final s = DateTime(
-                                          _customStartDate!.year,
-                                          _customStartDate!.month,
-                                          _customStartDate!.day,
-                                        );
-                                        final e = DateTime(
-                                          _customEndDate!.year,
-                                          _customEndDate!.month,
-                                          _customEndDate!.day,
-                                        );
-                                        return !dayOnly.isBefore(s) &&
-                                            !dayOnly.isAfter(e);
+                                        if (_selectedRangeIndex == 1 &&
+                                            _monthlyYear != null &&
+                                            _monthlyMonth != null) {
+                                          // Monthly filter
+                                          final startOfMonth = DateTime(
+                                            _monthlyYear!,
+                                            _monthlyMonth!,
+                                            1,
+                                          );
+                                          final endOfMonth = DateTime(
+                                            _monthlyYear!,
+                                            _monthlyMonth! + 1,
+                                            0,
+                                          );
+                                          return !dayOnly.isBefore(
+                                                startOfMonth,
+                                              ) &&
+                                              !dayOnly.isAfter(endOfMonth);
+                                        }
+                                        if (_selectedRangeIndex == 2) {
+                                          if (_customStartDate == null ||
+                                              _customEndDate == null)
+                                            return true;
+                                          final s = DateTime(
+                                            _customStartDate!.year,
+                                            _customStartDate!.month,
+                                            _customStartDate!.day,
+                                          );
+                                          final e = DateTime(
+                                            _customEndDate!.year,
+                                            _customEndDate!.month,
+                                            _customEndDate!.day,
+                                          );
+                                          return !dayOnly.isBefore(s) &&
+                                              !dayOnly.isAfter(e);
+                                        }
+                                        return true; // Fallback
                                       }).toList()
                                       ..sort(
                                         (a, b) => (a['date'] as DateTime)
@@ -1170,7 +1445,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                                       );
 
                                 final showBottomTitles =
-                                    _selectedRangeIndex == 0;
+                                    true; // Show dates for all ranges
                                 return LineChart(
                                   LineChartData(
                                     gridData: FlGridData(show: true),
@@ -1192,12 +1467,8 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                                       bottomTitles: AxisTitles(
                                         sideTitles: SideTitles(
                                           showTitles: showBottomTitles,
-                                          reservedSize:
-                                              showBottomTitles ? 30 : 0,
+                                          reservedSize: 30,
                                           getTitlesWidget: (value, meta) {
-                                            if (!showBottomTitles) {
-                                              return const SizedBox.shrink();
-                                            }
                                             final idx = value.toInt();
                                             if (idx >= 0 &&
                                                 idx < filtered.length) {

@@ -33,6 +33,7 @@ dependencies:
   firebase_messaging: ^14.7.4
   google_sign_in: ^6.2.1
   connectivity_plus: ^5.0.2
+  month_year_picker: ^0.4.0
   flutter_local_notifications:
     git:
       url: https://github.com/SherwenCabanilla/flutter_local_notifications.git

@@ -43,6 +43,8 @@ class TrackingChart {
     int selectedRangeIndex, {
     DateTime? customStart,
     DateTime? customEnd,
+    int? monthlyYear,
+    int? monthlyMonth,
   }) {
     final start = rangeStartDate(selectedRangeIndex, customStart: customStart);
     // Last 7 days (index 0): group by day
@@ -75,8 +77,49 @@ class TrackingChart {
       }
       return groups.map((g) => {'group': g, ...data[g]!}).toList();
     }
-    // Custom range (index 1): adapt grouping by span
-    if (selectedRangeIndex == 1) {
+    // Monthly (index 1): group by day within the selected month
+    if (selectedRangeIndex == 1 &&
+        monthlyYear != null &&
+        monthlyMonth != null) {
+      final startOfMonth = DateTime(monthlyYear, monthlyMonth, 1);
+      final endOfMonth = DateTime(monthlyYear, monthlyMonth + 1, 0);
+      final daysInMonth = endOfMonth.day;
+
+      final groups = List.generate(daysInMonth, (i) {
+        final d = startOfMonth.add(Duration(days: i));
+        return DateFormat('yyyy-MM-dd').format(d);
+      });
+
+      final Map<String, Map<String, int>> data = {
+        for (final g in groups)
+          g: {
+            'healthy': 0,
+            ...{for (var d in TrackingModels.diseaseLabels) d: 0},
+          },
+      };
+
+      for (final scan in scans) {
+        final label = (scan['disease'] ?? '').toLowerCase();
+        if (label == 'tip_burn' || label == 'unknown') continue;
+        final dateStr = scan['date'];
+        if (dateStr == null) continue;
+        final date = DateTime.tryParse(dateStr);
+        if (date == null) continue;
+        final d = DateTime(date.year, date.month, date.day);
+        if (d.isBefore(startOfMonth) || d.isAfter(endOfMonth)) continue;
+        final groupKey = DateFormat('yyyy-MM-dd').format(d);
+        if (!data.containsKey(groupKey)) continue;
+        if (label == 'healthy') {
+          data[groupKey]!['healthy'] = (data[groupKey]!['healthy'] ?? 0) + 1;
+        } else if (TrackingModels.isRealDisease(label)) {
+          data[groupKey]![label] = (data[groupKey]![label] ?? 0) + 1;
+        }
+      }
+      return groups.map((g) => {'group': g, ...data[g]!}).toList();
+    }
+
+    // Custom range (index 2): adapt grouping by span
+    if (selectedRangeIndex == 2) {
       if (customStart == null || customEnd == null) return [];
       final startDay = DateTime(
         customStart.year,
