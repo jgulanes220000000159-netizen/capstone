@@ -11,7 +11,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'dart:async'; // Added for StreamSubscription
 import 'package:intl/intl.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import '../shared/connectivity_debug_widget.dart';
 
 class ExpertDashboard extends StatefulWidget {
   const ExpertDashboard({Key? key}) : super(key: key);
@@ -153,96 +152,185 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        elevation: 2,
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.black,
-        systemOverlayStyle: const SystemUiOverlayStyle(
-          statusBarColor: Colors.white,
-          statusBarIconBrightness: Brightness.dark,
-          statusBarBrightness: Brightness.light,
-        ),
-        title: Row(
-          children: [
-            // Logo
-            ClipOval(
-              child: Image.asset('assets/logo.png', height: 32, width: 32),
-            ),
-            const SizedBox(width: 12),
-            // Single title
-            Text(
-              getTitle(),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-      ),
-      body:
-          _pages.isNotEmpty
-              ? _pages[_selectedIndex]
-              : const Center(child: CircularProgressIndicator()),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: _onItemTapped,
-        selectedItemColor: Colors.green,
-        type: BottomNavigationBarType.fixed,
-        items: [
-          const BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.list_alt),
-                if (_pendingNotifications > 0)
-                  Positioned(
-                    right: -6,
-                    top: -6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 2,
-                            offset: const Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 16,
-                        minHeight: 16,
-                      ),
-                      child: Text(
-                        _pendingNotifications > 9
-                            ? '9+'
-                            : '$_pendingNotifications',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
+      body: Stack(
+        children: [
+          // Main content
+          Column(
+            children: [
+              SafeArea(
+                bottom: false,
+                child: SizedBox(
+                  height: 64, // Height of the header + padding
+                ),
+              ),
+              Expanded(
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 15),
+                    child:
+                        _pages.isNotEmpty
+                            ? _pages[_selectedIndex]
+                            : const Center(child: CircularProgressIndicator()),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          // Green header with shadow on top
+          SafeArea(
+            bottom: false,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.green,
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(20),
+                  bottomRight: Radius.circular(20),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  // Logo with circular container (matching farmer side)
+                  Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                    ),
+                    padding: const EdgeInsets.all(8),
+                    child: Image.asset(
+                      'assets/logo.png',
+                      width: 30,
+                      height: 30,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Title only (no subtitle)
+                  Expanded(
+                    child: Text(
+                      getTitle(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-              ],
+                  // Expert Panel badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      'Expert Panel',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-            label: 'Requests',
-          ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.local_hospital),
-            label: 'Diseases',
-          ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
           ),
         ],
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 12,
+              offset: const Offset(0, -4),
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _selectedIndex,
+          onTap: _onItemTapped,
+          selectedItemColor: Colors.green,
+          type: BottomNavigationBarType.fixed,
+          elevation: 0,
+          items: [
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.home),
+              label: 'Home',
+            ),
+            BottomNavigationBarItem(
+              icon: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  const Icon(Icons.list_alt),
+                  if (_pendingNotifications > 0)
+                    Positioned(
+                      right: -6,
+                      top: -6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 2,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 16,
+                        ),
+                        child: Text(
+                          _pendingNotifications > 9
+                              ? '9+'
+                              : '$_pendingNotifications',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              label: 'Requests',
+            ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.local_hospital),
+              label: 'Diseases',
+            ),
+            const BottomNavigationBarItem(
+              icon: Icon(Icons.person),
+              label: 'Profile',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -522,6 +610,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.arrow_back_ios),
+                          tooltip: '', // Disable tooltip
                           onPressed:
                               selectedDate.year > firstDate.year
                                   ? () {
@@ -543,6 +632,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                         ),
                         IconButton(
                           icon: const Icon(Icons.arrow_forward_ios),
+                          tooltip: '', // Disable tooltip
                           onPressed:
                               selectedDate.year < lastDate.year
                                   ? () {
@@ -1026,6 +1116,47 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
     }
   }
 
+  // Helper function to get performance feedback based on response time
+  Map<String, dynamic> _getPerformanceFeedback(double hours) {
+    if (hours == 0) {
+      return {
+        'message': 'No data available',
+        'icon': Icons.info_outline,
+        'color': Colors.grey,
+      };
+    } else if (hours < 6) {
+      return {
+        'message': 'Excellent! Lightning-fast response time',
+        'icon': Icons.emoji_events,
+        'color': Colors.green[700],
+      };
+    } else if (hours < 24) {
+      return {
+        'message': 'Great! Responding within the same day',
+        'icon': Icons.thumb_up,
+        'color': Colors.green[600],
+      };
+    } else if (hours < 48) {
+      return {
+        'message': 'Good response time, keep it up',
+        'icon': Icons.check_circle_outline,
+        'color': Colors.blue[600],
+      };
+    } else if (hours < 72) {
+      return {
+        'message': 'Room for improvement - try to respond faster',
+        'icon': Icons.timeline,
+        'color': Colors.orange[700],
+      };
+    } else {
+      return {
+        'message': 'Needs improvement - farmers expect faster responses',
+        'icon': Icons.warning_amber_rounded,
+        'color': Colors.red[600],
+      };
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Show loading state initially
@@ -1167,7 +1298,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                                   ),
                                 ),
                                 const Text(
-                                  'Completed Reviews',
+                                  'Total Reviewed',
                                   style: TextStyle(fontSize: 12),
                                   textAlign: TextAlign.center,
                                 ),
@@ -1242,30 +1373,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          children: [
-                            Icon(Icons.timer, color: Colors.blue, size: 20),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Average Response Time',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey[800],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${_formatResponseTime(_filteredAverageHours())}',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue[700],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
+                        // Time Range Filter at top
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 12,
@@ -1357,10 +1465,137 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                             ],
                           ),
                         ),
+                        const SizedBox(height: 16),
+                        // Metrics Row
+                        Row(
+                          children: [
+                            // Completed Reviews for timeframe
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.check_circle,
+                                        color: Colors.green,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Reviews Completed',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.grey[800],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '${_filterReviewsForRange().length}',
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green[700],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            // Average Response Time
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        Icons.timer,
+                                        color: Colors.blue,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'Avg Response Time',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.grey[800],
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '${_formatResponseTime(_filteredAverageHours())}',
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.blue[700],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                         const SizedBox(height: 12),
+                        // Performance Feedback
+                        Builder(
+                          builder: (context) {
+                            final feedback = _getPerformanceFeedback(
+                              _filteredAverageHours(),
+                            );
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                color: (feedback['color'] as Color).withOpacity(
+                                  0.1,
+                                ),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: (feedback['color'] as Color)
+                                      .withOpacity(0.3),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    feedback['icon'] as IconData,
+                                    color: feedback['color'] as Color,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      feedback['message'] as String,
+                                      style: TextStyle(
+                                        color: feedback['color'] as Color,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 16),
                         if (_recentReviews.isNotEmpty) ...[
                           Text(
-                            'Recent Response Times',
+                            'Response Time Trend',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -1443,19 +1678,67 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
 
                                 final showBottomTitles =
                                     true; // Show dates for all ranges
+                                // Find max value for better Y-axis scaling
+                                final maxValue =
+                                    filtered.isEmpty
+                                        ? 100.0
+                                        : filtered
+                                            .map(
+                                              (e) =>
+                                                  (e['responseTime'] as num)
+                                                      .toDouble(),
+                                            )
+                                            .reduce((a, b) => a > b ? a : b);
+                                final yInterval =
+                                    maxValue > 100
+                                        ? 100.0
+                                        : (maxValue > 50 ? 50.0 : 20.0);
+
                                 return LineChart(
                                   LineChartData(
-                                    gridData: FlGridData(show: true),
+                                    lineTouchData: LineTouchData(
+                                      enabled: true,
+                                      touchTooltipData: LineTouchTooltipData(
+                                        getTooltipItems: (touchedSpots) {
+                                          return touchedSpots.map((spot) {
+                                            final hours = spot.y;
+                                            final index = spot.x.toInt();
+                                            final date =
+                                                filtered[index]['date']
+                                                    as DateTime;
+                                            return LineTooltipItem(
+                                              '${_formatResponseTime(hours)}\n${date.day}/${date.month}/${date.year}',
+                                              const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12,
+                                              ),
+                                            );
+                                          }).toList();
+                                        },
+                                      ),
+                                    ),
+                                    gridData: FlGridData(
+                                      show: true,
+                                      drawVerticalLine: true,
+                                      horizontalInterval: yInterval,
+                                    ),
                                     titlesData: FlTitlesData(
                                       leftTitles: AxisTitles(
                                         sideTitles: SideTitles(
                                           showTitles: true,
-                                          reservedSize: 40,
+                                          reservedSize: 45,
+                                          interval: yInterval,
                                           getTitlesWidget: (value, meta) {
+                                            // Only show labels at specific intervals
+                                            if (value % yInterval != 0) {
+                                              return const SizedBox.shrink();
+                                            }
                                             return Text(
                                               '${value.toInt()}h',
                                               style: const TextStyle(
                                                 fontSize: 10,
+                                                color: Colors.black87,
                                               ),
                                             );
                                           },

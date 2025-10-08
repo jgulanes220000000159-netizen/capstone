@@ -120,7 +120,7 @@ class _NoInternetBannerState extends State<NoInternetBanner> {
                                   _isHidden = true;
                                 });
                               },
-                              tooltip: 'Hide',
+                              tooltip: '', // Disabled to prevent overlay error
                             ),
                           ],
                         ),

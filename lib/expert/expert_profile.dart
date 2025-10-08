@@ -11,6 +11,7 @@ import 'package:mime/mime.dart';
 import 'package:hive/hive.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ExpertProfile extends StatefulWidget {
   const ExpertProfile({Key? key}) : super(key: key);
@@ -23,6 +24,7 @@ class _ExpertProfileState extends State<ExpertProfile> {
   File? _profileImage;
   final ImagePicker _picker = ImagePicker();
   bool _notificationsEnabled = false;
+  bool _isUploadingImage = false;
 
   // User data variables
   String _userName = 'Loading...';
@@ -31,7 +33,7 @@ class _ExpertProfileState extends State<ExpertProfile> {
   String _userPhone = '';
   String _userAddress = '';
   String? _profileImageUrl;
-  int _completedReviews = 0;
+  String _memberSince = 'Loading...';
   bool _isLoading = true;
 
   @override
@@ -39,6 +41,7 @@ class _ExpertProfileState extends State<ExpertProfile> {
     super.initState();
     _loadUserData();
     _saveFcmTokenToFirestore();
+    _listenToProfileUpdates();
     try {
       final settingsBox = Hive.box('settings');
       if (!settingsBox.containsKey('enableNotifications')) {
@@ -50,13 +53,44 @@ class _ExpertProfileState extends State<ExpertProfile> {
     } catch (_) {}
   }
 
+  void _listenToProfileUpdates() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots()
+          .listen((snapshot) async {
+            if (snapshot.exists) {
+              final data = snapshot.data() as Map<String, dynamic>;
+
+              // Save to Hive cache
+              final userBox = await Hive.openBox('userBox');
+              await userBox.put('userProfile', data);
+
+              // Update UI
+              if (mounted) {
+                setState(() {
+                  _userName = data['fullName'] ?? 'Unknown Expert';
+                  _userRole = data['role'] ?? 'Expert';
+                  _userEmail = data['email'] ?? '';
+                  _userPhone = data['phoneNumber'] ?? '';
+                  _userAddress = data['address'] ?? '';
+                  _profileImageUrl = data['imageProfile'];
+                });
+              }
+            }
+          });
+    }
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Refresh stats when page is focused
+    // Refresh member since when page is focused
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      _loadExpertStats(user.uid);
+      _loadMemberSince(user);
     }
   }
 
@@ -75,10 +109,10 @@ class _ExpertProfileState extends State<ExpertProfile> {
           _isLoading = false;
         });
 
-        // Load expert statistics even when using local data
+        // Load member since even when using local data
         final user = FirebaseAuth.instance.currentUser;
         if (user != null) {
-          _loadExpertStats(user.uid);
+          _loadMemberSince(user);
         }
         return;
       }
@@ -103,8 +137,8 @@ class _ExpertProfileState extends State<ExpertProfile> {
             _isLoading = false;
           });
 
-          // Load expert statistics
-          _loadExpertStats(user.uid);
+          // Load member since
+          _loadMemberSince(user);
         }
       }
     } catch (e) {
@@ -115,27 +149,37 @@ class _ExpertProfileState extends State<ExpertProfile> {
     }
   }
 
-  Future<void> _loadExpertStats(String userId) async {
+  void _loadMemberSince(User user) {
     try {
-      print('Loading expert stats for user: $userId');
+      final creationTime = user.metadata.creationTime;
+      if (creationTime != null) {
+        // Format as "Month Year" (e.g., "January 2024")
+        final monthNames = [
+          'January',
+          'February',
+          'March',
+          'April',
+          'May',
+          'June',
+          'July',
+          'August',
+          'September',
+          'October',
+          'November',
+          'December',
+        ];
+        final month = monthNames[creationTime.month - 1];
+        final year = creationTime.year;
 
-      // Count completed reviews for this expert
-      final reviewsQuery =
-          await FirebaseFirestore.instance
-              .collection('scan_requests')
-              .where('expertUid', isEqualTo: userId)
-              .where('status', whereIn: ['completed', 'reviewed'])
-              .get();
-
-      print(
-        'Found ${reviewsQuery.docs.length} completed reviews for expert $userId',
-      );
-
-      setState(() {
-        _completedReviews = reviewsQuery.docs.length;
-      });
+        setState(() {
+          _memberSince = '$month $year';
+        });
+      }
     } catch (e) {
-      print('Error loading expert stats: $e');
+      print('Error loading member since: $e');
+      setState(() {
+        _memberSince = 'N/A';
+      });
     }
   }
 
@@ -176,6 +220,10 @@ class _ExpertProfileState extends State<ExpertProfile> {
   }
 
   Future<void> _uploadProfileImage(String imagePath) async {
+    setState(() {
+      _isUploadingImage = true;
+    });
+
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
@@ -186,30 +234,89 @@ class _ExpertProfileState extends State<ExpertProfile> {
             .child('${user.uid}.jpg');
 
         final detectedMime = lookupMimeType(file.path) ?? 'image/jpeg';
-        await ref.putFile(file, SettableMetadata(contentType: detectedMime));
-        final url = await ref.getDownloadURL();
+
+        // Upload with 20 second timeout
+        await ref
+            .putFile(file, SettableMetadata(contentType: detectedMime))
+            .timeout(
+              const Duration(seconds: 20),
+              onTimeout: () {
+                throw Exception(
+                  'Upload timeout - Please check your internet connection',
+                );
+              },
+            );
+
+        final url = await ref.getDownloadURL().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            throw Exception('Timeout getting image URL - Please try again');
+          },
+        );
 
         // Update Firestore with new image URL
         await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
-            .update({'imageProfile': url});
+            .update({'imageProfile': url})
+            .timeout(
+              const Duration(seconds: 10),
+              onTimeout: () {
+                throw Exception(
+                  'Timeout updating profile - Please check your connection',
+                );
+              },
+            );
+
+        // Update Hive cache immediately
+        final userBox = await Hive.openBox('userBox');
+        final cachedProfile =
+            userBox.get('userProfile') as Map<dynamic, dynamic>?;
+        if (cachedProfile != null) {
+          final updatedProfile = Map<String, dynamic>.from(cachedProfile);
+          updatedProfile['imageProfile'] = url;
+          await userBox.put('userProfile', updatedProfile);
+        }
 
         if (!mounted) return;
         setState(() {
           _profileImageUrl = url;
+          _isUploadingImage = false;
         });
 
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile image updated successfully!')),
+          const SnackBar(
+            content: Text('Profile image updated successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
         );
       }
     } catch (e) {
       print('Error uploading profile image: $e');
       if (!mounted) return;
+      setState(() {
+        _isUploadingImage = false;
+      });
+
+      // Determine error message based on error type
+      String errorMessage = 'Failed to update profile image';
+      if (e.toString().contains('timeout') ||
+          e.toString().contains('Timeout')) {
+        errorMessage =
+            'Upload timeout - Please check your internet connection and try again';
+      } else if (e.toString().contains('network') ||
+          e.toString().contains('connection')) {
+        errorMessage = 'Network error - Please check your internet connection';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to update profile image')),
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
       );
     }
   }
@@ -225,33 +332,6 @@ class _ExpertProfileState extends State<ExpertProfile> {
             .update({'fcmToken': token});
       }
     }
-  }
-
-  Widget _buildStat(String label, String value, {VoidCallback? onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.8),
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _buildProfileOption({
@@ -605,418 +685,444 @@ class _ExpertProfileState extends State<ExpertProfile> {
       body:
           user == null
               ? const Center(child: Text('Not logged in'))
-              : StreamBuilder<DocumentSnapshot>(
-                stream:
-                    FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(user.uid)
-                        .snapshots(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  final data = snapshot.data!.data() as Map<String, dynamic>?;
-                  if (data == null) {
-                    return const Center(child: Text('No user data found'));
-                  }
-                  _userName = data['fullName'] ?? 'Unknown Expert';
-                  _userRole = data['role'] ?? 'Expert';
-                  _userEmail = data['email'] ?? '';
-                  _userPhone = data['phoneNumber'] ?? '';
-                  _userAddress = data['address'] ?? '';
-                  _profileImageUrl = data['imageProfile'];
-                  _isLoading = false;
-                  return SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        // Profile Header
-                        Container(
-                          color: Colors.green,
-                          padding: const EdgeInsets.only(bottom: 24.0),
-                          child: Column(
+              : _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                child: Column(
+                  children: [
+                    // Profile Card
+                    Container(
+                      color: Colors.green[50],
+                      padding: const EdgeInsets.symmetric(vertical: 24.0),
+                      child: Column(
+                        children: [
+                          // Profile Picture
+                          Stack(
                             children: [
-                              // Profile Picture
-                              Stack(
-                                children: [
-                                  Container(
-                                    margin: const EdgeInsets.only(top: 16),
-                                    width: 140,
-                                    height: 140,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 4,
-                                      ),
-                                      color: Colors.white,
+                              Container(
+                                width: 120,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 4,
+                                  ),
+                                  color: Colors.white,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.2),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
                                     ),
-                                    child:
-                                        _profileImage != null
-                                            ? ClipOval(
-                                              child: Image.file(
-                                                _profileImage!,
-                                                width: 140,
-                                                height: 140,
-                                                fit: BoxFit.cover,
-                                              ),
-                                            )
-                                            : _profileImageUrl != null
-                                            ? ClipOval(
-                                              child: Image.network(
-                                                _profileImageUrl!,
-                                                width: 140,
-                                                height: 140,
-                                                fit: BoxFit.cover,
-                                                errorBuilder:
-                                                    (
-                                                      context,
-                                                      error,
-                                                      stackTrace,
-                                                    ) => const Icon(
+                                  ],
+                                ),
+                                child: Stack(
+                                  children: [
+                                    _profileImage != null
+                                        ? ClipOval(
+                                          child: Image.file(
+                                            _profileImage!,
+                                            width: 120,
+                                            height: 120,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        )
+                                        : _profileImageUrl != null
+                                        ? ClipOval(
+                                          child: CachedNetworkImage(
+                                            imageUrl: _profileImageUrl!,
+                                            width: 120,
+                                            height: 120,
+                                            fit: BoxFit.cover,
+                                            placeholder:
+                                                (context, url) =>
+                                                    const CircularProgressIndicator(),
+                                            errorWidget:
+                                                (context, url, error) =>
+                                                    const Icon(
                                                       Icons.person,
-                                                      size: 90,
+                                                      size: 70,
                                                       color: Colors.green,
                                                     ),
-                                              ),
-                                            )
-                                            : const Icon(
-                                              Icons.person,
-                                              size: 90,
-                                              color: Colors.green,
-                                            ),
-                                  ),
-                                  Positioned(
-                                    bottom: 0,
-                                    right: 0,
-                                    child: GestureDetector(
-                                      onTap: _pickProfileImage,
-                                      child: Container(
-                                        width: 38,
-                                        height: 38,
-                                        decoration: const BoxDecoration(
-                                          color: Colors.white,
+                                          ),
+                                        )
+                                        : const Icon(
+                                          Icons.person,
+                                          size: 70,
+                                          color: Colors.green,
+                                        ),
+                                    // Upload indicator overlay
+                                    if (_isUploadingImage)
+                                      Container(
+                                        width: 120,
+                                        height: 120,
+                                        decoration: BoxDecoration(
                                           shape: BoxShape.circle,
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: Colors.black12,
-                                              blurRadius: 4,
-                                              offset: Offset(0, 2),
-                                            ),
-                                          ],
+                                          color: Colors.black.withOpacity(0.6),
                                         ),
                                         child: const Center(
-                                          child: Icon(
-                                            Icons.camera_alt,
-                                            size: 22,
-                                            color: Colors.green,
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              CircularProgressIndicator(
+                                                color: Colors.white,
+                                                strokeWidth: 3,
+                                              ),
+                                              SizedBox(height: 8),
+                                              Text(
+                                                'Uploading...',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-                              // Expert Name
-                              Text(
-                                _isLoading ? 'Loading...' : _userName,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              // Expert Role
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  _userRole,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              // Stats Row
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 32,
-                                ),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceEvenly,
-                                  children: [
-                                    GestureDetector(
-                                      onTap: () {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              'Overall Completed Reviews clicked!',
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                      child: Column(
-                                        children: [
-                                          Text(
-                                            _completedReviews.toString(),
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 24,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          const Text(
-                                            'Completed Reviews',
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    // REMOVE divider and Farmers Under Care stat
                                   ],
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        // Profile Options
-                        Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 10,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            children: [
-                              _buildProfileOption(
-                                title: 'Edit Profile',
-                                icon: Icons.edit,
-                                onTap: () => _showEditProfileDialog(context),
-                              ),
-                              _buildProfileOption(
-                                title: 'About App',
-                                icon: Icons.info,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder:
-                                          (context) => const AboutAppPage(),
-                                    ),
-                                  );
-                                },
-                              ),
-                              _buildProfileOption(
-                                title: 'Change Password',
-                                icon: Icons.lock,
-                                onTap: () => _showChangePasswordDialog(context),
-                              ),
-                              _buildProfileOption(
-                                title: 'Log Out',
-                                icon: Icons.logout,
-                                showDivider: false,
-                                onTap: () async {
-                                  final shouldLogout = await showDialog<bool>(
-                                    context: context,
-                                    builder:
-                                        (context) => AlertDialog(
-                                          title: const Text('Confirm Logout'),
-                                          content: const Text(
-                                            'Are you sure you want to logout?',
-                                          ),
-                                          actions: [
-                                            TextButton(
-                                              onPressed:
-                                                  () => Navigator.of(
-                                                    context,
-                                                  ).pop(false),
-                                              child: const Text('Cancel'),
-                                            ),
-                                            TextButton(
-                                              onPressed:
-                                                  () => Navigator.of(
-                                                    context,
-                                                  ).pop(true),
-                                              child: const Text('Logout'),
-                                            ),
-                                          ],
-                                        ),
-                                  );
-                                  if (shouldLogout == true) {
-                                    // Sign out from Firebase
-                                    await FirebaseAuth.instance.signOut();
-                                    // Clear Hive userBox
-                                    final userBox = await Hive.openBox(
-                                      'userBox',
-                                    );
-                                    await userBox.clear();
-                                    Navigator.pushAndRemoveUntil(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => const LoginPage(),
+                              Positioned(
+                                bottom: 0,
+                                right: 0,
+                                child: GestureDetector(
+                                  onTap: _pickProfileImage,
+                                  child: Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: Colors.green[700],
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 3,
                                       ),
-                                      (route) => false,
-                                    );
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        // Preferences Section
-                        Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 10,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Padding(
-                                padding: EdgeInsets.only(top: 8, bottom: 4),
-                                child: Text(
-                                  'Preferences',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green,
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.2),
+                                          blurRadius: 6,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.camera_alt,
+                                        size: 18,
+                                        color: Colors.white,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
-                              SwitchListTile(
-                                value: _notificationsEnabled,
-                                onChanged: (value) async {
-                                  setState(() {
-                                    _notificationsEnabled = value;
-                                  });
-                                  // Persist locally
-                                  try {
-                                    final settingsBox = await Hive.openBox(
-                                      'settings',
-                                    );
-                                    await settingsBox.put(
-                                      'enableNotifications',
-                                      value,
-                                    );
-                                  } catch (_) {}
-                                  // Mirror to Firestore for backend gating
-                                  final user =
-                                      FirebaseAuth.instance.currentUser;
-                                  if (user != null) {
-                                    try {
-                                      await FirebaseFirestore.instance
-                                          .collection('users')
-                                          .doc(user.uid)
-                                          .update({
-                                            'enableNotifications': value,
-                                          });
-                                    } catch (_) {}
-                                  }
-                                  // Apply topic change immediately (experts -> all_users + experts)
-                                  try {
-                                    if (value) {
-                                      await FirebaseMessaging.instance
-                                          .subscribeToTopic('all_users');
-                                      await FirebaseMessaging.instance
-                                          .subscribeToTopic('experts');
-                                    } else {
-                                      await FirebaseMessaging.instance
-                                          .unsubscribeFromTopic('all_users');
-                                      await FirebaseMessaging.instance
-                                          .unsubscribeFromTopic('experts');
-                                    }
-                                  } catch (_) {}
-                                },
-                                title: const Text('Enable Notifications'),
-                                secondary: const Icon(
-                                  Icons.notifications,
-                                  color: Colors.green,
-                                ),
-                                contentPadding: EdgeInsets.zero,
-                              ),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        // Description
-                        Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: Colors.green.withOpacity(0.3),
+                          const SizedBox(height: 16),
+                          // Expert Name
+                          Text(
+                            _isLoading ? 'Loading...' : _userName,
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          // Expert Role Badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              _userRole.toLowerCase(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
                             ),
                           ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Expert Access',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
+                          const SizedBox(height: 20),
+                          // Member Since Card
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 16,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
                                 ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'This profile is exclusively for plant disease experts. Regular users and other personnel do not have access to this interface.',
-                                style: TextStyle(
-                                  color: Colors.grey[700],
-                                  fontSize: 14,
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.calendar_today,
+                                      color: Colors.green,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Text(
+                                        _memberSince,
+                                        style: TextStyle(
+                                          color: Colors.green[700],
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Member Since',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.grey[700],
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 24),
-                        // App Version
-                        const SizedBox(height: 24),
-                      ],
+                        ],
+                      ),
                     ),
-                  );
-                },
+                    const SizedBox(height: 20),
+                    // Profile Options
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          _buildProfileOption(
+                            title: 'Edit Profile',
+                            icon: Icons.edit,
+                            onTap: () => _showEditProfileDialog(context),
+                          ),
+                          _buildProfileOption(
+                            title: 'About App',
+                            icon: Icons.info,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const AboutAppPage(),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildProfileOption(
+                            title: 'Change Password',
+                            icon: Icons.lock,
+                            onTap: () => _showChangePasswordDialog(context),
+                          ),
+                          _buildProfileOption(
+                            title: 'Log Out',
+                            icon: Icons.logout,
+                            showDivider: false,
+                            onTap: () async {
+                              final shouldLogout = await showDialog<bool>(
+                                context: context,
+                                builder:
+                                    (context) => AlertDialog(
+                                      title: const Text('Confirm Logout'),
+                                      content: const Text(
+                                        'Are you sure you want to logout?',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed:
+                                              () => Navigator.of(
+                                                context,
+                                              ).pop(false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        TextButton(
+                                          onPressed:
+                                              () => Navigator.of(
+                                                context,
+                                              ).pop(true),
+                                          child: const Text('Logout'),
+                                        ),
+                                      ],
+                                    ),
+                              );
+                              if (shouldLogout == true) {
+                                // Sign out from Firebase
+                                await FirebaseAuth.instance.signOut();
+                                // Clear Hive userBox
+                                final userBox = await Hive.openBox('userBox');
+                                await userBox.clear();
+                                Navigator.pushAndRemoveUntil(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const LoginPage(),
+                                  ),
+                                  (route) => false,
+                                );
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Preferences Section
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 8, bottom: 4),
+                            child: Text(
+                              'Preferences',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ),
+                          SwitchListTile(
+                            value: _notificationsEnabled,
+                            onChanged: (value) async {
+                              setState(() {
+                                _notificationsEnabled = value;
+                              });
+                              // Persist locally
+                              try {
+                                final settingsBox = await Hive.openBox(
+                                  'settings',
+                                );
+                                await settingsBox.put(
+                                  'enableNotifications',
+                                  value,
+                                );
+                              } catch (_) {}
+                              // Mirror to Firestore for backend gating
+                              final user = FirebaseAuth.instance.currentUser;
+                              if (user != null) {
+                                try {
+                                  await FirebaseFirestore.instance
+                                      .collection('users')
+                                      .doc(user.uid)
+                                      .update({'enableNotifications': value});
+                                } catch (_) {}
+                              }
+                              // Apply topic change immediately (experts -> all_users + experts)
+                              try {
+                                if (value) {
+                                  await FirebaseMessaging.instance
+                                      .subscribeToTopic('all_users');
+                                  await FirebaseMessaging.instance
+                                      .subscribeToTopic('experts');
+                                } else {
+                                  await FirebaseMessaging.instance
+                                      .unsubscribeFromTopic('all_users');
+                                  await FirebaseMessaging.instance
+                                      .unsubscribeFromTopic('experts');
+                                }
+                              } catch (_) {}
+                            },
+                            title: const Text('Enable Notifications'),
+                            secondary: const Icon(
+                              Icons.notifications,
+                              color: Colors.green,
+                            ),
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Description
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.green.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Expert Access',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'This profile is exclusively for plant disease experts. Regular users and other personnel do not have access to this interface.',
+                            style: TextStyle(
+                              color: Colors.grey[700],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    // App Version
+                    const SizedBox(height: 24),
+                  ],
+                ),
               ),
     );
   }
