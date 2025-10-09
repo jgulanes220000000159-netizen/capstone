@@ -800,12 +800,29 @@ class _HomePageState extends State<HomePage> {
       final box = await Hive.openBox('recentActivityBox');
       final cached = box.get('recentScans');
       if (cached != null && cached is List) {
-        return cached.cast<Map<dynamic, dynamic>>().map((item) {
-          return Map<String, dynamic>.from(item);
-        }).toList();
+        return cached
+            .map((item) {
+              try {
+                if (item is Map) {
+                  return Map<String, dynamic>.from(
+                    item.map((key, value) => MapEntry(key.toString(), value)),
+                  );
+                }
+              } catch (e) {
+                print('Error parsing cached item: $e');
+              }
+              return <String, dynamic>{};
+            })
+            .where((item) => item.isNotEmpty)
+            .toList();
       }
     } catch (e) {
       print('Error loading cached recent activity: $e');
+      // Clear corrupted cache
+      try {
+        final box = await Hive.openBox('recentActivityBox');
+        await box.clear();
+      } catch (_) {}
     }
     return [];
   }
@@ -854,8 +871,22 @@ class _HomePageState extends State<HomePage> {
         ),
         const SizedBox(height: 8),
         ...recentData.map((data) {
-          final docId = data['id'] ?? '';
-          return _buildRecentActivityCard(docId, data);
+          try {
+            // Ensure data is Map<String, dynamic>
+            final safeData =
+                data is Map<String, dynamic>
+                    ? data
+                    : Map<String, dynamic>.from(
+                      (data as Map).map(
+                        (key, value) => MapEntry(key.toString(), value),
+                      ),
+                    );
+            final docId = safeData['id']?.toString() ?? '';
+            return _buildRecentActivityCard(docId, safeData);
+          } catch (e) {
+            print('Error building activity card: $e');
+            return const SizedBox.shrink();
+          }
         }).toList(),
       ],
     );

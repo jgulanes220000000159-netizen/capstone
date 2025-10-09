@@ -39,6 +39,10 @@ void main() {
       await Hive.openBox('userBox'); // Box for login state and user profile
       await Hive.openBox('settings'); // Box for app settings (including locale)
       await Hive.openBox('notificationBox'); // Box for notification counts
+
+      // Note: Android backup is disabled in AndroidManifest.xml
+      // This ensures fresh installs don't have stale Hive data
+
       await EasyLocalization.ensureInitialized();
       await dotenv.load(); // Load environment variables
       await Supabase.initialize(
@@ -219,52 +223,23 @@ class CapstoneApp extends StatelessWidget {
 
   Future<Widget> _getStartPage() async {
     final box = Hive.box('userBox');
-    // Keep reading local role/profile for quicker routing while Firebase restores
-    // Wait for Firebase Auth to restore session (up to 3 seconds)
-    final firebaseUser = await FirebaseAuth.instance
-        .authStateChanges()
-        .first
-        .timeout(
-          const Duration(seconds: 3),
-          onTimeout: () => FirebaseAuth.instance.currentUser,
-        );
+    final isLoggedIn = box.get('isLoggedIn', defaultValue: false) as bool;
 
-    Map? profile = box.get('userProfile') as Map?;
-    String? role = profile != null ? profile['role'] as String? : null;
-
-    // If no Firebase user yet, do NOT wipe local state; show Login
-    if (firebaseUser == null) {
+    if (!isLoggedIn) {
+      print('📱 No login state, showing login page');
       return const LoginPage();
     }
 
-    // Firebase user exists: ensure we have a role and route (prefer cached, fetch if missing)
-    if (role == null) {
-      try {
-        final userDoc =
-            await FirebaseFirestore.instance
-                .collection('users')
-                .doc(firebaseUser.uid)
-                .get();
-        final data = userDoc.data();
-        if (data != null) {
-          role = data['role'] as String?;
-          // Cache minimal profile locally
-          final updated = {
-            ...?profile,
-            'userId': firebaseUser.uid,
-            'fullName': data['fullName'] ?? profile?['fullName'] ?? '',
-            'email': data['email'] ?? profile?['email'] ?? '',
-            'role': role,
-          };
-          await box.put('userProfile', updated);
-          await box.put('isLoggedIn', true);
-        }
-      } catch (_) {}
-    }
+    final userProfile = box.get('userProfile');
+    final role = userProfile != null ? userProfile['role'] : null;
 
-    if (role == 'expert') return const ExpertDashboard();
-    if (role == 'farmer') return const HomePage();
-    return const LoginPage();
+    print('📱 User logged in as: $role');
+
+    if (role == 'expert') {
+      return const ExpertDashboard();
+    } else {
+      return const HomePage();
+    }
   }
 
   void _setupFCM(BuildContext context) async {

@@ -10,7 +10,9 @@
         android:label="MangoSense"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:hardwareAccelerated="false">
+        android:hardwareAccelerated="false"
+        android:allowBackup="false"
+        android:fullBackupContent="false">
 
         <!--Notif test area-->
                 <meta-data
