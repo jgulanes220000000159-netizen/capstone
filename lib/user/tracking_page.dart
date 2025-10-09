@@ -270,9 +270,9 @@ class _TrackingPageState extends State<TrackingPage> {
       setState(() {
         _customStartDate = picked.start;
         _customEndDate = picked.end;
-        _selectedRangeIndex = 1; // Custom
+        _selectedRangeIndex = 2; // Custom
       });
-      await _saveSelectedRangeIndex(1);
+      await _saveSelectedRangeIndex(2);
       await _saveCustomRange(picked.start, picked.end);
     }
   }
@@ -363,6 +363,123 @@ class _TrackingPageState extends State<TrackingPage> {
         return [];
       }
     }
+  }
+
+  Widget _buildStatusCard(String label, int count, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.3), width: 1.5),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 8),
+          Text(
+            count.toString(),
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[700],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDiseaseRow(
+    String name,
+    int count,
+    int total,
+    Color color,
+    IconData icon,
+  ) {
+    final percentage = total > 0 ? (count / total * 100) : 0.0;
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                name,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[800],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Stack(
+                children: [
+                  Container(
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  FractionallySizedBox(
+                    widthFactor: percentage / 100,
+                    child: Container(
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: color,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              count.toString(),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            Text(
+              '${percentage.toStringAsFixed(1)}%',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   void _showSessionDetails(Map<String, dynamic> session) {
@@ -699,10 +816,6 @@ class _TrackingPageState extends State<TrackingPage> {
           (sum, d) => sum + (overallCounts[d] ?? 0),
         );
         final total = healthy + totalDiseased;
-        final healthyPercent =
-            total > 0 ? (healthy / total * 100).toStringAsFixed(1) : '0';
-        final diseasedPercent =
-            total > 0 ? (totalDiseased / total * 100).toStringAsFixed(1) : '0';
 
         return Scaffold(
           body: SingleChildScrollView(
@@ -796,9 +909,14 @@ class _TrackingPageState extends State<TrackingPage> {
                                   });
                                   await _saveSelectedRangeIndex(1);
                                   await _saveMonthly(picked.year, picked.month);
+                                } else {
+                                  // User cancelled, revert to previous selection
+                                  setState(() {});
                                 }
                               } else if (i == 2) {
                                 await _pickCustomRange();
+                                // Force rebuild to show updated selection
+                                setState(() {});
                               } else {
                                 setState(() => _selectedRangeIndex = i);
                                 await _saveSelectedRangeIndex(i);
@@ -810,6 +928,117 @@ class _TrackingPageState extends State<TrackingPage> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  // Scan Status Summary
+                  Builder(
+                    builder: (context) {
+                      int pendingCount = 0;
+                      int trackingCount = 0;
+                      int completedCount = 0;
+
+                      for (final session in filteredSessions) {
+                        final status = session['status'] ?? session['source'];
+                        if (status == 'pending' || status == 'pending_review') {
+                          pendingCount++;
+                        } else if (status == 'expert_review' ||
+                            status == 'tracking') {
+                          trackingCount++;
+                        } else if (status == 'completed' ||
+                            status == 'reviewed') {
+                          completedCount++;
+                        }
+                      }
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey[200]!),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.04),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.analytics_outlined,
+                                  color: Colors.green[700],
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'Scan Summary',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey[800],
+                                  ),
+                                ),
+                                const Spacer(),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.green[50],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '${filteredSessions.length} Total',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.green[700],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _buildStatusCard(
+                                    'Pending',
+                                    pendingCount,
+                                    Icons.schedule,
+                                    Colors.orange,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildStatusCard(
+                                    'Tracking',
+                                    trackingCount,
+                                    Icons.track_changes,
+                                    Colors.blue,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _buildStatusCard(
+                                    'Completed',
+                                    completedCount,
+                                    Icons.check_circle,
+                                    Colors.green,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                   if (filteredSessions.isEmpty) ...[
                     Container(
                       margin: const EdgeInsets.only(bottom: 16),
@@ -836,17 +1065,14 @@ class _TrackingPageState extends State<TrackingPage> {
                       ),
                     ),
                   ],
-                  // Friendly summary
+                  // Disease Breakdown Summary
                   Container(
                     margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Colors.blue[50]!, Colors.green[50]!],
-                      ),
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.green[200]!, width: 1),
+                      border: Border.all(color: Colors.grey[200]!, width: 1),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withOpacity(0.05),
@@ -855,58 +1081,90 @@ class _TrackingPageState extends State<TrackingPage> {
                         ),
                       ],
                     ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.green[100],
-                              borderRadius: BorderRadius.circular(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.green[50],
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                Icons.pie_chart,
+                                color: Colors.green[700],
+                                size: 24,
+                              ),
                             ),
-                            child: Icon(
-                              Icons.insights,
-                              color: Colors.green[700],
-                              size: 28,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Farm Health Breakdown',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.grey[800],
+                                    ),
+                                  ),
+                                  Text(
+                                    _getTimeRangeLabel(_selectedRangeIndex),
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  tr('farm_health_summary'),
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green[800],
-                                  ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[100],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '$total Total',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.grey[800],
                                 ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${_getTimeRangeLabel(_selectedRangeIndex)}: $healthyPercent% healthy, $diseasedPercent% diseased.',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.green[700],
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  tr('keep_tracking_message'),
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.green[600],
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        // Healthy count
+                        _buildDiseaseRow(
+                          'Healthy',
+                          healthy,
+                          total,
+                          TrackingModels.diseaseColors['healthy']!,
+                          Icons.check_circle,
+                        ),
+                        const SizedBox(height: 12),
+                        // Individual diseases
+                        for (final disease in TrackingModels.diseaseLabels)
+                          if (overallCounts[disease] != null &&
+                              overallCounts[disease]! > 0) ...[
+                            _buildDiseaseRow(
+                              TrackingModels.formatLabel(disease),
+                              overallCounts[disease]!,
+                              total,
+                              TrackingModels.diseaseColors[disease]!,
+                              Icons.warning_rounded,
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                      ],
                     ),
                   ),
                   // Trend Bar Chart

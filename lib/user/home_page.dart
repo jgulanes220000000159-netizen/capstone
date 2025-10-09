@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'camera_page.dart';
 import 'detection_carousel_screen.dart';
 import 'disease_details_page.dart';
 import 'profile_page.dart';
 import 'user_request_list.dart';
 import 'user_request_tabbed_list.dart';
+import 'user_request_detail.dart';
 import 'scan_page.dart';
 import '../shared/review_manager.dart';
 import 'package:hive/hive.dart';
@@ -266,6 +268,19 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<Map<String, dynamic>?> _loadUserProfileForHeader() async {
+    try {
+      final userBox = await Hive.openBox('userBox');
+      final localProfile = userBox.get('userProfile');
+      if (localProfile != null) {
+        return Map<String, dynamic>.from(localProfile);
+      }
+    } catch (e) {
+      print('Error loading user profile for header: $e');
+    }
+    return null;
+  }
+
   Future<void> _loadDiseaseInfo() async {
     final diseaseBox = await Hive.openBox('diseaseBox');
     // Try to load from local storage first
@@ -493,6 +508,569 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildRecentActivitySection() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const SizedBox.shrink();
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream:
+          FirebaseFirestore.instance
+              .collection('scan_requests')
+              .where('userId', isEqualTo: user.uid)
+              .orderBy('submittedAt', descending: true)
+              .limit(3)
+              .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          // Try to load from cache while waiting
+          return FutureBuilder<List<Map<String, dynamic>>>(
+            future: _loadCachedRecentActivity(),
+            builder: (context, cacheSnapshot) {
+              if (cacheSnapshot.hasData && cacheSnapshot.data!.isNotEmpty) {
+                return _buildRecentActivityContent(
+                  cacheSnapshot.data!,
+                  isOffline: true,
+                );
+              }
+              return const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            },
+          );
+        }
+
+        // Handle errors - show cached data if available
+        if (snapshot.hasError) {
+          // Fallback: Try without orderBy if index is missing
+          return StreamBuilder<QuerySnapshot>(
+            stream:
+                FirebaseFirestore.instance
+                    .collection('scan_requests')
+                    .where('userId', isEqualTo: user.uid)
+                    .limit(3)
+                    .snapshots(),
+            builder: (context, fallbackSnapshot) {
+              if (!fallbackSnapshot.hasData ||
+                  fallbackSnapshot.data!.docs.isEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Card(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.history,
+                            size: 48,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No Recent Activity',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Start scanning to see your activity here',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }
+              // Manually sort by submittedAt since orderBy is not available
+              final recentScans = fallbackSnapshot.data!.docs;
+              recentScans.sort((a, b) {
+                final aData = a.data() as Map<String, dynamic>;
+                final bData = b.data() as Map<String, dynamic>;
+
+                // Handle both Timestamp and String (milliseconds)
+                DateTime? aTime;
+                DateTime? bTime;
+
+                if (aData['submittedAt'] is Timestamp) {
+                  aTime = (aData['submittedAt'] as Timestamp).toDate();
+                } else if (aData['submittedAt'] is int) {
+                  aTime = DateTime.fromMillisecondsSinceEpoch(
+                    aData['submittedAt'],
+                  );
+                } else if (aData['submittedAt'] is String) {
+                  try {
+                    aTime = DateTime.fromMillisecondsSinceEpoch(
+                      int.parse(aData['submittedAt']),
+                    );
+                  } catch (e) {
+                    // Try parsing as ISO date string
+                    try {
+                      aTime = DateTime.parse(aData['submittedAt']);
+                    } catch (e2) {
+                      print(
+                        'Cannot parse submittedAt: ${aData['submittedAt']}',
+                      );
+                    }
+                  }
+                } else if (aData['submittedAt'] is Map) {
+                  // Handle Firestore Timestamp as Map with _seconds field
+                  final map = aData['submittedAt'] as Map<String, dynamic>;
+                  if (map.containsKey('_seconds')) {
+                    aTime = DateTime.fromMillisecondsSinceEpoch(
+                      (map['_seconds'] as int) * 1000,
+                    );
+                  }
+                }
+
+                if (bData['submittedAt'] is Timestamp) {
+                  bTime = (bData['submittedAt'] as Timestamp).toDate();
+                } else if (bData['submittedAt'] is int) {
+                  bTime = DateTime.fromMillisecondsSinceEpoch(
+                    bData['submittedAt'],
+                  );
+                } else if (bData['submittedAt'] is String) {
+                  try {
+                    bTime = DateTime.fromMillisecondsSinceEpoch(
+                      int.parse(bData['submittedAt']),
+                    );
+                  } catch (e) {
+                    // Try parsing as ISO date string
+                    try {
+                      bTime = DateTime.parse(bData['submittedAt']);
+                    } catch (e2) {
+                      print(
+                        'Cannot parse submittedAt: ${bData['submittedAt']}',
+                      );
+                    }
+                  }
+                } else if (bData['submittedAt'] is Map) {
+                  // Handle Firestore Timestamp as Map with _seconds field
+                  final map = bData['submittedAt'] as Map<String, dynamic>;
+                  if (map.containsKey('_seconds')) {
+                    bTime = DateTime.fromMillisecondsSinceEpoch(
+                      (map['_seconds'] as int) * 1000,
+                    );
+                  }
+                }
+
+                if (aTime == null || bTime == null) return 0;
+                return bTime.compareTo(
+                  aTime,
+                ); // Descending order (newest first)
+              });
+
+              // Take only first 3 after sorting
+              final topThree = recentScans.take(3).toList();
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Recent Activity',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            setState(() {
+                              _selectedIndex = 2;
+                            });
+                          },
+                          child: const Text(
+                            'View All',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ...topThree.map((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return _buildRecentActivityCard(doc.id, data);
+                  }).toList(),
+                ],
+              );
+            },
+          );
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          // Try to show cached data
+          return FutureBuilder<List<Map<String, dynamic>>>(
+            future: _loadCachedRecentActivity(),
+            builder: (context, cacheSnapshot) {
+              if (cacheSnapshot.hasData && cacheSnapshot.data!.isNotEmpty) {
+                return _buildRecentActivityContent(
+                  cacheSnapshot.data!,
+                  isOffline: true,
+                );
+              }
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Card(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        Icon(Icons.history, size: 48, color: Colors.grey[400]),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No Recent Activity',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Start scanning to see your activity here',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey[600],
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          );
+        }
+
+        // Cache the data and build UI
+        final recentScans = snapshot.data!.docs;
+        final recentData =
+            recentScans.map((doc) {
+              final data = doc.data() as Map<String, dynamic>;
+              data['id'] = doc.id; // Add document ID
+              return data;
+            }).toList();
+
+        // Save to cache
+        _cacheRecentActivity(recentData);
+
+        return _buildRecentActivityContent(recentData);
+      },
+    );
+  }
+
+  Future<void> _cacheRecentActivity(List<Map<String, dynamic>> data) async {
+    try {
+      final box = await Hive.openBox('recentActivityBox');
+      await box.put('recentScans', data);
+      await box.put('lastUpdated', DateTime.now().toIso8601String());
+    } catch (e) {
+      print('Error caching recent activity: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadCachedRecentActivity() async {
+    try {
+      final box = await Hive.openBox('recentActivityBox');
+      final cached = box.get('recentScans');
+      if (cached != null && cached is List) {
+        return cached.cast<Map<dynamic, dynamic>>().map((item) {
+          return Map<String, dynamic>.from(item);
+        }).toList();
+      }
+    } catch (e) {
+      print('Error loading cached recent activity: $e');
+    }
+    return [];
+  }
+
+  Widget _buildRecentActivityContent(
+    List<Map<String, dynamic>> recentData, {
+    bool isOffline = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Recent Activity',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                  if (isOffline) ...[
+                    const SizedBox(width: 8),
+                    Icon(Icons.wifi_off, size: 16, color: Colors.orange[700]),
+                  ],
+                ],
+              ),
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    _selectedIndex = 2; // Navigate to Requests tab
+                  });
+                },
+                child: const Text(
+                  'View All',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        ...recentData.map((data) {
+          final docId = data['id'] ?? '';
+          return _buildRecentActivityCard(docId, data);
+        }).toList(),
+      ],
+    );
+  }
+
+  Widget _buildRecentActivityCard(String docId, Map<String, dynamic> data) {
+    final status = data['status'] ?? 'pending';
+
+    // Handle submittedAt as either Timestamp, int, String, or Map
+    DateTime? submittedDate;
+    if (data['submittedAt'] is Timestamp) {
+      submittedDate = (data['submittedAt'] as Timestamp).toDate();
+    } else if (data['submittedAt'] is int) {
+      submittedDate = DateTime.fromMillisecondsSinceEpoch(data['submittedAt']);
+    } else if (data['submittedAt'] is String) {
+      try {
+        submittedDate = DateTime.fromMillisecondsSinceEpoch(
+          int.parse(data['submittedAt']),
+        );
+      } catch (e) {
+        // Try parsing as ISO date string (e.g., "2024-01-06T12:30:00.000")
+        try {
+          submittedDate = DateTime.parse(data['submittedAt']);
+        } catch (e2) {
+          print('Error parsing submittedAt: ${data['submittedAt']}');
+        }
+      }
+    } else if (data['submittedAt'] is Map) {
+      // Handle Firestore Timestamp as Map with _seconds field
+      final map = data['submittedAt'] as Map<String, dynamic>;
+      if (map.containsKey('_seconds')) {
+        submittedDate = DateTime.fromMillisecondsSinceEpoch(
+          (map['_seconds'] as int) * 1000,
+        );
+      }
+    }
+
+    // Handle images field - it's a List of Maps with 'imageUrl' key
+    List<String> imageUrls = [];
+    if (data['images'] is List) {
+      final imagesList = data['images'] as List<dynamic>;
+      for (var item in imagesList) {
+        if (item is Map && item.containsKey('imageUrl')) {
+          final url = item['imageUrl']?.toString() ?? '';
+          if (url.isNotEmpty) {
+            imageUrls.add(url);
+          }
+        }
+      }
+    }
+
+    final diseaseSummary =
+        (data['diseaseSummary'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
+
+    // Determine status color and icon
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+
+    switch (status) {
+      case 'completed':
+      case 'reviewed':
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle;
+        statusText = 'Completed';
+        break;
+      case 'pending_review':
+        statusColor = Colors.blue;
+        statusIcon = Icons.rate_review;
+        statusText = 'In Review';
+        break;
+      default:
+        statusColor = Colors.orange;
+        statusIcon = Icons.pending;
+        statusText = 'Pending';
+    }
+
+    // Get primary disease name
+    String diseaseName = 'Analyzing...';
+    if (diseaseSummary.isNotEmpty) {
+      diseaseName = diseaseSummary[0]['name'] ?? 'Unknown';
+    }
+
+    // Format date
+    String timeAgo = 'Just now';
+    if (submittedDate != null) {
+      final difference = DateTime.now().difference(submittedDate);
+      if (difference.inDays > 0) {
+        timeAgo = '${difference.inDays}d ago';
+      } else if (difference.inHours > 0) {
+        timeAgo = '${difference.inHours}h ago';
+      } else if (difference.inMinutes > 0) {
+        timeAgo = '${difference.inMinutes}m ago';
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        elevation: 2,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            // Navigate to request detail page
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => UserRequestDetail(request: data),
+              ),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                // Image thumbnail
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child:
+                      imageUrls.isNotEmpty
+                          ? CachedNetworkImage(
+                            imageUrl: imageUrls[0],
+                            width: 60,
+                            height: 60,
+                            fit: BoxFit.cover,
+                            placeholder:
+                                (context, url) => Container(
+                                  width: 60,
+                                  height: 60,
+                                  color: Colors.grey[200],
+                                  child: const Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                ),
+                            errorWidget: (context, url, error) {
+                              return Container(
+                                width: 60,
+                                height: 60,
+                                color: Colors.grey[300],
+                                child: const Icon(
+                                  Icons.image,
+                                  color: Colors.grey,
+                                ),
+                              );
+                            },
+                          )
+                          : Container(
+                            width: 60,
+                            height: 60,
+                            color: Colors.grey[300],
+                            child: const Icon(Icons.image, color: Colors.grey),
+                          ),
+                ),
+                const SizedBox(width: 12),
+                // Details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        diseaseName,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(statusIcon, size: 14, color: statusColor),
+                          const SizedBox(width: 4),
+                          Text(
+                            statusText,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: statusColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text('•', style: TextStyle(color: Colors.grey[400])),
+                          const SizedBox(width: 8),
+                          Text(
+                            timeAgo,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // Arrow icon
+                Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                  color: Colors.grey[400],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildDiseaseCard(String name, String imagePath) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -556,6 +1134,14 @@ class _HomePageState extends State<HomePage> {
                     bottomLeft: Radius.circular(20),
                     bottomRight: Radius.circular(20),
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                      spreadRadius: 1,
+                    ),
+                  ],
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -563,11 +1149,20 @@ class _HomePageState extends State<HomePage> {
                     Row(
                       children: [
                         Container(
+                          width: 44,
+                          height: 44,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             color: Colors.white,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(7),
                           child: Image.asset(
                             'assets/logo.png',
                             width: 30,
@@ -581,6 +1176,13 @@ class _HomePageState extends State<HomePage> {
                             color: Colors.yellow,
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
+                            shadows: [
+                              Shadow(
+                                color: Colors.black26,
+                                offset: Offset(0, 2),
+                                blurRadius: 4,
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -594,9 +1196,72 @@ class _HomePageState extends State<HomePage> {
                           ),
                         );
                       },
-                      child: const CircleAvatar(
-                        backgroundColor: Colors.white,
-                        child: Icon(Icons.person, color: Colors.green),
+                      child: FutureBuilder<Map<String, dynamic>?>(
+                        future: _loadUserProfileForHeader(),
+                        builder: (context, snapshot) {
+                          final profileImageUrl =
+                              snapshot.data?['imageProfile'] as String?;
+
+                          return Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: ClipOval(
+                              child:
+                                  profileImageUrl != null &&
+                                          profileImageUrl.isNotEmpty
+                                      ? CachedNetworkImage(
+                                        imageUrl: profileImageUrl,
+                                        width: 40,
+                                        height: 40,
+                                        fit: BoxFit.cover,
+                                        placeholder:
+                                            (context, url) => Container(
+                                              width: 40,
+                                              height: 40,
+                                              color: Colors.white,
+                                              child: const Center(
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              ),
+                                            ),
+                                        errorWidget:
+                                            (context, url, error) => Container(
+                                              width: 40,
+                                              height: 40,
+                                              color: Colors.white,
+                                              child: const Icon(
+                                                Icons.person,
+                                                color: Colors.green,
+                                                size: 22,
+                                              ),
+                                            ),
+                                      )
+                                      : Container(
+                                        width: 40,
+                                        height: 40,
+                                        color: Colors.white,
+                                        child: const Icon(
+                                          Icons.person,
+                                          color: Colors.green,
+                                          size: 22,
+                                        ),
+                                      ),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ],
@@ -670,6 +1335,9 @@ class _HomePageState extends State<HomePage> {
                                   // Quick Overview Card
                                   _buildQuickOverviewCard(),
                                   const SizedBox(height: 16),
+                                  // Recent Activity Section
+                                  _buildRecentActivitySection(),
+                                  const SizedBox(height: 16),
                                   // Diseases section
                                   Padding(
                                     padding: const EdgeInsets.symmetric(
@@ -724,72 +1392,85 @@ class _HomePageState extends State<HomePage> {
                         : _pages[_selectedIndex],
               ),
               // Bottom navigation bar
-              BottomNavigationBar(
-                currentIndex: _selectedIndex,
-                onTap: (index) {
-                  setState(() {
-                    _selectedIndex = index;
-                  });
-                },
-                type: BottomNavigationBarType.fixed,
-                selectedItemColor: Colors.green,
-                unselectedItemColor: Colors.grey,
-                items: [
-                  BottomNavigationBarItem(
-                    icon: const Icon(Icons.home),
-                    label: tr('home'),
-                  ),
-                  BottomNavigationBarItem(
-                    icon: const Icon(Icons.camera_alt),
-                    label: tr('scan'),
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        const Icon(Icons.list_alt, size: 28),
-                        if (_unseenCompleted > 0)
-                          Positioned(
-                            right: -8,
-                            top: -8,
-                            child: Container(
-                              padding: const EdgeInsets.all(0),
-                              decoration: BoxDecoration(
-                                color: Colors.red,
-                                border: Border.all(
-                                  color: Colors.white,
-                                  width: 2,
-                                ),
-                                shape: BoxShape.circle,
-                              ),
-                              constraints: const BoxConstraints(
-                                minWidth: 22,
-                                minHeight: 22,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  _unseenCompleted > 9
-                                      ? '9+'
-                                      : '$_unseenCompleted',
-                                  style: const TextStyle(
+              Container(
+                decoration: BoxDecoration(
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 12,
+                      offset: const Offset(0, -4),
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: BottomNavigationBar(
+                  currentIndex: _selectedIndex,
+                  onTap: (index) {
+                    setState(() {
+                      _selectedIndex = index;
+                    });
+                  },
+                  type: BottomNavigationBarType.fixed,
+                  selectedItemColor: Colors.green,
+                  unselectedItemColor: Colors.grey,
+                  elevation: 0,
+                  items: [
+                    BottomNavigationBarItem(
+                      icon: const Icon(Icons.home),
+                      label: tr('home'),
+                    ),
+                    BottomNavigationBarItem(
+                      icon: const Icon(Icons.camera_alt),
+                      label: tr('scan'),
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          const Icon(Icons.list_alt, size: 28),
+                          if (_unseenCompleted > 0)
+                            Positioned(
+                              right: -8,
+                              top: -8,
+                              child: Container(
+                                padding: const EdgeInsets.all(0),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  border: Border.all(
                                     color: Colors.white,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
+                                    width: 2,
                                   ),
-                                  textAlign: TextAlign.center,
+                                  shape: BoxShape.circle,
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 22,
+                                  minHeight: 22,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    _unseenCompleted > 9
+                                        ? '9+'
+                                        : '$_unseenCompleted',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
+                      label: tr('my_requests'),
                     ),
-                    label: tr('my_requests'),
-                  ),
-                  BottomNavigationBarItem(
-                    icon: const Icon(Icons.show_chart),
-                    label: tr('tracking'),
-                  ),
-                ],
+                    BottomNavigationBarItem(
+                      icon: const Icon(Icons.show_chart),
+                      label: tr('tracking'),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

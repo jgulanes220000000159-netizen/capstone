@@ -11,6 +11,7 @@ import 'package:mime/mime.dart';
 import 'package:hive/hive.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({Key? key}) : super(key: key);
@@ -23,6 +24,7 @@ class _ProfilePageState extends State<ProfilePage> {
   File? _profileImage;
   final ImagePicker _picker = ImagePicker();
   bool _notificationsEnabled = false;
+  bool _isUploadingImage = false;
 
   // User data variables
   String _userName = 'Loading...';
@@ -33,6 +35,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String? _profileImageUrl;
   int _scanCount = 0;
   int _diseaseCount = 0;
+  String _memberSince = 'Loading...';
   bool _isLoading = true;
 
   @override
@@ -40,6 +43,8 @@ class _ProfilePageState extends State<ProfilePage> {
     super.initState();
     _loadUserData();
     _loadTotalScanCount();
+    _listenToProfileUpdates();
+    _loadMemberSince();
     try {
       final settingsBox = Hive.box('settings');
       if (!settingsBox.containsKey('enableNotifications')) {
@@ -48,6 +53,73 @@ class _ProfilePageState extends State<ProfilePage> {
       _notificationsEnabled =
           settingsBox.get('enableNotifications', defaultValue: true) as bool;
     } catch (_) {}
+  }
+
+  void _loadMemberSince() {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        final creationTime = user.metadata.creationTime;
+        if (creationTime != null) {
+          final monthNames = [
+            'January',
+            'February',
+            'March',
+            'April',
+            'May',
+            'June',
+            'July',
+            'August',
+            'September',
+            'October',
+            'November',
+            'December',
+          ];
+          final month = monthNames[creationTime.month - 1];
+          final year = creationTime.year;
+
+          setState(() {
+            _memberSince = '$month $year';
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading member since: $e');
+      setState(() {
+        _memberSince = 'N/A';
+      });
+    }
+  }
+
+  void _listenToProfileUpdates() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots()
+          .listen((snapshot) async {
+            if (snapshot.exists) {
+              final data = snapshot.data() as Map<String, dynamic>;
+
+              // Save to Hive cache
+              final userBox = await Hive.openBox('userBox');
+              await userBox.put('userProfile', data);
+
+              // Update UI
+              if (mounted) {
+                setState(() {
+                  _userName = data['fullName'] ?? 'Unknown User';
+                  _userRole = data['role'] ?? 'Farmer';
+                  _userEmail = data['email'] ?? '';
+                  _userPhone = data['phoneNumber'] ?? '';
+                  _userAddress = data['address'] ?? '';
+                  _profileImageUrl = data['imageProfile'];
+                });
+              }
+            }
+          });
+    }
   }
 
   Future<void> _loadUserData() async {
@@ -199,6 +271,10 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _uploadProfileImage(String imagePath) async {
+    setState(() {
+      _isUploadingImage = true;
+    });
+
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user != null) {
@@ -209,30 +285,89 @@ class _ProfilePageState extends State<ProfilePage> {
             .child('${user.uid}.jpg');
 
         final detectedMime = lookupMimeType(file.path) ?? 'image/jpeg';
-        await ref.putFile(file, SettableMetadata(contentType: detectedMime));
-        final url = await ref.getDownloadURL();
+
+        // Upload with 20 second timeout
+        await ref
+            .putFile(file, SettableMetadata(contentType: detectedMime))
+            .timeout(
+              const Duration(seconds: 20),
+              onTimeout: () {
+                throw Exception(
+                  'Upload timeout - Please check your internet connection',
+                );
+              },
+            );
+
+        final url = await ref.getDownloadURL().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            throw Exception('Timeout getting image URL - Please try again');
+          },
+        );
 
         // Update Firestore with new image URL
         await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
-            .update({'imageProfile': url});
+            .update({'imageProfile': url})
+            .timeout(
+              const Duration(seconds: 10),
+              onTimeout: () {
+                throw Exception(
+                  'Timeout updating profile - Please check your connection',
+                );
+              },
+            );
+
+        // Update Hive cache immediately
+        final userBox = await Hive.openBox('userBox');
+        final cachedProfile =
+            userBox.get('userProfile') as Map<dynamic, dynamic>?;
+        if (cachedProfile != null) {
+          final updatedProfile = Map<String, dynamic>.from(cachedProfile);
+          updatedProfile['imageProfile'] = url;
+          await userBox.put('userProfile', updatedProfile);
+        }
 
         if (!mounted) return;
         setState(() {
           _profileImageUrl = url;
+          _isUploadingImage = false;
         });
 
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile image updated successfully!')),
+          const SnackBar(
+            content: Text('Profile image updated successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
         );
       }
     } catch (e) {
       print('Error uploading profile image: $e');
       if (!mounted) return;
+      setState(() {
+        _isUploadingImage = false;
+      });
+
+      // Determine error message based on error type
+      String errorMessage = 'Failed to update profile image';
+      if (e.toString().contains('timeout') ||
+          e.toString().contains('Timeout')) {
+        errorMessage =
+            'Upload timeout - Please check your internet connection and try again';
+      } else if (e.toString().contains('network') ||
+          e.toString().contains('connection')) {
+        errorMessage = 'Network error - Please check your internet connection';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to update profile image')),
+        SnackBar(
+          content: Text(errorMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+        ),
       );
     }
   }
@@ -278,647 +413,658 @@ class _ProfilePageState extends State<ProfilePage> {
       body:
           user == null
               ? const Center(child: Text('Not logged in'))
-              : StreamBuilder<DocumentSnapshot>(
-                stream:
-                    FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(user.uid)
-                        .snapshots(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  final data = snapshot.data!.data() as Map<String, dynamic>?;
-                  if (data == null) {
-                    return const Center(child: Text('No user data found'));
-                  }
-                  _userName = data['fullName'] ?? 'Unknown User';
-                  _userRole = data['role'] ?? 'Farmer';
-                  _userEmail = data['email'] ?? '';
-                  _userPhone = data['phoneNumber'] ?? '';
-                  _userAddress = data['address'] ?? '';
-                  _profileImageUrl = data['imageProfile'];
-                  _isLoading = false;
-                  return SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        // Profile Header
-                        Container(
-                          color: Colors.green,
-                          padding: const EdgeInsets.only(bottom: 24.0),
-                          child: Column(
+              : _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                child: Column(
+                  children: [
+                    // Profile Header
+                    Container(
+                      color: Colors.green[50],
+                      padding: const EdgeInsets.symmetric(vertical: 24.0),
+                      child: Column(
+                        children: [
+                          // Profile Picture
+                          Stack(
                             children: [
-                              // Profile Picture
-                              Stack(
-                                children: [
-                                  Container(
-                                    margin: const EdgeInsets.only(top: 16),
-                                    width: 120,
-                                    height: 120,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 4,
-                                      ),
-                                      color: Colors.white,
+                              Container(
+                                width: 120,
+                                height: 120,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 4,
+                                  ),
+                                  color: Colors.white,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.2),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
                                     ),
-                                    child:
-                                        _profileImage != null
-                                            ? ClipOval(
-                                              child: Image.file(
-                                                _profileImage!,
-                                                width: 120,
-                                                height: 120,
-                                                fit: BoxFit.cover,
-                                              ),
-                                            )
-                                            : _profileImageUrl != null
-                                            ? ClipOval(
-                                              child: Image.network(
-                                                _profileImageUrl!,
-                                                width: 120,
-                                                height: 120,
-                                                fit: BoxFit.cover,
-                                                errorBuilder:
-                                                    (
-                                                      context,
-                                                      error,
-                                                      stackTrace,
-                                                    ) => const Icon(
+                                  ],
+                                ),
+                                child: Stack(
+                                  children: [
+                                    _profileImage != null
+                                        ? ClipOval(
+                                          child: Image.file(
+                                            _profileImage!,
+                                            width: 120,
+                                            height: 120,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        )
+                                        : _profileImageUrl != null
+                                        ? ClipOval(
+                                          child: CachedNetworkImage(
+                                            imageUrl: _profileImageUrl!,
+                                            width: 120,
+                                            height: 120,
+                                            fit: BoxFit.cover,
+                                            placeholder:
+                                                (context, url) =>
+                                                    const CircularProgressIndicator(),
+                                            errorWidget:
+                                                (context, url, error) =>
+                                                    const Icon(
                                                       Icons.person,
                                                       size: 70,
                                                       color: Colors.green,
                                                     ),
-                                              ),
-                                            )
-                                            : const Icon(
-                                              Icons.person,
-                                              size: 70,
-                                              color: Colors.green,
-                                            ),
-                                  ),
-                                  Positioned(
-                                    bottom: 0,
-                                    right: 0,
-                                    child: GestureDetector(
-                                      onTap: _pickProfileImage,
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: const BoxDecoration(
-                                          color: Colors.white,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.camera_alt,
-                                          size: 20,
+                                          ),
+                                        )
+                                        : const Icon(
+                                          Icons.person,
+                                          size: 70,
                                           color: Colors.green,
                                         ),
+                                    // Upload indicator overlay
+                                    if (_isUploadingImage)
+                                      Container(
+                                        width: 120,
+                                        height: 120,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: Colors.black.withOpacity(0.6),
+                                        ),
+                                        child: const Center(
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: [
+                                              CircularProgressIndicator(
+                                                color: Colors.white,
+                                                strokeWidth: 3,
+                                              ),
+                                              SizedBox(height: 8),
+                                              Text(
+                                                'Uploading...',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
+                                  ],
+                                ),
+                              ),
+                              Positioned(
+                                bottom: 0,
+                                right: 0,
+                                child: GestureDetector(
+                                  onTap: _pickProfileImage,
+                                  child: Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: BoxDecoration(
+                                      color: Colors.green[700],
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 3,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.2),
+                                          blurRadius: 6,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.camera_alt,
+                                        size: 18,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          // User Name
+                          Text(
+                            _isLoading ? tr('loading') : _userName,
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 8),
+                          // Role Badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              tr(_userRole.toLowerCase()),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          // Member Since Card
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 16,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.calendar_today,
+                                        color: Colors.green,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Text(
+                                          _memberSince,
+                                          style: TextStyle(
+                                            color: Colors.green[700],
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    'Member Since',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: Colors.grey[700],
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 16),
-                              // User Name
-                              Text(
-                                _isLoading ? tr('loading') : _userName,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Profile Options
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          _buildProfileOption(
+                            title: tr('edit_profile'),
+                            icon: Icons.edit,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const EditProfilePage(),
                                 ),
+                              );
+                            },
+                          ),
+                          _buildProfileOption(
+                            title: tr('about_app'),
+                            icon: Icons.info,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const AboutAppPage(),
+                                ),
+                              );
+                            },
+                          ),
+                          _buildProfileOption(
+                            title: tr('change_password'),
+                            icon: Icons.lock,
+                            onTap: () => _showChangePasswordDialog(context),
+                          ),
+                          _buildProfileOption(
+                            title: tr('log_out'),
+                            icon: Icons.logout,
+                            showDivider: false,
+                            onTap: () async {
+                              final shouldLogout = await showDialog<bool>(
+                                context: context,
+                                builder:
+                                    (context) => AlertDialog(
+                                      title: Text(tr('confirm_logout')),
+                                      content: Text(tr('are_you_sure_logout')),
+                                      actions: [
+                                        TextButton(
+                                          onPressed:
+                                              () => Navigator.of(
+                                                context,
+                                              ).pop(false),
+                                          child: Text(tr('cancel')),
+                                        ),
+                                        TextButton(
+                                          onPressed:
+                                              () => Navigator.of(
+                                                context,
+                                              ).pop(true),
+                                          child: Text(tr('logout')),
+                                        ),
+                                      ],
+                                    ),
+                              );
+                              if (shouldLogout == true) {
+                                // Sign out from Firebase
+                                await FirebaseAuth.instance.signOut();
+                                // Clear Hive userBox
+                                final userBox = await Hive.openBox('userBox');
+                                await userBox.clear();
+                                Navigator.pushAndRemoveUntil(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const LoginPage(),
+                                  ),
+                                  (route) => false,
+                                );
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Preferences Section
+                    Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8, bottom: 4),
+                            child: Text(
+                              tr('preferences'),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
                               ),
-                              const SizedBox(height: 4),
-                              // Role
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Text(
-                                  tr(_userRole.toLowerCase()),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 14,
+                            ),
+                          ),
+                          // Language Picker
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4.0),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    tr('choose_language'),
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              const SizedBox(height: 20),
-                              // Stats Row
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 32,
-                                ),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceEvenly,
-                                  children: [
-                                    GestureDetector(
-                                      onTap: () {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Scans clicked!'),
-                                          ),
-                                        );
-                                      },
-                                      child: _buildStat(
-                                        tr('scans'),
-                                        _scanCount.toString(),
-                                      ),
-                                    ),
-                                    // Removed diseases detected stat
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        // Profile Options
-                        Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 10,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            children: [
-                              _buildProfileOption(
-                                title: tr('edit_profile'),
-                                icon: Icons.edit,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder:
-                                          (context) => const EditProfilePage(),
-                                    ),
-                                  );
-                                },
-                              ),
-                              _buildProfileOption(
-                                title: tr('about_app'),
-                                icon: Icons.info,
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder:
-                                          (context) => const AboutAppPage(),
-                                    ),
-                                  );
-                                },
-                              ),
-                              _buildProfileOption(
-                                title: tr('change_password'),
-                                icon: Icons.lock,
-                                onTap: () => _showChangePasswordDialog(context),
-                              ),
-                              _buildProfileOption(
-                                title: tr('log_out'),
-                                icon: Icons.logout,
-                                showDivider: false,
-                                onTap: () async {
-                                  final shouldLogout = await showDialog<bool>(
-                                    context: context,
-                                    builder:
-                                        (context) => AlertDialog(
-                                          title: Text(tr('confirm_logout')),
-                                          content: Text(
-                                            tr('are_you_sure_logout'),
-                                          ),
-                                          actions: [
-                                            TextButton(
-                                              onPressed:
-                                                  () => Navigator.of(
-                                                    context,
-                                                  ).pop(false),
-                                              child: Text(tr('cancel')),
-                                            ),
-                                            TextButton(
-                                              onPressed:
-                                                  () => Navigator.of(
-                                                    context,
-                                                  ).pop(true),
-                                              child: Text(tr('logout')),
-                                            ),
-                                          ],
-                                        ),
-                                  );
-                                  if (shouldLogout == true) {
-                                    // Sign out from Firebase
-                                    await FirebaseAuth.instance.signOut();
-                                    // Clear Hive userBox
-                                    final userBox = await Hive.openBox(
-                                      'userBox',
-                                    );
-                                    await userBox.clear();
-                                    Navigator.pushAndRemoveUntil(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => const LoginPage(),
-                                      ),
-                                      (route) => false,
-                                    );
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        // Preferences Section
-                        Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 16),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.05),
-                                blurRadius: 10,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  top: 8,
-                                  bottom: 4,
-                                ),
-                                child: Text(
-                                  tr('preferences'),
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green,
-                                  ),
-                                ),
-                              ),
-                              // Language Picker
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 4.0,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        tr('choose_language'),
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Flexible(
-                                      child: DropdownButton<Locale>(
-                                        value: context.locale,
-                                        onChanged: (Locale? locale) async {
-                                          if (locale != null &&
-                                              locale != context.locale) {
-                                            // Show confirmation dialog
-                                            final confirmed = await showDialog<
-                                              bool
-                                            >(
-                                              context: context,
-                                              builder: (BuildContext context) {
-                                                return AlertDialog(
-                                                  title: Row(
-                                                    children: [
-                                                      Icon(
-                                                        Icons.language,
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: DropdownButton<Locale>(
+                                    value: context.locale,
+                                    onChanged: (Locale? locale) async {
+                                      if (locale != null &&
+                                          locale != context.locale) {
+                                        // Show confirmation dialog
+                                        final confirmed = await showDialog<
+                                          bool
+                                        >(
+                                          context: context,
+                                          builder: (BuildContext context) {
+                                            return AlertDialog(
+                                              title: Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.language,
+                                                    color: Colors.green[700],
+                                                    size: 24,
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Text(
+                                                      tr('change_language'),
+                                                      style: const TextStyle(
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              content: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    tr(
+                                                      'change_language_confirm',
+                                                    ),
+                                                    style: const TextStyle(
+                                                      fontSize: 16,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 12),
+                                                  Container(
+                                                    padding:
+                                                        const EdgeInsets.all(
+                                                          12,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.green[50],
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            8,
+                                                          ),
+                                                      border: Border.all(
                                                         color:
-                                                            Colors.green[700],
-                                                        size: 24,
+                                                            Colors.green[200]!,
                                                       ),
-                                                      const SizedBox(width: 8),
-                                                      Expanded(
-                                                        child: Text(
-                                                          tr('change_language'),
-                                                          style:
-                                                              const TextStyle(
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                              ),
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  content: Column(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment
-                                                            .start,
-                                                    children: [
-                                                      Text(
-                                                        tr(
-                                                          'change_language_confirm',
-                                                        ),
-                                                        style: const TextStyle(
-                                                          fontSize: 16,
-                                                        ),
-                                                      ),
-                                                      const SizedBox(
-                                                        height: 12,
-                                                      ),
-                                                      Container(
-                                                        padding:
-                                                            const EdgeInsets.all(
-                                                              12,
-                                                            ),
-                                                        decoration: BoxDecoration(
-                                                          color:
-                                                              Colors.green[50],
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                8,
-                                                              ),
-                                                          border: Border.all(
-                                                            color:
-                                                                Colors
-                                                                    .green[200]!,
-                                                          ),
-                                                        ),
-                                                        child: Row(
-                                                          crossAxisAlignment:
-                                                              CrossAxisAlignment
-                                                                  .start,
-                                                          children: [
-                                                            Icon(
-                                                              Icons
-                                                                  .info_outline,
-                                                              color:
-                                                                  Colors
-                                                                      .green[700],
-                                                              size: 20,
-                                                            ),
-                                                            const SizedBox(
-                                                              width: 8,
-                                                            ),
-                                                            Expanded(
-                                                              child: Text(
-                                                                tr(
-                                                                  'language_change_note',
-                                                                ),
-                                                                style: TextStyle(
-                                                                  fontSize: 14,
-                                                                  color:
-                                                                      Colors
-                                                                          .green[700],
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  actions: [
-                                                    TextButton(
-                                                      onPressed:
-                                                          () => Navigator.of(
-                                                            context,
-                                                          ).pop(false),
-                                                      child: Text(tr('cancel')),
                                                     ),
-                                                    ElevatedButton(
-                                                      onPressed:
-                                                          () => Navigator.of(
-                                                            context,
-                                                          ).pop(true),
-                                                      style:
-                                                          ElevatedButton.styleFrom(
-                                                            backgroundColor:
-                                                                Colors
-                                                                    .green[600],
-                                                            foregroundColor:
-                                                                Colors.white,
-                                                          ),
-                                                      child: Text(tr('change')),
-                                                    ),
-                                                  ],
-                                                );
-                                              },
-                                            );
-
-                                            if (confirmed == true) {
-                                              // Change the locale
-                                              context.setLocale(locale);
-
-                                              // Save to settings
-                                              final settingsBox =
-                                                  await Hive.openBox(
-                                                    'settings',
-                                                  );
-                                              await settingsBox.put(
-                                                'locale_code',
-                                                locale.languageCode,
-                                              );
-
-                                              // Show success message
-                                              if (mounted) {
-                                                ScaffoldMessenger.of(
-                                                  context,
-                                                ).showSnackBar(
-                                                  SnackBar(
-                                                    content: Row(
+                                                    child: Row(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
                                                       children: [
-                                                        const Icon(
-                                                          Icons.check_circle,
-                                                          color: Colors.white,
+                                                        Icon(
+                                                          Icons.info_outline,
+                                                          color:
+                                                              Colors.green[700],
                                                           size: 20,
                                                         ),
                                                         const SizedBox(
                                                           width: 8,
                                                         ),
-                                                        Text(
-                                                          tr(
-                                                            'language_changed_successfully',
+                                                        Expanded(
+                                                          child: Text(
+                                                            tr(
+                                                              'language_change_note',
+                                                            ),
+                                                            style: TextStyle(
+                                                              fontSize: 14,
+                                                              color:
+                                                                  Colors
+                                                                      .green[700],
+                                                            ),
                                                           ),
-                                                          style:
-                                                              const TextStyle(
-                                                                fontSize: 16,
-                                                              ),
                                                         ),
                                                       ],
                                                     ),
-                                                    backgroundColor:
-                                                        Colors.green[600],
-                                                    duration: const Duration(
-                                                      seconds: 2,
-                                                    ),
                                                   ),
-                                                );
-
-                                                // Refresh the app after a short delay
-                                                Future.delayed(
-                                                  const Duration(
-                                                    milliseconds: 500,
-                                                  ),
-                                                  () {
-                                                    if (mounted) {
-                                                      Navigator.of(
+                                                ],
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed:
+                                                      () => Navigator.of(
                                                         context,
-                                                      ).pushNamedAndRemoveUntil(
-                                                        '/user-home',
-                                                        (route) => false,
-                                                      );
-                                                    }
-                                                  },
-                                                );
-                                              }
-                                            }
-                                          }
-                                        },
-                                        items: [
-                                          DropdownMenuItem(
-                                            value: const Locale('en'),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Text('🇺🇸'),
-                                                const SizedBox(width: 4),
-                                                const Text('English'),
+                                                      ).pop(false),
+                                                  child: Text(tr('cancel')),
+                                                ),
+                                                ElevatedButton(
+                                                  onPressed:
+                                                      () => Navigator.of(
+                                                        context,
+                                                      ).pop(true),
+                                                  style:
+                                                      ElevatedButton.styleFrom(
+                                                        backgroundColor:
+                                                            Colors.green[600],
+                                                        foregroundColor:
+                                                            Colors.white,
+                                                      ),
+                                                  child: Text(tr('change')),
+                                                ),
                                               ],
-                                            ),
-                                          ),
-                                          DropdownMenuItem(
-                                            value: const Locale('bs'),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Text('🇵🇭'),
-                                                const SizedBox(width: 4),
-                                                const Text('Bisaya'),
-                                              ],
-                                            ),
-                                          ),
-                                          DropdownMenuItem(
-                                            value: const Locale('tl'),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                const Text('🇵🇭'),
-                                                const SizedBox(width: 4),
-                                                const Text('Tagalog'),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              SwitchListTile(
-                                value: _notificationsEnabled,
-                                onChanged: (value) async {
-                                  setState(() {
-                                    _notificationsEnabled = value;
-                                  });
-                                  // Persist locally
-                                  try {
-                                    final settingsBox = await Hive.openBox(
-                                      'settings',
-                                    );
-                                    await settingsBox.put(
-                                      'enableNotifications',
-                                      value,
-                                    );
-                                  } catch (_) {}
-                                  // Mirror to Firestore for backend gating
-                                  try {
-                                    final user =
-                                        FirebaseAuth.instance.currentUser;
-                                    if (user != null) {
-                                      await FirebaseFirestore.instance
-                                          .collection('users')
-                                          .doc(user.uid)
-                                          .update({
-                                            'enableNotifications': value,
-                                          });
-                                    }
-                                  } catch (_) {}
-                                  // Apply topic change immediately (farmers -> all_users)
-                                  try {
-                                    if (value) {
-                                      await FirebaseMessaging.instance
-                                          .subscribeToTopic('all_users');
-                                      // keep farmers off experts
-                                      await FirebaseMessaging.instance
-                                          .unsubscribeFromTopic('experts');
-                                    } else {
-                                      await FirebaseMessaging.instance
-                                          .unsubscribeFromTopic('all_users');
-                                      await FirebaseMessaging.instance
-                                          .unsubscribeFromTopic('experts');
-                                    }
-                                  } catch (_) {}
-                                },
-                                title: Text(tr('enable_notifications')),
-                                secondary: const Icon(
-                                  Icons.notifications,
-                                  color: Colors.green,
-                                ),
-                                contentPadding: EdgeInsets.zero,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        // App Version
-                        const SizedBox(height: 24),
-                      ],
-                    ),
-                  );
-                },
-              ),
-    );
-  }
+                                            );
+                                          },
+                                        );
 
-  Widget _buildStat(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
-        ),
-      ],
+                                        if (confirmed == true) {
+                                          // Change the locale
+                                          context.setLocale(locale);
+
+                                          // Save to settings
+                                          final settingsBox =
+                                              await Hive.openBox('settings');
+                                          await settingsBox.put(
+                                            'locale_code',
+                                            locale.languageCode,
+                                          );
+
+                                          // Show success message
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Row(
+                                                  children: [
+                                                    const Icon(
+                                                      Icons.check_circle,
+                                                      color: Colors.white,
+                                                      size: 20,
+                                                    ),
+                                                    const SizedBox(width: 8),
+                                                    Text(
+                                                      tr(
+                                                        'language_changed_successfully',
+                                                      ),
+                                                      style: const TextStyle(
+                                                        fontSize: 16,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                backgroundColor:
+                                                    Colors.green[600],
+                                                duration: const Duration(
+                                                  seconds: 2,
+                                                ),
+                                              ),
+                                            );
+
+                                            // Refresh the app after a short delay
+                                            Future.delayed(
+                                              const Duration(milliseconds: 500),
+                                              () {
+                                                if (mounted) {
+                                                  Navigator.of(
+                                                    context,
+                                                  ).pushNamedAndRemoveUntil(
+                                                    '/user-home',
+                                                    (route) => false,
+                                                  );
+                                                }
+                                              },
+                                            );
+                                          }
+                                        }
+                                      }
+                                    },
+                                    items: [
+                                      DropdownMenuItem(
+                                        value: const Locale('en'),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Text('🇺🇸'),
+                                            const SizedBox(width: 4),
+                                            const Text('English'),
+                                          ],
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: const Locale('bs'),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Text('🇵🇭'),
+                                            const SizedBox(width: 4),
+                                            const Text('Bisaya'),
+                                          ],
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: const Locale('tl'),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Text('🇵🇭'),
+                                            const SizedBox(width: 4),
+                                            const Text('Tagalog'),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SwitchListTile(
+                            value: _notificationsEnabled,
+                            onChanged: (value) async {
+                              setState(() {
+                                _notificationsEnabled = value;
+                              });
+                              // Persist locally
+                              try {
+                                final settingsBox = await Hive.openBox(
+                                  'settings',
+                                );
+                                await settingsBox.put(
+                                  'enableNotifications',
+                                  value,
+                                );
+                              } catch (_) {}
+                              // Mirror to Firestore for backend gating
+                              try {
+                                final user = FirebaseAuth.instance.currentUser;
+                                if (user != null) {
+                                  await FirebaseFirestore.instance
+                                      .collection('users')
+                                      .doc(user.uid)
+                                      .update({'enableNotifications': value});
+                                }
+                              } catch (_) {}
+                              // Apply topic change immediately (farmers -> all_users)
+                              try {
+                                if (value) {
+                                  await FirebaseMessaging.instance
+                                      .subscribeToTopic('all_users');
+                                  // keep farmers off experts
+                                  await FirebaseMessaging.instance
+                                      .unsubscribeFromTopic('experts');
+                                } else {
+                                  await FirebaseMessaging.instance
+                                      .unsubscribeFromTopic('all_users');
+                                  await FirebaseMessaging.instance
+                                      .unsubscribeFromTopic('experts');
+                                }
+                              } catch (_) {}
+                            },
+                            title: Text(tr('enable_notifications')),
+                            secondary: const Icon(
+                              Icons.notifications,
+                              color: Colors.green,
+                            ),
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    // App Version
+                    const SizedBox(height: 24),
+                  ],
+                ),
+              ),
     );
   }
 

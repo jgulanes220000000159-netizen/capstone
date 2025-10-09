@@ -97,13 +97,15 @@ class TrackingModels {
   }) {
     if (sessions.isEmpty) return [];
     final now = DateTime.now();
-    final days = timeRanges[selectedRangeIndex]['days'] as int?;
-    if (selectedRangeIndex == 1 &&
-        monthlyYear != null &&
-        monthlyMonth != null) {
-      // Monthly: strict calendar month filter
-      final startInclusive = DateTime(monthlyYear, monthlyMonth, 1);
-      final endInclusive = DateTime(monthlyYear, monthlyMonth + 1, 0);
+
+    // Index 0: Last 7 Days
+    if (selectedRangeIndex == 0) {
+      final startInclusive = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(const Duration(days: 6)); // 7 days inclusive
+      final endInclusive = DateTime(now.year, now.month, now.day);
       return sessions.where((session) {
         final dateStr = session['date'];
         if (dateStr == null) return false;
@@ -113,8 +115,27 @@ class TrackingModels {
         return !d.isBefore(startInclusive) && !d.isAfter(endInclusive);
       }).toList();
     }
-    if (days == null) {
-      // Custom range: if either date missing, show all
+
+    // Index 1: Monthly (with month/year picker)
+    if (selectedRangeIndex == 1) {
+      if (monthlyYear != null && monthlyMonth != null) {
+        final startInclusive = DateTime(monthlyYear, monthlyMonth, 1);
+        final endInclusive = DateTime(monthlyYear, monthlyMonth + 1, 0);
+        return sessions.where((session) {
+          final dateStr = session['date'];
+          if (dateStr == null) return false;
+          final parsed = DateTime.tryParse(dateStr);
+          if (parsed == null) return false;
+          final d = DateTime(parsed.year, parsed.month, parsed.day);
+          return !d.isBefore(startInclusive) && !d.isAfter(endInclusive);
+        }).toList();
+      }
+      // If no month/year selected, show all
+      return List<Map<String, dynamic>>.from(sessions);
+    }
+
+    // Index 2: Custom range
+    if (selectedRangeIndex == 2) {
       if (customStart == null || customEnd == null) {
         return List<Map<String, dynamic>>.from(sessions);
       }
@@ -128,34 +149,18 @@ class TrackingModels {
         customEnd.month,
         customEnd.day,
       );
-      final filtered =
-          sessions.where((session) {
-            final dateStr = session['date'];
-            if (dateStr == null) return false;
-            final parsed = DateTime.tryParse(dateStr);
-            if (parsed == null) return false;
-            final d = DateTime(parsed.year, parsed.month, parsed.day);
-            return !d.isBefore(startInclusive) && !d.isAfter(endInclusive);
-          }).toList();
-      return filtered;
+      return sessions.where((session) {
+        final dateStr = session['date'];
+        if (dateStr == null) return false;
+        final parsed = DateTime.tryParse(dateStr);
+        if (parsed == null) return false;
+        final d = DateTime(parsed.year, parsed.month, parsed.day);
+        return !d.isBefore(startInclusive) && !d.isAfter(endInclusive);
+      }).toList();
     }
-    // Last 7 days: inclusive range from (today - days + 1) to today
-    final startInclusive = DateTime(
-      now.year,
-      now.month,
-      now.day,
-    ).subtract(Duration(days: days - 1));
-    final endInclusive = DateTime(now.year, now.month, now.day);
-    final filtered =
-        sessions.where((session) {
-          final dateStr = session['date'];
-          if (dateStr == null) return false;
-          final parsed = DateTime.tryParse(dateStr);
-          if (parsed == null) return false;
-          final d = DateTime(parsed.year, parsed.month, parsed.day);
-          return !d.isBefore(startInclusive) && !d.isAfter(endInclusive);
-        }).toList();
-    return filtered;
+
+    // Default: show all
+    return List<Map<String, dynamic>>.from(sessions);
   }
 
   static Map<String, Map<String, int>> monthlyHealthyAndDiseases(

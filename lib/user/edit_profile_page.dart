@@ -302,19 +302,35 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                 Positioned(
                                   bottom: 0,
                                   right: 0,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: const BoxDecoration(
-                                      color: Colors.white,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: IconButton(
-                                      icon: const Icon(
-                                        Icons.camera_alt,
-                                        size: 20,
-                                        color: Colors.green,
+                                  child: GestureDetector(
+                                    onTap: _pickProfileImage,
+                                    child: Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: Colors.green[700],
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 3,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.2,
+                                            ),
+                                            blurRadius: 6,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
                                       ),
-                                      onPressed: _pickProfileImage,
+                                      child: const Center(
+                                        child: Icon(
+                                          Icons.camera_alt,
+                                          size: 18,
+                                          color: Colors.white,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
