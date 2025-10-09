@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'login_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({Key? key}) : super(key: key);
@@ -23,7 +22,6 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   // Password strength tracking
   String _passwordStrength = '';
@@ -264,72 +262,6 @@ class _RegisterPageState extends State<RegisterPage> {
             ],
           ),
     );
-  }
-
-  // Google Sign-In for registration
-  Future<void> _handleGoogleSignUp() async {
-    setState(() {
-      _isLoading = true;
-    });
-
-    try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) {
-        setState(() {
-          _isLoading = false;
-        });
-        return;
-      }
-
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      final UserCredential userCredential = await FirebaseAuth.instance
-          .signInWithCredential(credential);
-      final user = userCredential.user;
-
-      if (user != null) {
-        // Check if user already exists
-        DocumentSnapshot userDoc =
-            await FirebaseFirestore.instance
-                .collection('users')
-                .doc(user.uid)
-                .get();
-
-        if (!userDoc.exists) {
-          // Create new user profile
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .set({
-                'userId': user.uid,
-                'fullName': user.displayName ?? 'Google User',
-                'address': '',
-                'phoneNumber': user.phoneNumber ?? '',
-                'email': user.email ?? '',
-                'role': 'farmer',
-                'status': 'active', // Google users are auto-approved
-                'imageProfile': user.photoURL ?? '',
-                'createdAt': DateTime.now(),
-              });
-        }
-
-        setState(() {
-          _isLoading = false;
-        });
-
-        _showSuccessDialog();
-      }
-    } catch (e) {
-      setState(() {
-        _isLoading = false;
-      });
-      _showErrorDialog('Google Sign-Up failed. Please try again.');
-    }
   }
 
   @override
@@ -640,68 +572,7 @@ class _RegisterPageState extends State<RegisterPage> {
                               ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  // Divider
-                  Row(
-                    children: [
-                      Expanded(child: Divider(color: Colors.white70)),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: Text(
-                          'OR',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      Expanded(child: Divider(color: Colors.white70)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  // Google Sign-Up Button
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _handleGoogleSignUp,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.green,
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: Image.asset(
-                        'assets/google-icon-1.png',
-                        width: 24,
-                        height: 24,
-                      ),
-                      label:
-                          _isLoading
-                              ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.green,
-                                  ),
-                                ),
-                              )
-                              : const Text(
-                                'Continue with Google',
-                                style: TextStyle(
-                                  color: Colors.green,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 24),
                   // Login Link
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
