@@ -30,11 +30,13 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
   bool _isSubmitting = false;
   bool _showBoundingBoxes = true;
   String _selectedSeverity = 'medium';
+  Timer? _heartbeatTimer;
 
   @override
   void initState() {
     super.initState();
     _loadBoundingBoxPreference();
+    _claimReportForReview();
   }
 
   Future<void> _loadBoundingBoxPreference() async {
@@ -69,12 +71,142 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
 
   @override
   void dispose() {
+    _heartbeatTimer?.cancel();
+    // Release claim synchronously (fire and forget)
+    _releaseReportClaimSync();
     _commentController.dispose();
     _treatmentController.dispose();
     _dosageController.dispose();
     _frequencyController.dispose();
     _precautionsController.dispose();
+    _durationController.dispose();
     super.dispose();
+  }
+
+  // Claim the report when expert opens it (only for pending reports)
+  Future<void> _claimReportForReview() async {
+    // Only claim if this is a pending report
+    final status = widget.request['status'];
+    if (status != 'pending' && status != 'pending_review') {
+      return; // Don't claim completed reports
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final userBox = Hive.box('userBox');
+    final userProfile = userBox.get('userProfile');
+    final expertName = userProfile?['fullName'] ?? 'Expert';
+
+    final docId = widget.request['id'] ?? widget.request['requestId'];
+    if (docId == null) return;
+
+    try {
+      final docRef = FirebaseFirestore.instance
+          .collection('scan_requests')
+          .doc(docId);
+
+      // Use transaction to claim the report
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final snapshot = await transaction.get(docRef);
+
+        if (!snapshot.exists) return;
+
+        final currentData = snapshot.data()!;
+        final currentStatus = currentData['status'];
+
+        // Only claim if it's pending
+        if (currentStatus != 'pending' && currentStatus != 'pending_review') {
+          return;
+        }
+
+        // Check if already claimed by someone else
+        final reviewingByUid = currentData['reviewingByUid'];
+        final reviewingAt = currentData['reviewingAt'];
+
+        if (reviewingByUid != null && reviewingByUid != user.uid) {
+          // Check if the claim has expired (15 minutes)
+          if (reviewingAt != null) {
+            final claimTime = DateTime.parse(reviewingAt);
+            final now = DateTime.now();
+            final difference = now.difference(claimTime).inMinutes;
+
+            if (difference < 15) {
+              // Still claimed by someone else
+              return;
+            }
+          }
+        }
+
+        // Claim the report
+        transaction.update(docRef, {
+          'reviewingBy': expertName,
+          'reviewingByUid': user.uid,
+          'reviewingAt': DateTime.now().toIso8601String(),
+        });
+      });
+
+      // Start heartbeat to keep the claim alive
+      _startHeartbeat();
+    } catch (e) {
+      print('Error claiming report: $e');
+    }
+  }
+
+  // Release the claim when expert leaves (synchronous for dispose)
+  void _releaseReportClaimSync() {
+    // Only release if this was a pending report
+    final status = widget.request['status'];
+    if (status != 'pending' && status != 'pending_review') {
+      return; // Don't try to release if it wasn't claimed
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final docId = widget.request['id'] ?? widget.request['requestId'];
+    if (docId == null) return;
+
+    // Use unawaited to ensure this fires even as page is closing
+    FirebaseFirestore.instance
+        .collection('scan_requests')
+        .doc(docId)
+        .update({
+          'reviewingBy': FieldValue.delete(),
+          'reviewingByUid': FieldValue.delete(),
+          'reviewingAt': FieldValue.delete(),
+        })
+        .then((_) {
+          print('✅ Released claim for report: $docId');
+        })
+        .catchError((error) {
+          print('❌ Error releasing claim: $error');
+        });
+  }
+
+  // Update heartbeat every 5 minutes to keep claim alive
+  void _startHeartbeat() {
+    _heartbeatTimer = Timer.periodic(const Duration(minutes: 5), (timer) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        timer.cancel();
+        return;
+      }
+
+      final docId = widget.request['id'] ?? widget.request['requestId'];
+      if (docId == null) {
+        timer.cancel();
+        return;
+      }
+
+      FirebaseFirestore.instance
+          .collection('scan_requests')
+          .doc(docId)
+          .update({'reviewingAt': DateTime.now().toIso8601String()})
+          .catchError((error) {
+            timer.cancel();
+          });
+    });
   }
 
   void _submitReview() async {
@@ -121,6 +253,10 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
 
     try {
       final docId = widget.request['id'] ?? widget.request['requestId'];
+
+      // Cancel heartbeat timer before submitting
+      _heartbeatTimer?.cancel();
+
       await FirebaseFirestore.instance
           .collection('scan_requests')
           .doc(docId)
@@ -130,6 +266,10 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
             'expertName': expertName,
             'expertUid': user.uid,
             'reviewedAt': DateTime.now().toIso8601String(),
+            // Remove the claim fields
+            'reviewingBy': FieldValue.delete(),
+            'reviewingByUid': FieldValue.delete(),
+            'reviewingAt': FieldValue.delete(),
           });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

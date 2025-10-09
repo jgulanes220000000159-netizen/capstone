@@ -280,43 +280,93 @@ class _ScanRequestListState extends State<ScanRequestList>
             ? imagePath
             : null;
 
+    // Check if report is being reviewed by someone else
+    final reviewingByUid = request['reviewingByUid'];
+    final reviewingBy = request['reviewingBy'];
+    final reviewingAt = request['reviewingAt'];
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final currentUserUid = currentUser?.uid;
+
+    bool isLockedByOther = false;
+    if (reviewingByUid != null &&
+        reviewingByUid != currentUserUid &&
+        reviewingAt != null) {
+      // Check if lock hasn't expired (15 minutes)
+      try {
+        final lockTime = DateTime.parse(reviewingAt);
+        final now = DateTime.now();
+        final difference = now.difference(lockTime).inMinutes;
+        isLockedByOther = difference < 15;
+      } catch (e) {
+        isLockedByOther = false;
+      }
+    }
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
-        onTap: () async {
-          // Mark pending as seen when expert opens it
-          final id = (request['id'] ?? request['requestId'] ?? '').toString();
-          if ((request['status'] == 'pending' ||
-                  request['status'] == 'pending_review') &&
-              id.isNotEmpty) {
-            await _markPendingSeen(id);
-          }
-          final updatedRequest = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => ScanRequestDetail(request: request),
-            ),
-          );
+        onTap:
+            isLockedByOther
+                ? () {
+                  // Show feedback when trying to tap a locked report
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          const Icon(Icons.lock, color: Colors.white, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'This report is currently being reviewed by ${reviewingBy ?? "another expert"}',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          ),
+                        ],
+                      ),
+                      backgroundColor: Colors.blue.shade700,
+                      duration: const Duration(seconds: 3),
+                      behavior: SnackBarBehavior.floating,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  );
+                }
+                : () async {
+                  // Mark pending as seen when expert opens it
+                  final id =
+                      (request['id'] ?? request['requestId'] ?? '').toString();
+                  if ((request['status'] == 'pending' ||
+                          request['status'] == 'pending_review') &&
+                      id.isNotEmpty) {
+                    await _markPendingSeen(id);
+                  }
+                  final updatedRequest = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ScanRequestDetail(request: request),
+                    ),
+                  );
 
-          if (updatedRequest != null) {
-            setState(() {
-              // Find and update the request in the appropriate list
-              if (request['status'] == 'pending') {
-                final index = _pendingRequests.indexOf(request);
-                if (index != -1) {
-                  _pendingRequests.removeAt(index);
-                  _completedRequests.insert(0, updatedRequest);
-                }
-              } else {
-                final index = _completedRequests.indexOf(request);
-                if (index != -1) {
-                  _completedRequests[index] = updatedRequest;
-                }
-              }
-            });
-          }
-        },
+                  if (updatedRequest != null) {
+                    setState(() {
+                      // Find and update the request in the appropriate list
+                      if (request['status'] == 'pending') {
+                        final index = _pendingRequests.indexOf(request);
+                        if (index != -1) {
+                          _pendingRequests.removeAt(index);
+                          _completedRequests.insert(0, updatedRequest);
+                        }
+                      } else {
+                        final index = _completedRequests.indexOf(request);
+                        if (index != -1) {
+                          _completedRequests[index] = updatedRequest;
+                        }
+                      }
+                    });
+                  }
+                },
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -423,60 +473,112 @@ class _ScanRequestListState extends State<ScanRequestList>
                 ),
               ),
               // Status indicator
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            isCompleted
+                                ? Colors.green
+                                : (isLockedByOther
+                                    ? Colors.grey
+                                    : Colors.orange),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        isCompleted
+                            ? 'Completed'
+                            : (isLockedByOther ? 'Locked' : 'Pending'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
+                      ),
                     ),
-                    decoration: BoxDecoration(
-                      color: isCompleted ? Colors.green : Colors.orange,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      isCompleted ? 'Completed' : 'Pending',
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ),
-                  if ((request['status'] == 'pending' ||
-                      request['status'] == 'pending_review')) ...[
-                    const SizedBox(width: 6),
-                    Builder(
-                      builder: (context) {
-                        final id =
-                            (request['id'] ?? request['requestId'] ?? '')
-                                .toString();
-                        final isNew =
-                            id.isNotEmpty && !_seenPendingIds.contains(id);
-                        return isNew
-                            ? Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
+                    if ((request['status'] == 'pending' ||
+                        request['status'] == 'pending_review')) ...[
+                      const SizedBox(height: 4),
+                      // Show locked badge if being reviewed by someone else
+                      if (isLockedByOther)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.blue.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.lock,
+                                size: 12,
+                                color: Colors.blue,
                               ),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: Colors.red.withOpacity(0.3),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  'By ${reviewingBy ?? "Expert"}',
+                                  style: const TextStyle(
+                                    color: Colors.blue,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
                                 ),
                               ),
-                              child: const Text(
-                                'New',
-                                style: TextStyle(
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            )
-                            : const SizedBox.shrink();
-                      },
-                    ),
+                            ],
+                          ),
+                        )
+                      else
+                        Builder(
+                          builder: (context) {
+                            final id =
+                                (request['id'] ?? request['requestId'] ?? '')
+                                    .toString();
+                            final isNew =
+                                id.isNotEmpty && !_seenPendingIds.contains(id);
+                            return isNew
+                                ? Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.red.withOpacity(0.3),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'New',
+                                    style: TextStyle(
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                )
+                                : const SizedBox.shrink();
+                          },
+                        ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ],
           ),
