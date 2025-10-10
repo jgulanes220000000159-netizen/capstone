@@ -76,7 +76,13 @@ class _ExpertProfileState extends State<ExpertProfile> {
                   _userEmail = data['email'] ?? '';
                   _userPhone = data['phoneNumber'] ?? '';
                   _userAddress = data['address'] ?? '';
-                  _profileImageUrl = data['imageProfile'];
+                  // Only set profile image URL if it's not null and not empty
+                  final imageProfile = data['imageProfile'];
+                  _profileImageUrl =
+                      (imageProfile != null &&
+                              imageProfile.toString().isNotEmpty)
+                          ? imageProfile.toString()
+                          : null;
                 });
               }
             }
@@ -105,7 +111,12 @@ class _ExpertProfileState extends State<ExpertProfile> {
           _userEmail = localProfile['email'] ?? '';
           _userPhone = localProfile['phoneNumber'] ?? '';
           _userAddress = localProfile['address'] ?? '';
-          _profileImageUrl = localProfile['imageProfile'];
+          // Only set profile image URL if it's not null and not empty
+          final imageProfile = localProfile['imageProfile'];
+          _profileImageUrl =
+              (imageProfile != null && imageProfile.toString().isNotEmpty)
+                  ? imageProfile.toString()
+                  : null;
           _isLoading = false;
         });
 
@@ -133,7 +144,12 @@ class _ExpertProfileState extends State<ExpertProfile> {
             _userEmail = data['email'] ?? '';
             _userPhone = data['phoneNumber'] ?? '';
             _userAddress = data['address'] ?? '';
-            _profileImageUrl = data['imageProfile'];
+            // Only set profile image URL if it's not null and not empty
+            final imageProfile = data['imageProfile'];
+            _profileImageUrl =
+                (imageProfile != null && imageProfile.toString().isNotEmpty)
+                    ? imageProfile.toString()
+                    : null;
             _isLoading = false;
           });
 
@@ -155,18 +171,18 @@ class _ExpertProfileState extends State<ExpertProfile> {
       if (creationTime != null) {
         // Format as "Month Year" (e.g., "January 2024")
         final monthNames = [
-          'January',
-          'February',
-          'March',
-          'April',
-          'May',
-          'June',
-          'July',
-          'August',
-          'September',
-          'October',
-          'November',
-          'December',
+          tr('january'),
+          tr('february'),
+          tr('march'),
+          tr('april'),
+          tr('may'),
+          tr('june'),
+          tr('july'),
+          tr('august'),
+          tr('september'),
+          tr('october'),
+          tr('november'),
+          tr('december'),
         ];
         final month = monthNames[creationTime.month - 1];
         final year = creationTime.year;
@@ -318,6 +334,203 @@ class _ExpertProfileState extends State<ExpertProfile> {
           duration: const Duration(seconds: 4),
         ),
       );
+    }
+  }
+
+  void _showImageOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder:
+          (context) => Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
+                  child: Text(
+                    tr('profile_photo_options'),
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.green[50],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.camera_alt,
+                      color: Colors.green[700],
+                      size: 20,
+                    ),
+                  ),
+                  title: Text(tr('change_photo')),
+                  subtitle: Text(tr('upload_new_profile_photo')),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickProfileImage();
+                  },
+                ),
+                if (_profileImageUrl != null || _profileImage != null) ...[
+                  ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.red[50],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.delete_outline,
+                        color: Colors.red[700],
+                        size: 20,
+                      ),
+                    ),
+                    title: Text(tr('delete_photo')),
+                    subtitle: Text(tr('remove_current_profile_photo')),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _deleteProfileImage();
+                    },
+                  ),
+                ],
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+    );
+  }
+
+  Future<void> _deleteProfileImage() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            title: Text(tr('delete_profile_photo')),
+            content: Text(tr('confirm_delete_profile_photo')),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: Text(tr('cancel')),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+                child: Text(tr('delete')),
+              ),
+            ],
+          ),
+    );
+
+    if (confirmed == true) {
+      setState(() {
+        _isUploadingImage = true;
+      });
+
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          // Delete from Firebase Storage if image exists
+          if (_profileImageUrl != null) {
+            try {
+              final ref = FirebaseStorage.instance
+                  .ref()
+                  .child('profile')
+                  .child('${user.uid}.jpg');
+              await ref.delete();
+            } catch (e) {
+              print('Error deleting from storage: $e');
+              // Continue even if storage deletion fails
+            }
+          }
+
+          // Update Firestore to remove image URL
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .update({'imageProfile': FieldValue.delete()})
+              .timeout(
+                const Duration(seconds: 10),
+                onTimeout: () {
+                  throw Exception(
+                    'Timeout updating profile - Please check your connection',
+                  );
+                },
+              );
+
+          // Update Hive cache immediately
+          final userBox = await Hive.openBox('userBox');
+          final cachedProfile =
+              userBox.get('userProfile') as Map<dynamic, dynamic>?;
+          if (cachedProfile != null) {
+            final updatedProfile = Map<String, dynamic>.from(cachedProfile);
+            updatedProfile.remove('imageProfile');
+            await userBox.put('userProfile', updatedProfile);
+          }
+
+          if (!mounted) return;
+          setState(() {
+            _profileImageUrl = null;
+            _profileImage = null;
+            _isUploadingImage = false;
+          });
+
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profile image deleted successfully!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        print('Error deleting profile image: $e');
+        if (!mounted) return;
+        setState(() {
+          _isUploadingImage = false;
+        });
+
+        String errorMessage = 'Failed to delete profile image';
+        if (e.toString().contains('timeout') ||
+            e.toString().contains('Timeout')) {
+          errorMessage =
+              'Delete timeout - Please check your internet connection and try again';
+        } else if (e.toString().contains('network') ||
+            e.toString().contains('connection')) {
+          errorMessage =
+              'Network error - Please check your internet connection';
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(errorMessage),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     }
   }
 
@@ -765,10 +978,20 @@ class _ExpertProfileState extends State<ExpertProfile> {
                                                       ),
                                             ),
                                           )
-                                          : const Icon(
-                                            Icons.person,
-                                            size: 70,
-                                            color: Colors.green,
+                                          : Container(
+                                            width: 120,
+                                            height: 120,
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey[200],
+                                              shape: BoxShape.circle,
+                                            ),
+                                            child: const Center(
+                                              child: Icon(
+                                                Icons.person,
+                                                size: 70,
+                                                color: Colors.green,
+                                              ),
+                                            ),
                                           ),
                                       // Upload indicator overlay
                                       if (_isUploadingImage)
@@ -811,7 +1034,7 @@ class _ExpertProfileState extends State<ExpertProfile> {
                                 bottom: 0,
                                 right: 0,
                                 child: GestureDetector(
-                                  onTap: _pickProfileImage,
+                                  onTap: _showImageOptions,
                                   child: Container(
                                     width: 36,
                                     height: 36,
@@ -832,7 +1055,7 @@ class _ExpertProfileState extends State<ExpertProfile> {
                                     ),
                                     child: const Center(
                                       child: Icon(
-                                        Icons.camera_alt,
+                                        Icons.more_vert,
                                         size: 18,
                                         color: Colors.white,
                                       ),
@@ -920,7 +1143,7 @@ class _ExpertProfileState extends State<ExpertProfile> {
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Member Since',
+                                    tr('member_since'),
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
                                       color: Colors.grey[700],

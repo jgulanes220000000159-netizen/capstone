@@ -265,9 +265,12 @@ exports.notifyUserOnApproval = functions.firestore
             
             <p>Simply log in to your account using the same credentials you used during registration to start using MangoSense.</p>
             
-            <div style="text-align: center;">
-              <a href="#" class="button">Get Started with MangoSense</a>
-            </div>
+            <p><strong>Next Steps:</strong></p>
+            <ul>
+              <li>Open the MangoSense app on your device</li>
+              <li>Log in with your registered email and password</li>
+              <li>Start detecting mango diseases and getting expert advice</li>
+            </ul>
             
             <p><strong>Need help?</strong> If you have any questions or need assistance, feel free to contact our support team.</p>
           </div>
