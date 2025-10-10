@@ -3,10 +3,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 // Map disease names to asset image paths (same as farmer side)
 const Map<String, String> diseaseImages = {
-  'Anthracnose': 'assets/diseases/anthracnose.jpg',
-  'Bacterial black spot': 'assets/diseases/backterial_blackspot1.jpg',
-  'Dieback': 'assets/diseases/dieback.jpg',
-  'Powdery mildew': 'assets/diseases/powdery_mildew3.jpg',
+  'Anthracnose': 'assets/replace_disease/anthracnose_image.jpg',
+  'Bacterial black spot': 'assets/replace_disease/bacterial_image.jpg',
+  'Dieback': 'assets/replace_disease/dieback_image.jpg',
+  'Powdery mildew': 'assets/replace_disease/powdery_image.jpg',
 };
 
 const List<String> mainDiseases = [
@@ -68,7 +68,8 @@ class _DiseaseEditorState extends State<DiseaseEditor> {
               final data = doc.data() as Map<String, dynamic>;
               final name = data['name'] ?? 'Unknown';
               final imagePath =
-                  diseaseImages[name] ?? 'assets/diseases/healthy.jpg';
+                  diseaseImages[name] ??
+                  'assets/replace_disease/healthy_image.jpg';
               final symptomsCount = (data['symptoms'] as List?)?.length ?? 0;
               final treatmentsCount =
                   (data['treatments'] as List?)?.length ?? 0;
@@ -463,56 +464,94 @@ class _DiseaseEditorScreenState extends State<DiseaseEditorScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Disease header image
-              Stack(
-                children: [
-                  Image.asset(
-                    widget.imagePath,
-                    width: double.infinity,
-                    height: 200,
-                    fit: BoxFit.cover,
-                  ),
-                  Container(
-                    width: double.infinity,
-                    height: 200,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.7),
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (context) => FullScreenImageViewer(
+                            imagePath: widget.imagePath,
+                            diseaseName: widget.data['name'] ?? '',
+                          ),
+                    ),
+                  );
+                },
+                child: Stack(
+                  children: [
+                    Image.asset(
+                      widget.imagePath,
+                      width: double.infinity,
+                      height: 200,
+                      fit: BoxFit.cover,
+                    ),
+                    Container(
+                      width: double.infinity,
+                      height: 200,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.7),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 16,
+                      right: 16,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.zoom_in, color: Colors.white, size: 20),
+                            SizedBox(width: 4),
+                            Text(
+                              'Tap to enlarge',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 16,
+                      left: 16,
+                      right: 16,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.data['name'] ?? '',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            widget.data['scientificName'] ?? '',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 16,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                  ),
-                  Positioned(
-                    bottom: 16,
-                    left: 16,
-                    right: 16,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.data['name'] ?? '',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.data['scientificName'] ?? '',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
-                            fontSize: 16,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
 
               // Symptoms section
@@ -752,6 +791,40 @@ class _DiseaseEditorScreenState extends State<DiseaseEditorScreen> {
               fontWeight: FontWeight.bold,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// Full-screen image viewer
+class FullScreenImageViewer extends StatelessWidget {
+  final String imagePath;
+  final String diseaseName;
+
+  const FullScreenImageViewer({
+    Key? key,
+    required this.imagePath,
+    required this.diseaseName,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        title: Text(diseaseName, style: const TextStyle(color: Colors.white)),
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 4.0,
+          child: Image.asset(imagePath, fit: BoxFit.contain),
         ),
       ),
     );

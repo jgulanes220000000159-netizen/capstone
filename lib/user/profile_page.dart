@@ -427,91 +427,112 @@ class _ProfilePageState extends State<ProfilePage> {
                           // Profile Picture
                           Stack(
                             children: [
-                              Container(
-                                width: 120,
-                                height: 120,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 4,
-                                  ),
-                                  color: Colors.white,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.2),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Stack(
-                                  children: [
-                                    _profileImage != null
-                                        ? ClipOval(
-                                          child: Image.file(
-                                            _profileImage!,
-                                            width: 120,
-                                            height: 120,
-                                            fit: BoxFit.cover,
-                                          ),
-                                        )
-                                        : _profileImageUrl != null
-                                        ? ClipOval(
-                                          child: CachedNetworkImage(
-                                            imageUrl: _profileImageUrl!,
-                                            width: 120,
-                                            height: 120,
-                                            fit: BoxFit.cover,
-                                            placeholder:
-                                                (context, url) =>
-                                                    const CircularProgressIndicator(),
-                                            errorWidget:
-                                                (context, url, error) =>
-                                                    const Icon(
-                                                      Icons.person,
-                                                      size: 70,
-                                                      color: Colors.green,
-                                                    ),
-                                          ),
-                                        )
-                                        : const Icon(
-                                          Icons.person,
-                                          size: 70,
-                                          color: Colors.green,
-                                        ),
-                                    // Upload indicator overlay
-                                    if (_isUploadingImage)
-                                      Container(
-                                        width: 120,
-                                        height: 120,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: Colors.black.withOpacity(0.6),
-                                        ),
-                                        child: const Center(
-                                          child: Column(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            children: [
-                                              CircularProgressIndicator(
-                                                color: Colors.white,
-                                                strokeWidth: 3,
-                                              ),
-                                              SizedBox(height: 8),
-                                              Text(
-                                                'Uploading...',
-                                                style: TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w600,
+                              GestureDetector(
+                                onTap: () {
+                                  if (_profileImageUrl != null ||
+                                      _profileImage != null) {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder:
+                                            (context) =>
+                                                _FullScreenProfileImage(
+                                                  imageUrl: _profileImageUrl,
+                                                  imageFile: _profileImage,
+                                                  userName: _userName,
                                                 ),
-                                              ),
-                                            ],
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: Container(
+                                  width: 120,
+                                  height: 120,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 4,
+                                    ),
+                                    color: Colors.white,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.2),
+                                        blurRadius: 10,
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Stack(
+                                    children: [
+                                      _profileImage != null
+                                          ? ClipOval(
+                                            child: Image.file(
+                                              _profileImage!,
+                                              width: 120,
+                                              height: 120,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          )
+                                          : _profileImageUrl != null
+                                          ? ClipOval(
+                                            child: CachedNetworkImage(
+                                              imageUrl: _profileImageUrl!,
+                                              width: 120,
+                                              height: 120,
+                                              fit: BoxFit.cover,
+                                              placeholder:
+                                                  (context, url) =>
+                                                      const CircularProgressIndicator(),
+                                              errorWidget:
+                                                  (context, url, error) =>
+                                                      const Icon(
+                                                        Icons.person,
+                                                        size: 70,
+                                                        color: Colors.green,
+                                                      ),
+                                            ),
+                                          )
+                                          : const Icon(
+                                            Icons.person,
+                                            size: 70,
+                                            color: Colors.green,
+                                          ),
+                                      // Upload indicator overlay
+                                      if (_isUploadingImage)
+                                        Container(
+                                          width: 120,
+                                          height: 120,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: Colors.black.withOpacity(
+                                              0.6,
+                                            ),
+                                          ),
+                                          child: const Center(
+                                            child: Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                CircularProgressIndicator(
+                                                  color: Colors.white,
+                                                  strokeWidth: 3,
+                                                ),
+                                                SizedBox(height: 8),
+                                                Text(
+                                                  'Uploading...',
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               ),
                               Positioned(
@@ -1288,6 +1309,60 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ),
           ),
+    );
+  }
+}
+
+// Full-screen profile image viewer
+class _FullScreenProfileImage extends StatelessWidget {
+  final String? imageUrl;
+  final File? imageFile;
+  final String userName;
+
+  const _FullScreenProfileImage({
+    Key? key,
+    this.imageUrl,
+    this.imageFile,
+    required this.userName,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        title: Text(userName, style: const TextStyle(color: Colors.white)),
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 4.0,
+          child:
+              imageFile != null
+                  ? Image.file(imageFile!, fit: BoxFit.contain)
+                  : imageUrl != null
+                  ? CachedNetworkImage(
+                    imageUrl: imageUrl!,
+                    fit: BoxFit.contain,
+                    placeholder:
+                        (context, url) => const CircularProgressIndicator(
+                          color: Colors.white,
+                        ),
+                    errorWidget:
+                        (context, url, error) => const Icon(
+                          Icons.person,
+                          size: 200,
+                          color: Colors.white,
+                        ),
+                  )
+                  : const Icon(Icons.person, size: 200, color: Colors.white),
+        ),
+      ),
     );
   }
 }

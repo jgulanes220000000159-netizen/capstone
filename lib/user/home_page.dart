@@ -1324,13 +1324,13 @@ class _HomePageState extends State<HomePage> {
                                     ),
                                   );
                             final Map<String, String> diseaseImageMap = {
-                              'anthracnose': 'assets/diseases/anthracnose.jpg',
+                              'anthracnose': 'assets/replace_disease/anthracnose_image.jpg',
                               'backterial_blackspot':
-                                  'assets/diseases/backterial_blackspot1.jpg',
-                              'dieback': 'assets/diseases/dieback.jpg',
+                                  'assets/replace_disease/bacterial_image.jpg',
+                              'dieback': 'assets/replace_disease/dieback_image.jpg',
                               'powdery_mildew':
-                                  'assets/diseases/powdery_mildew3.jpg',
-                              'healthy': 'assets/diseases/healthy.jpg',
+                                  'assets/replace_disease/powdery_image.jpg',
+                              'healthy': 'assets/replace_disease/healthy_image.jpg',
                             };
                             return SingleChildScrollView(
                               physics: const BouncingScrollPhysics(),
@@ -1392,7 +1392,7 @@ class _HomePageState extends State<HomePage> {
                                     _buildDiseaseCard(
                                       name,
                                       diseaseImageMap[name.toLowerCase()] ??
-                                          'assets/diseases/healthy.jpg',
+                                          'assets/replace_disease/healthy_image.jpg',
                                     ),
                                   const SizedBox(height: 16),
                                   Padding(
@@ -1412,7 +1412,7 @@ class _HomePageState extends State<HomePage> {
                                   ),
                                   _buildDiseaseCard(
                                     tr('healthy'),
-                                    'assets/diseases/healthy.jpg',
+                                    'assets/replace_disease/healthy_image.jpg',
                                   ),
                                   const SizedBox(height: 16),
                                 ],

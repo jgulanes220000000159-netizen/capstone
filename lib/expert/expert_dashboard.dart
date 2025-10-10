@@ -1298,7 +1298,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                                   ),
                                 ),
                                 const Text(
-                                  'Total Reviewed',
+                                  'Completed Reviews',
                                   style: TextStyle(fontSize: 12),
                                   textAlign: TextAlign.center,
                                 ),
@@ -1484,7 +1484,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
-                                          'Reviews Completed',
+                                          'Reviews in Period',
                                           style: TextStyle(
                                             fontSize: 14,
                                             fontWeight: FontWeight.w600,

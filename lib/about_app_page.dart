@@ -59,7 +59,7 @@ class AboutAppPage extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            'sense',
+                            'Sense',
                             style: const TextStyle(
                               color: Colors.yellow,
                               fontSize: 32,

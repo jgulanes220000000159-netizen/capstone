@@ -65,14 +65,7 @@ flutter:
     - assets/v24.tflite
     - assets/logo.png
     - assets/google-icon-1.png
-    - assets/diseases/anthracnose.jpg
-    - assets/diseases/powdery_mildew.jpg
-    - assets/diseases/backterial_blackspot.jpg
-    - assets/diseases/backterial_blackspot1.jpg
-    - assets/diseases/dieback.jpg
-    - assets/diseases/tip_burn.jpg
-    - assets/diseases/healthy.jpg
-    - assets/diseases/
+    - assets/replace_disease/
     - assets/lang/en.json
     - assets/lang/tl.json
     - assets/lang/bs.json
