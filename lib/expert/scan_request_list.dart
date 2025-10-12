@@ -157,7 +157,7 @@ class _ScanRequestListState extends State<ScanRequestList>
   String _formatDiseaseName(String disease) {
     // Convert snake_case to Title Case and replace underscores with spaces
     final normalized = disease.replaceAll('_', ' ').toLowerCase();
-    if (normalized == 'tip burn') {
+    if (normalized == 'tip burn' || normalized == 'unknown') {
       return 'Unknown';
     }
     return disease
@@ -233,15 +233,26 @@ class _ScanRequestListState extends State<ScanRequestList>
 
   Widget _buildRequestCard(Map<String, dynamic> request) {
     final diseaseSummary = request['diseaseSummary'] as List<dynamic>;
-    final mainDisease = diseaseSummary.isNotEmpty ? diseaseSummary.first : null;
-    // Use 'label' if available, else 'disease', else 'name'
-    final mainDiseaseKey =
-        mainDisease != null
-            ? (mainDisease['label'] ??
-                mainDisease['disease'] ??
-                mainDisease['name'] ??
-                'unknown')
-            : 'unknown';
+
+    // Find the dominant disease (highest count/percentage)
+    String dominantDiseaseKey = 'unknown';
+    if (diseaseSummary.isNotEmpty) {
+      // Sort by count to find the dominant disease
+      final sortedDiseases = List<Map<String, dynamic>>.from(diseaseSummary);
+      sortedDiseases.sort((a, b) {
+        final countA = a['count'] as int? ?? 0;
+        final countB = b['count'] as int? ?? 0;
+        return countB.compareTo(countA); // Descending order
+      });
+
+      final dominantDisease = sortedDiseases.first;
+      dominantDiseaseKey =
+          (dominantDisease['label'] ??
+                  dominantDisease['disease'] ??
+                  dominantDisease['name'] ??
+                  'unknown')
+              .toString();
+    }
     final isCompleted =
         request['status'] == 'reviewed' || request['status'] == 'completed';
     final userName = request['userName']?.toString() ?? '(No Name)';
@@ -368,7 +379,7 @@ class _ScanRequestListState extends State<ScanRequestList>
                   }
                 },
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(20),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -387,7 +398,7 @@ class _ScanRequestListState extends State<ScanRequestList>
                           ),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 12),
               // Details
               Expanded(
                 child: Column(
@@ -395,8 +406,8 @@ class _ScanRequestListState extends State<ScanRequestList>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      mainDisease != null
-                          ? '${_formatDiseaseName(mainDiseaseKey)} Detection'
+                      dominantDiseaseKey != 'unknown'
+                          ? _formatDiseaseName(dominantDiseaseKey)
                           : 'No Disease Detected',
                       style: const TextStyle(
                         fontSize: 16,
@@ -416,8 +427,8 @@ class _ScanRequestListState extends State<ScanRequestList>
                               fontWeight: FontWeight.w500,
                               color: Colors.green,
                             ),
-                            softWrap: false,
                             overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ),
                       ],
@@ -438,8 +449,8 @@ class _ScanRequestListState extends State<ScanRequestList>
                               fontSize: 11,
                               color: Colors.grey,
                             ),
-                            softWrap: false,
                             overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ),
                       ],
@@ -462,8 +473,8 @@ class _ScanRequestListState extends State<ScanRequestList>
                                 color: Colors.green,
                                 fontWeight: FontWeight.w500,
                               ),
-                              softWrap: false,
                               overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
                           ),
                         ],
@@ -473,7 +484,8 @@ class _ScanRequestListState extends State<ScanRequestList>
                 ),
               ),
               // Status indicator
-              Flexible(
+              SizedBox(
+                width: 80, // Reduced width for status section
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   mainAxisSize: MainAxisSize.min,

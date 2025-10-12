@@ -289,22 +289,29 @@ class _DetectionScreenState extends State<DetectionScreen> {
               ? AppBar(
                 title: const Text('Detection Results'),
                 backgroundColor: Colors.green,
-                actions: [
-                  IconButton(
-                    icon: Icon(
-                      _showBoxes ? Icons.visibility : Icons.visibility_off,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _showBoxes = !_showBoxes;
-                      });
-                    },
-                  ),
-                ],
+                actions: [],
               )
               : null,
       body: Column(
         children: [
+          // Toggle button for bounding boxes
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                const Text('Show Bounding Boxes'),
+                Switch(
+                  value: _showBoxes,
+                  onChanged: (value) {
+                    setState(() {
+                      _showBoxes = value;
+                    });
+                  },
+                ),
+              ],
+            ),
+          ),
           Center(
             child: Container(
               key: _imageKey,

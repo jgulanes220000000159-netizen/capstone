@@ -215,10 +215,26 @@ class _UserRequestListState extends State<UserRequestList> {
 
   Widget _buildRequestCard(Map<String, dynamic> request) {
     final diseaseSummary = (request['diseaseSummary'] as List?) ?? [];
-    final mainDisease =
-        (diseaseSummary.isNotEmpty && diseaseSummary[0]['name'] != null)
-            ? diseaseSummary[0]['name'] as String
-            : 'Unknown';
+
+    // Find the dominant disease (highest count/percentage)
+    String dominantDisease = 'Unknown';
+    if (diseaseSummary.isNotEmpty) {
+      // Sort by count to find the dominant disease
+      final sortedDiseases = List<Map<String, dynamic>>.from(diseaseSummary);
+      sortedDiseases.sort((a, b) {
+        final countA = a['count'] as int? ?? 0;
+        final countB = b['count'] as int? ?? 0;
+        return countB.compareTo(countA); // Descending order
+      });
+
+      final dominantDiseaseData = sortedDiseases.first;
+      dominantDisease =
+          (dominantDiseaseData['name'] ??
+                  dominantDiseaseData['disease'] ??
+                  dominantDiseaseData['label'] ??
+                  'Unknown')
+              .toString();
+    }
     final status = request['status']?.toString() ?? 'pending';
     final submittedAt = request['submittedAt']?.toString() ?? '';
     // Format date
@@ -228,7 +244,6 @@ class _UserRequestListState extends State<UserRequestList> {
               'MMM d, yyyy – h:mma',
             ).format(DateTime.parse(submittedAt))
             : submittedAt;
-    final reviewedAt = request['reviewedAt']?.toString() ?? '';
     final isCompleted = status == 'completed' || status == 'reviewed';
     final images = (request['images'] as List?) ?? [];
     final totalImages = images.length;
@@ -290,7 +305,7 @@ class _UserRequestListState extends State<UserRequestList> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          '${_formatExpertLabel(mainDisease)} Detection',
+                          _formatExpertLabel(dominantDisease),
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -597,6 +612,7 @@ String _formatExpertLabel(String label) {
       return 'Powdery Mildew';
     case 'tip_burn':
     case 'tip burn':
+    case 'unknown':
       return 'Unknown';
     default:
       return label

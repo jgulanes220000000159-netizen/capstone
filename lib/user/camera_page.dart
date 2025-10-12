@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'detection_carousel_screen.dart';
+import 'analysis_summary_screen.dart';
+import 'tflite_detector.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'package:flutter/foundation.dart';
+import 'package:lottie/lottie.dart';
+import 'dart:async';
+import 'package:flutter/scheduler.dart';
 
 class CameraPage extends StatefulWidget {
   final String? initialPhoto;
@@ -22,6 +28,30 @@ class _CameraPageState extends State<CameraPage> {
   void initState() {
     super.initState();
     _capturedImages = widget.initialPhoto != null ? [widget.initialPhoto!] : [];
+  }
+
+  Widget _buildProcessingIndicator() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // GIF Animation (smooth in release builds)
+        SizedBox(
+          width: 120,
+          height: 120,
+          child: Image.asset('assets/animation.gif', fit: BoxFit.contain),
+        ),
+        const SizedBox(height: 16),
+        // Processing text
+        Text(
+          'Processing...',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[700],
+          ),
+        ),
+      ],
+    );
   }
 
   Future<String> saveImagePermanently(
@@ -80,20 +110,116 @@ class _CameraPageState extends State<CameraPage> {
       _processedImages = 0;
     });
 
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder:
-            (_) => DetectionCarouselScreen(
-              imagePaths: _capturedImages,
-              onProgressUpdate: (progress) {
-                setState(() {
-                  _processedImages = progress;
-                });
-              },
-            ),
-      ),
+    // Show Lottie loading dialog IMMEDIATELY when analyze button is pressed
+    print('DEBUG: Showing Lottie loading dialog for analysis...');
+    Timer? animationTimer;
+    bool isAnalysisComplete = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => StatefulBuilder(
+            builder: (context, setDialogState) {
+              // Start a timer to force UI updates during analysis
+              if (animationTimer == null) {
+                animationTimer = Timer.periodic(
+                  const Duration(milliseconds: 16),
+                  (timer) {
+                    if (!isAnalysisComplete && mounted) {
+                      setDialogState(() {
+                        // Force a rebuild to keep animation running
+                      });
+                    } else {
+                      timer.cancel();
+                    }
+                  },
+                );
+              }
+
+              return AlertDialog(
+                title: Text(tr('analyzing_images')),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Simple processing indicator
+                    _buildProcessingIndicator(),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Analyzing ${_capturedImages.length} image${_capturedImages.length > 1 ? 's' : ''}...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Please wait, this may take a moment...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
     );
+    print('DEBUG: Lottie loading dialog should be visible now');
+
+    // Add a delay to ensure dialog is rendered and visible
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    try {
+      // Perform analysis on all images with UI yielding
+      print('DEBUG: Starting analysis with UI yielding...');
+      final List<String> imagePaths = List.from(_capturedImages);
+
+      // Run analysis with UI yielding to keep it responsive
+      final Map<int, List<DetectionResult>> allResults =
+          await _performAnalysisWithUIYielding(imagePaths);
+
+      print('DEBUG: Analysis completed, ensuring smooth transition...');
+
+      // Stop the animation timer
+      isAnalysisComplete = true;
+      animationTimer?.cancel();
+
+      // Add a longer delay for smooth user experience
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      // Close loading dialog smoothly
+      Navigator.pop(context);
+      print('DEBUG: Dialog closed smoothly');
+
+      // Navigate directly to analysis summary
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder:
+              (context) => AnalysisSummaryScreen(
+                allResults: allResults,
+                imagePaths: imagePaths,
+              ),
+        ),
+      );
+    } catch (e) {
+      // Stop the animation timer
+      isAnalysisComplete = true;
+      animationTimer?.cancel();
+
+      // Close loading dialog
+      Navigator.pop(context);
+
+      // Show error
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error analyzing images: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
 
     setState(() {
       _capturedImages.clear();
@@ -124,13 +250,124 @@ class _CameraPageState extends State<CameraPage> {
       setState(() {
         _capturedImages.addAll(persistentPaths);
       });
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder:
-              (context) => DetectionCarouselScreen(imagePaths: persistentPaths),
-        ),
+      // Show Lottie loading dialog IMMEDIATELY after gallery selection
+      print('DEBUG: Showing Lottie loading dialog for gallery analysis...');
+      Timer? animationTimer2;
+      bool isAnalysisComplete2 = false;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder:
+            (context) => StatefulBuilder(
+              builder: (context, setDialogState) {
+                // Start a timer to force UI updates during analysis
+                if (animationTimer2 == null) {
+                  animationTimer2 = Timer.periodic(
+                    const Duration(milliseconds: 16),
+                    (timer) {
+                      if (!isAnalysisComplete2 && mounted) {
+                        setDialogState(() {
+                          // Force a rebuild to keep animation running
+                        });
+                      } else {
+                        timer.cancel();
+                      }
+                    },
+                  );
+                }
+
+                return AlertDialog(
+                  title: Text(tr('analyzing_images')),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // GIF Animation (smoother than custom Flutter animation)
+                      SizedBox(
+                        width: 120,
+                        height: 120,
+                        child: Image.asset(
+                          'assets/ani.gif',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Analyzing ${persistentPaths.length} image${persistentPaths.length > 1 ? 's' : ''}...',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Please wait, this may take a moment...',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
       );
+      print('DEBUG: Lottie loading dialog should be visible now');
+
+      // Add a delay to ensure dialog is rendered and visible
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      try {
+        // Perform analysis on all images with UI yielding
+        print('DEBUG: Starting gallery analysis with UI yielding...');
+
+        // Run analysis with UI yielding to keep it responsive
+        final Map<int, List<DetectionResult>> allResults =
+            await _performAnalysisWithUIYielding(persistentPaths);
+
+        print(
+          'DEBUG: Gallery analysis completed, ensuring smooth transition...',
+        );
+
+        // Stop the animation timer
+        isAnalysisComplete2 = true;
+        animationTimer2?.cancel();
+
+        // Add a longer delay for smooth user experience
+        await Future.delayed(const Duration(milliseconds: 800));
+
+        // Close loading dialog smoothly
+        Navigator.pop(context);
+        print('DEBUG: Gallery dialog closed smoothly');
+
+        // Navigate directly to analysis summary
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (context) => AnalysisSummaryScreen(
+                  allResults: allResults,
+                  imagePaths: persistentPaths,
+                ),
+          ),
+        );
+      } catch (e) {
+        // Stop the animation timer
+        isAnalysisComplete2 = true;
+        animationTimer2?.cancel();
+
+        // Close loading dialog
+        Navigator.pop(context);
+
+        // Show error
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error analyzing images: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -268,5 +505,35 @@ class _CameraPageState extends State<CameraPage> {
         ],
       ),
     );
+  }
+
+  // Analysis method with UI yielding to keep it responsive
+  Future<Map<int, List<DetectionResult>>> _performAnalysisWithUIYielding(
+    List<String> imagePaths,
+  ) async {
+    final TFLiteDetector detector = TFLiteDetector();
+    await detector.loadModel();
+    print('DEBUG: Model loaded, starting detection...');
+
+    final Map<int, List<DetectionResult>> allResults = {};
+
+    for (int i = 0; i < imagePaths.length; i++) {
+      print('DEBUG: Analyzing image ${i + 1}/${imagePaths.length}');
+
+      // Multiple UI yielding attempts
+      await Future.delayed(const Duration(milliseconds: 100));
+      await SchedulerBinding.instance.endOfFrame;
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      final results = await detector.detectDiseases(imagePaths[i]);
+      allResults[i] = results;
+
+      // Additional UI yielding after each detection
+      await Future.delayed(const Duration(milliseconds: 30));
+      await SchedulerBinding.instance.endOfFrame;
+    }
+
+    detector.closeModel();
+    return allResults;
   }
 }

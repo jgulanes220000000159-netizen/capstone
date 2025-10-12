@@ -388,21 +388,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
           style: TextStyle(color: Colors.white),
         ),
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.visibility, color: Colors.white),
-            tooltip:
-                _showBoundingBoxes
-                    ? tr('hide_bounding_boxes')
-                    : tr('show_bounding_boxes'),
-            onPressed: () async {
-              setState(() {
-                _showBoundingBoxes = !_showBoundingBoxes;
-              });
-              await _saveBoundingBoxPreference(_showBoundingBoxes);
-            },
-          ),
-        ],
+        actions: [],
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -522,6 +508,22 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                       ),
                     ),
                     const SizedBox(height: 8),
+                    // Toggle button for bounding boxes
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        const Text('Show Bounding Boxes'),
+                        Switch(
+                          value: _showBoundingBoxes,
+                          onChanged: (value) async {
+                            setState(() {
+                              _showBoundingBoxes = value;
+                            });
+                            await _saveBoundingBoxPreference(value);
+                          },
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     GridView.builder(
                       shrinkWrap: true,

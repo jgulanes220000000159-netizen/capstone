@@ -39,6 +39,9 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
   bool _isSubmitting = false;
   // final ReviewManager _reviewManager = ReviewManager();
 
+  // Disease information loaded from Firestore
+  Map<String, Map<String, dynamic>> _diseaseInfo = {};
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +55,69 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
         });
       }
     });
+    // Load disease information from Firestore
+    _loadDiseaseInfo();
+  }
+
+  Future<void> _loadDiseaseInfo() async {
+    final diseaseBox = await Hive.openBox('diseaseBox');
+    // Try to load from local storage first (for offline access)
+    final localDiseaseInfo = diseaseBox.get('diseaseInfo');
+    if (localDiseaseInfo != null && localDiseaseInfo is Map) {
+      setState(() {
+        _diseaseInfo = Map<String, Map<String, dynamic>>.from(
+          (localDiseaseInfo as Map).map(
+            (k, v) =>
+                MapEntry(k as String, Map<String, dynamic>.from(v as Map)),
+          ),
+        );
+      });
+      print(
+        'DEBUG: Loaded disease info from cache: ${_diseaseInfo.keys.toList()}',
+      );
+      print('DEBUG: Cache data details:');
+      _diseaseInfo.forEach((key, value) {
+        print(
+          '  - "$key": symptoms=${(value['symptoms'] as List).length}, treatments=${(value['treatments'] as List).length}',
+        );
+      });
+    }
+
+    // Try to fetch latest from Firestore (only if online)
+    try {
+      final snapshot =
+          await FirebaseFirestore.instance.collection('diseases').get();
+      final Map<String, Map<String, dynamic>> fetched = {};
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final name = data['name'] ?? '';
+        if (name.isNotEmpty) {
+          fetched[name] = {
+            'scientificName': data['scientificName'] ?? '',
+            'symptoms': List<String>.from(data['symptoms'] ?? []),
+            'treatments': List<String>.from(data['treatments'] ?? []),
+          };
+        }
+      }
+      if (fetched.isNotEmpty) {
+        setState(() {
+          _diseaseInfo = fetched;
+        });
+        await diseaseBox.put('diseaseInfo', fetched);
+        print(
+          'DEBUG: Updated disease info from Firestore: ${fetched.keys.toList()}',
+        );
+      } else {
+        print('DEBUG: No disease info found in Firestore!');
+      }
+    } catch (e) {
+      print('DEBUG: Could not fetch from Firestore (offline?): $e');
+      if (_diseaseInfo.isEmpty) {
+        print('DEBUG: No cached disease info available either!');
+      } else {
+        print('DEBUG: Using cached disease info for offline access');
+      }
+    }
   }
 
   Map<String, int> _getOverallDiseaseCount() {
@@ -168,10 +234,12 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       final Map<String, int> diseaseLabelCounts = {};
       widget.allResults.values.forEach((results) {
         for (var result in results) {
+          print('DEBUG: Found detection result with label: "${result.label}"');
           diseaseLabelCounts[result.label] =
               (diseaseLabelCounts[result.label] ?? 0) + 1;
         }
       });
+      print('DEBUG: All detected labels: ${diseaseLabelCounts.keys.toList()}');
       final diseaseCounts =
           diseaseLabelCounts.entries.map((entry) {
             return {
@@ -323,6 +391,33 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     }
   }
 
+  Widget _buildNoDiseasesMessage() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle_outline, color: Colors.grey[600], size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'No detections found',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[700],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDiseaseSummaryCard(
     String disease,
     int count,
@@ -333,18 +428,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     final isHealthy = disease.toLowerCase() == 'healthy';
     final isUnknown = disease.toLowerCase() == 'tip_burn';
 
-    if (isUnknown) {
-      // Use DetectionResultCard for Unknown (tip_burn)
-      return DetectionResultCard(
-        result: DetectionResult(
-          label: 'tip_burn',
-          confidence: percentage,
-          boundingBox: Rect.zero,
-        ),
-        count: count,
-        percentage: percentage,
-      );
-    }
+    // Remove special handling for Unknown - use same card style as other diseases
 
     return Card(
       elevation: 4,
@@ -486,48 +570,8 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     );
   }
 
-  // Disease information (copied from homepage)
-  static const Map<String, Map<String, dynamic>> diseaseInfo = {
-    'anthracnose': {
-      'symptoms': [
-        'Irregular black or brown spots that expand and merge, leading to necrosis and leaf drop (Li et al., 2024).',
-      ],
-      'treatments': [
-        'Apply copper-based fungicides like copper oxychloride or Mancozeb during wet and humid conditions to prevent spore germination.',
-        'Prune mango trees regularly to improve air circulation and reduce humidity around foliage.',
-        'Remove and burn infected leaves to limit reinfection cycles.',
-      ],
-    },
-    'powdery_mildew': {
-      'symptoms': [
-        'A white, powdery fungal coating forms on young mango leaves, leading to distortion, yellowing, and reduced photosynthesis (Nasir, 2016).',
-      ],
-      'treatments': [
-        'Use sulfur-based or systemic fungicides like tebuconazole at the first sign of infection and repeat at 10–14-day intervals.',
-        'Avoid overhead irrigation which increases humidity and spore spread on leaf surfaces.',
-        'Remove heavily infected leaves to reduce fungal load.',
-      ],
-    },
-    'dieback': {
-      'symptoms': [
-        'Browning of leaf tips, followed by downward necrosis and eventual branch dieback (Ploetz, 2003).',
-      ],
-      'treatments': [
-        'Prune affected twigs at least 10 cm below the last symptom to halt pathogen progression.',
-        'Apply systemic fungicides such as carbendazim to protect surrounding healthy leaves.',
-        'Maintain plant vigor through balanced nutrition and irrigation to resist infection.',
-      ],
-    },
-    'backterial_blackspot': {
-      'symptoms': [
-        'Angular black lesions with yellow halos often appear along veins and can lead to early leaf drop (Ploetz, 2003).',
-      ],
-      'treatments': [
-        'Apply copper hydroxide or copper oxychloride sprays to suppress bacterial activity on the leaf surface.',
-        'Remove and properly dispose of infected leaves to reduce inoculum sources.',
-        'Avoid causing wounds on leaves during handling, as these can be entry points for bacteria.',
-      ],
-    },
+  // Special cases for diseases not in Firestore (only for healthy and tip_burn)
+  static const Map<String, Map<String, dynamic>> specialDiseaseInfo = {
     'healthy': {
       'symptoms': [
         'Vibrant green leaves without spots or lesions',
@@ -553,10 +597,139 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     },
   };
 
-  void _showDiseaseRecommendations(BuildContext context, String disease) {
+  void _showDiseaseRecommendations(BuildContext context, String disease) async {
     final label = disease.toLowerCase();
-    final info = diseaseInfo[label];
-    final isHealthy = label == 'healthy';
+
+    // Check if it's a special case (healthy or tip_burn) that's not in Firestore
+    Map<String, dynamic>? info;
+    if (specialDiseaseInfo.containsKey(label)) {
+      info = specialDiseaseInfo[label];
+    } else {
+      // If disease info is not loaded yet, try to load it
+      if (_diseaseInfo.isEmpty) {
+        await _loadDiseaseInfo();
+      }
+
+      // If still empty after loading, try to load from cache directly
+      if (_diseaseInfo.isEmpty) {
+        try {
+          final diseaseBox = await Hive.openBox('diseaseBox');
+          final localDiseaseInfo = diseaseBox.get('diseaseInfo');
+          if (localDiseaseInfo != null && localDiseaseInfo is Map) {
+            _diseaseInfo = Map<String, Map<String, dynamic>>.from(
+              (localDiseaseInfo as Map).map(
+                (k, v) =>
+                    MapEntry(k as String, Map<String, dynamic>.from(v as Map)),
+              ),
+            );
+            print(
+              'DEBUG: Loaded disease info from cache in recommendations: ${_diseaseInfo.keys.toList()}',
+            );
+          }
+        } catch (e) {
+          print('DEBUG: Could not load from cache: $e');
+        }
+      }
+
+      // Try to get from Firestore data with multiple matching strategies
+      info = _diseaseInfo[label];
+
+      // If not found, try with formatted label
+      if (info == null) {
+        final formattedLabel = _formatLabel(label).toLowerCase();
+        info = _diseaseInfo[formattedLabel];
+      }
+
+      // If still not found, try common variations
+      if (info == null) {
+        // Handle common naming variations
+        String normalizedLabel =
+            label
+                .replaceAll('_', ' ') // Replace underscores with spaces
+                .replaceAll(
+                  'blackspot',
+                  'black spot',
+                ) // Fix blackspot -> black spot
+                .toLowerCase();
+        info = _diseaseInfo[normalizedLabel];
+      }
+
+      // Special handling for bacterial black spot typo
+      if (info == null &&
+          (label.contains('bacterial') || label.contains('backterial'))) {
+        // Try to match with the correct database key
+        if (label.contains('bacterial') || label.contains('backterial')) {
+          info = _diseaseInfo['Bacterial black spot'];
+        }
+      }
+
+      // If still not found, try partial matching
+      if (info == null) {
+        for (String key in _diseaseInfo.keys) {
+          final normalizedKey = key
+              .toLowerCase()
+              .replaceAll('_', ' ')
+              .replaceAll('blackspot', 'black spot');
+          final normalizedLabel = label
+              .replaceAll('_', ' ')
+              .replaceAll('blackspot', 'black spot')
+              .replaceAll('backterial', 'bacterial'); // Fix typo
+
+          if (normalizedKey.contains(normalizedLabel) ||
+              normalizedLabel.contains(normalizedKey) ||
+              key.toLowerCase().contains(label) ||
+              label.contains(key.toLowerCase())) {
+            info = _diseaseInfo[key];
+            break;
+          }
+        }
+      }
+    }
+
+    // Debug print to help identify the issue
+    print('DEBUG: Looking for disease: "$disease" (label: "$label")');
+    print(
+      'DEBUG: Available specialDiseaseInfo keys: ${specialDiseaseInfo.keys}',
+    );
+    print('DEBUG: Available _diseaseInfo keys: ${_diseaseInfo.keys}');
+    print('DEBUG: _diseaseInfo length: ${_diseaseInfo.length}');
+    print('DEBUG: Found info: ${info != null}');
+
+    // Show what disease names are actually being detected
+    print(
+      'DEBUG: All detected disease labels: ${widget.allResults.values.expand((results) => results.map((r) => r.label)).toSet()}',
+    );
+
+    // Special debug for bacterial black spot
+    if (label.contains('bacterial') ||
+        label.contains('black') ||
+        label.contains('backterial')) {
+      print('DEBUG: BACTERIAL BLACK SPOT DEBUG:');
+      print('  - Original disease: "$disease"');
+      print('  - Label: "$label"');
+      print(
+        '  - Looking for keys containing "bacterial": ${_diseaseInfo.keys.where((k) => k.toLowerCase().contains('bacterial')).toList()}',
+      );
+      print(
+        '  - Looking for keys containing "backterial": ${_diseaseInfo.keys.where((k) => k.toLowerCase().contains('backterial')).toList()}',
+      );
+      print(
+        '  - Looking for keys containing "black": ${_diseaseInfo.keys.where((k) => k.toLowerCase().contains('black')).toList()}',
+      );
+      print('  - All available keys: ${_diseaseInfo.keys.toList()}');
+    }
+
+    // Print all disease info for debugging
+    if (_diseaseInfo.isNotEmpty) {
+      print('DEBUG: _diseaseInfo contents:');
+      _diseaseInfo.forEach((key, value) {
+        print('  - "$key": ${value.keys}');
+      });
+    } else {
+      print('DEBUG: _diseaseInfo is empty!');
+    }
+
+    final isHealthy = label == 'healthy' || label == 'tip_burn';
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -617,7 +790,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          ...info['symptoms'].map<Widget>(
+                          ...(info['symptoms'] as List<String>).map<Widget>(
                             (s) => Padding(
                               padding: const EdgeInsets.only(bottom: 8),
                               child: Text(
@@ -635,7 +808,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          ...info['treatments'].map<Widget>(
+                          ...(info['treatments'] as List<String>).map<Widget>(
                             (t) => Padding(
                               padding: const EdgeInsets.only(bottom: 8),
                               child: Text(
@@ -645,7 +818,54 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                             ),
                           ),
                         ] else ...[
-                          Text(tr('no_detailed_information')),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.orange[50],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.orange[200]!),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.info_outline,
+                                      color: Colors.orange[700],
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Information Not Available',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.orange[700],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Detailed information for "${_formatLabel(disease)}" is not currently available in our database.',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.orange[600],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Please contact an expert for more information about this condition.',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.orange[600],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ],
                     ),
@@ -1047,32 +1267,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
         centerTitle: true,
         backgroundColor: Colors.green,
         elevation: 0,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: Ink(
-              decoration: BoxDecoration(
-                color: showBoundingBoxes ? Colors.green[700] : Colors.grey[300],
-                shape: BoxShape.circle,
-              ),
-              child: IconButton(
-                onPressed: () async {
-                  setState(() {
-                    showBoundingBoxes = !showBoundingBoxes;
-                  });
-                  // persist same as detail page for consistency
-                  final box = await Hive.openBox('userBox');
-                  await box.put('showBoundingBoxes', showBoundingBoxes);
-                },
-                icon: Icon(Icons.visibility, color: Colors.white),
-                tooltip:
-                    showBoundingBoxes
-                        ? tr('hide_bounding_boxes')
-                        : tr('show_bounding_boxes'),
-              ),
-            ),
-          ),
-        ],
+        actions: [],
       ),
       body: Column(
         children: [
@@ -1150,6 +1345,28 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
+                        // Toggle button for bounding boxes
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            const Text('Show Bounding Boxes'),
+                            Switch(
+                              value: showBoundingBoxes,
+                              onChanged: (value) async {
+                                setState(() {
+                                  showBoundingBoxes = value;
+                                });
+                                // persist same as detail page for consistency
+                                final box = await Hive.openBox('userBox');
+                                await box.put(
+                                  'showBoundingBoxes',
+                                  showBoundingBoxes,
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
                         _buildImageGrid(),
                       ],
                     ),
@@ -1168,17 +1385,20 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     color: Colors.white,
-                    child: Column(
-                      children: [
-                        ...sortedDiseases.map((entry) {
-                          return _buildDiseaseSummaryCard(
-                            entry.key,
-                            entry.value,
-                            diseaseCounts,
-                          );
-                        }).toList(),
-                      ],
-                    ),
+                    child:
+                        sortedDiseases.isEmpty
+                            ? _buildNoDiseasesMessage()
+                            : Column(
+                              children: [
+                                ...sortedDiseases.map((entry) {
+                                  return _buildDiseaseSummaryCard(
+                                    entry.key,
+                                    entry.value,
+                                    diseaseCounts,
+                                  );
+                                }).toList(),
+                              ],
+                            ),
                   ),
                   const SizedBox(height: 24),
                 ],

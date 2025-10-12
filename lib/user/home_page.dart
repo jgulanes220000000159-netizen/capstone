@@ -3,11 +3,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'camera_page.dart';
-import 'detection_carousel_screen.dart';
+import 'analysis_summary_screen.dart';
+import 'tflite_detector.dart';
 import 'disease_details_page.dart';
 import 'profile_page.dart';
-import 'user_request_list.dart';
 import 'user_request_tabbed_list.dart';
 import 'user_request_detail.dart';
 import 'scan_page.dart';
@@ -15,8 +14,11 @@ import '../shared/review_manager.dart';
 import 'package:hive/hive.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/services.dart';
-import 'tracking_page.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:lottie/lottie.dart';
 import 'dart:async';
+import 'tracking_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -221,6 +223,68 @@ class _HomePageState extends State<HomePage> {
     _requestCountsSub?.cancel();
     _seenBoxSub?.cancel();
     super.dispose();
+  }
+
+  Widget _buildProcessingIndicator() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // GIF Animation (smooth in release builds)
+        SizedBox(
+          width: 120,
+          height: 120,
+          child: Image.asset('assets/animation.gif', fit: BoxFit.contain),
+        ),
+        const SizedBox(height: 16),
+        // Processing text
+        Text(
+          'Processing...',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[700],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Analysis method with progress updates
+  Future<Map<int, List<DetectionResult>>> _performAnalysisWithUIYielding(
+    List<String> imagePaths,
+    Function(int current, int total) onProgress,
+  ) async {
+    final TFLiteDetector detector = TFLiteDetector();
+    await detector.loadModel();
+    print('DEBUG: Model loaded, starting detection...');
+
+    final Map<int, List<DetectionResult>> allResults = {};
+
+    for (int i = 0; i < imagePaths.length; i++) {
+      print('DEBUG: Analyzing image ${i + 1}/${imagePaths.length}');
+
+      // Update progress before analysis
+      onProgress(i, imagePaths.length);
+
+      // Multiple UI yielding attempts
+      await Future.delayed(const Duration(milliseconds: 100));
+      await SchedulerBinding.instance.endOfFrame;
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      // Process image (this will block UI, but progress is already shown)
+      final results = await detector.detectDiseases(imagePaths[i]);
+      allResults[i] = results;
+
+      // Additional UI yielding after each detection
+      await Future.delayed(const Duration(milliseconds: 30));
+      await SchedulerBinding.instance.endOfFrame;
+    }
+
+    // Final progress update
+    onProgress(imagePaths.length, imagePaths.length);
+
+    detector.closeModel();
+    return allResults;
   }
 
   Future<void> _loadUserData() async {
@@ -478,15 +542,138 @@ class _HomePageState extends State<HomePage> {
       }
 
       if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder:
-              (context) => DetectionCarouselScreen(
-                imagePaths: images.map((img) => img.path).toList(),
-              ),
-        ),
+
+      // Show Lottie loading dialog IMMEDIATELY after image selection
+      print('DEBUG: Showing Lottie loading dialog for analysis...');
+      int currentImage = 0;
+      int totalImages = images.length;
+      Timer? animationTimer;
+      bool isAnalysisComplete = false;
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder:
+            (context) => StatefulBuilder(
+              builder: (context, setDialogState) {
+                // Start a timer to force UI updates during analysis
+                if (animationTimer == null) {
+                  animationTimer = Timer.periodic(
+                    const Duration(milliseconds: 16),
+                    (timer) {
+                      if (!isAnalysisComplete && mounted) {
+                        setDialogState(() {
+                          // Force a rebuild to keep animation running
+                        });
+                      } else {
+                        timer.cancel();
+                      }
+                    },
+                  );
+                }
+
+                return AlertDialog(
+                  title: Text(tr('analyzing_images')),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Simple processing indicator
+                      _buildProcessingIndicator(),
+                      const SizedBox(height: 16),
+                      LinearProgressIndicator(
+                        value: currentImage / totalImages,
+                        backgroundColor: Colors.grey[300],
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Analyzing image ${currentImage + 1} of $totalImages...',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Please wait, this may take a moment...',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
       );
+      print('DEBUG: Lottie loading dialog should be visible now');
+
+      // Add a delay to ensure dialog is rendered and visible
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      try {
+        // Perform analysis on all images with UI yielding
+        print('DEBUG: Starting analysis with UI yielding...');
+        final List<String> imagePaths = images.map((img) => img.path).toList();
+
+        // Run analysis with progress updates
+        final Map<int, List<DetectionResult>> allResults =
+            await _performAnalysisWithUIYielding(imagePaths, (current, total) {
+              // Update progress in dialog
+              if (mounted) {
+                setState(() {
+                  currentImage = current;
+                });
+              }
+            });
+
+        print('DEBUG: Analysis completed, ensuring smooth transition...');
+
+        // Stop the animation timer
+        isAnalysisComplete = true;
+        animationTimer?.cancel();
+
+        // Add a longer delay for smooth user experience
+        await Future.delayed(const Duration(milliseconds: 800));
+
+        // Close loading dialog smoothly
+        if (mounted) {
+          Navigator.pop(context);
+          print('DEBUG: Dialog closed smoothly');
+        }
+
+        // Navigate directly to analysis summary
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder:
+                  (context) => AnalysisSummaryScreen(
+                    allResults: allResults,
+                    imagePaths: imagePaths,
+                  ),
+            ),
+          );
+        }
+      } catch (e) {
+        // Stop the animation timer
+        isAnalysisComplete = true;
+        animationTimer?.cancel();
+
+        // Close loading dialog
+        if (mounted) Navigator.pop(context);
+
+        // Show error
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error analyzing images: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -1324,13 +1511,16 @@ class _HomePageState extends State<HomePage> {
                                     ),
                                   );
                             final Map<String, String> diseaseImageMap = {
-                              'anthracnose': 'assets/replace_disease/anthracnose_image.jpg',
+                              'anthracnose':
+                                  'assets/replace_disease/anthracnose_image.jpg',
                               'backterial_blackspot':
                                   'assets/replace_disease/bacterial_image.jpg',
-                              'dieback': 'assets/replace_disease/dieback_image.jpg',
+                              'dieback':
+                                  'assets/replace_disease/dieback_image.jpg',
                               'powdery_mildew':
                                   'assets/replace_disease/powdery_image.jpg',
-                              'healthy': 'assets/replace_disease/healthy_image.jpg',
+                              'healthy':
+                                  'assets/replace_disease/healthy_image.jpg',
                             };
                             return SingleChildScrollView(
                               physics: const BouncingScrollPhysics(),

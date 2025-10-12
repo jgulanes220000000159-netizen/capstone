@@ -34,8 +34,7 @@ dependencies:
   google_sign_in: ^6.2.1
   connectivity_plus: ^5.0.2
   month_year_picker: ^0.4.0
-  url_launcher: ^6.2.1
-  app_links: ^3.4.5
+  lottie: ^3.0.0
   flutter_local_notifications:
     git:
       url: https://github.com/SherwenCabanilla/flutter_local_notifications.git
@@ -71,6 +70,7 @@ flutter:
     - assets/lang/en.json
     - assets/lang/tl.json
     - assets/lang/bs.json
+    - assets/animation.gif
     - .env
     # Add any other image or asset files here
     # - assets/images/your_image.jpg
