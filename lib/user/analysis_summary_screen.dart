@@ -14,7 +14,7 @@ import 'tflite_detector.dart';
 import 'detection_painter.dart';
 import 'detection_screen.dart';
 // import 'detection_carousel_screen.dart';
-import 'detection_result_card.dart';
+// import 'detection_result_card.dart';
 // import 'tracking_page.dart';
 // import '../shared/user_profile.dart';
 // import '../shared/review_manager.dart';
@@ -426,7 +426,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     final color = DetectionPainter.diseaseColors[disease] ?? Colors.grey;
     final percentage = _getDiseasePercentage(disease, diseaseCounts);
     final isHealthy = disease.toLowerCase() == 'healthy';
-    final isUnknown = disease.toLowerCase() == 'tip_burn';
+    // final isUnknown = disease.toLowerCase() == 'tip_burn';
 
     // Remove special handling for Unknown - use same card style as other diseases
 
@@ -1165,6 +1165,22 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
         final downloadUrl = await ref.getDownloadURL();
         uploadedImages2.add({'url': downloadUrl, 'path': storagePath});
       }
+      // Build diseaseSummary from detection results to power Recent Activity title
+      final Map<String, int> diseaseLabelCounts = {};
+      widget.allResults.values.forEach((results) {
+        for (var result in results) {
+          diseaseLabelCounts[result.label] =
+              (diseaseLabelCounts[result.label] ?? 0) + 1;
+        }
+      });
+      final diseaseCounts =
+          diseaseLabelCounts.entries.map((entry) {
+            return {
+              'name': _formatLabel(entry.key),
+              'label': entry.key,
+              'count': entry.value,
+            };
+          }).toList();
       for (int i = 0; i < widget.imagePaths.length; i++) {
         final results = widget.allResults[i] ?? [];
         List<Map<String, dynamic>> resultList = [];
@@ -1204,6 +1220,28 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
             'userId': userId,
           });
       // --- End upload to Firestore ---
+      // --- Also write to scan_requests so it appears under Recent Activity ---
+      try {
+        final userBox = await Hive.openBox('userBox');
+        final userProfile = userBox.get('userProfile');
+        final fullName = userProfile?['fullName'] ?? 'Unknown';
+        await FirebaseFirestore.instance
+            .collection('scan_requests')
+            .doc(sessionId)
+            .set({
+              'id': sessionId,
+              'userId': userId,
+              'userName': fullName,
+              'status': 'tracking',
+              'submittedAt': now,
+              'images': images,
+              'diseaseSummary': diseaseCounts,
+            });
+      } catch (e) {
+        // Non-fatal: tracking saved; recent activity write failed
+        print('WARN: Failed to write tracking entry to scan_requests: $e');
+      }
+      // --- End recent activity write ---
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop(); // Dismiss dialog
         ScaffoldMessenger.of(context).showSnackBar(

@@ -450,9 +450,11 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                             child: Text(
                               isCompleted
                                   ? tr('completed')
-                                  : (status == 'pending_review'
-                                      ? tr('pending_review')
-                                      : tr('pending')),
+                                  : (status == 'tracking'
+                                      ? tr('tracking')
+                                      : (status == 'pending_review'
+                                          ? tr('pending_review')
+                                          : tr('pending'))),
                               style: TextStyle(
                                 color:
                                     isCompleted ? Colors.green : Colors.orange,

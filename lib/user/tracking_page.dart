@@ -10,6 +10,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'tracking_models.dart';
 import 'tracking_chart.dart';
+// Bounding boxes for tracking modal will be drawn with a lightweight painter below
 
 class TrackingPage extends StatefulWidget {
   const TrackingPage({Key? key}) : super(key: key);
@@ -322,23 +323,39 @@ class _TrackingPageState extends State<TrackingPage> {
               .map((doc) => Map<String, dynamic>.from(doc.data()))
               .toList();
 
-      final scanRequests =
-          scanRequestsQuery.docs.map((doc) {
-            final data = Map<String, dynamic>.from(doc.data());
-            return {
-              'sessionId': data['id'] ?? data['sessionId'] ?? doc.id,
-              'date': data['submittedAt'] ?? '',
-              'images': data['images'] ?? [],
-              'source': data['status'] ?? 'pending',
-              'diseaseSummary': data['diseaseSummary'] ?? [],
-              'status': data['status'] ?? 'pending',
-              'userName': data['userName'] ?? '',
-              'expertReview': data['expertReview'],
-              'expertName': data['expertName'],
-            };
-          }).toList();
+      // Build scan requests list but skip those with status 'tracking' to avoid duplicates
+      final List<Map<String, dynamic>> scanRequests = [];
+      for (final doc in scanRequestsQuery.docs) {
+        final data = Map<String, dynamic>.from(doc.data());
+        final status = (data['status'] ?? 'pending').toString();
+        if (status == 'tracking') {
+          // This entry is also present in 'tracking' collection; skip to prevent duplicates
+          continue;
+        }
+        scanRequests.add({
+          'sessionId': data['id'] ?? data['sessionId'] ?? doc.id,
+          'date': data['submittedAt'] ?? '',
+          'images': data['images'] ?? [],
+          'source': status,
+          'diseaseSummary': data['diseaseSummary'] ?? [],
+          'status': status,
+          'userName': data['userName'] ?? '',
+          'expertReview': data['expertReview'],
+          'expertName': data['expertName'],
+        });
+      }
 
-      final sessions = [...scanRequests, ...cloudSessions];
+      // Merge and de-duplicate by sessionId, preferring entries from 'tracking' collection
+      final Map<String, Map<String, dynamic>> byId = {};
+      for (final s in scanRequests) {
+        final id = (s['sessionId'] ?? '').toString();
+        if (id.isNotEmpty) byId[id] = s;
+      }
+      for (final s in cloudSessions) {
+        final id = (s['sessionId'] ?? s['id'] ?? '').toString();
+        if (id.isNotEmpty) byId[id] = s; // overwrite with tracking
+      }
+      final sessions = byId.values.toList();
 
       // Save to Hive for offline use
       final box = await Hive.openBox('trackingBox');
@@ -492,232 +509,359 @@ class _TrackingPageState extends State<TrackingPage> {
     showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    tr('session_details'),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: sourceColor,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    source,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            content: SizedBox(
-              width: 400,
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${tr('date')} ${session['date'] != null ? DateFormat('MMM d, yyyy – h:mma').format(DateTime.parse(session['date'])) : tr('unknown')}',
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
+          (context) => StatefulBuilder(
+            builder:
+                (context, setState) => AlertDialog(
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          tr('session_details'),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      tr(
-                        'image_count',
-                        namedArgs: {'count': images.length.toString()},
-                      ),
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                    // Show expert review if available
-                    if (expertReview != null &&
-                        (session['source'] == 'completed' ||
-                            session['source'] == 'reviewed'))
                       Container(
-                        margin: const EdgeInsets.only(top: 16),
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: Colors.green.withOpacity(0.3),
-                          ),
+                          color: sourceColor,
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(
-                                  Icons.check_circle,
-                                  color: Colors.green,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  tr('expert_review'),
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (expertName != null &&
-                                expertName.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                tr(
-                                  'reviewed_by',
-                                  namedArgs: {'name': expertName},
-                                ),
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                            if (expertReview['comment'] != null) ...[
-                              const SizedBox(height: 8),
-                              Text(
-                                tr('comment'),
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                expertReview['comment'],
-                                style: const TextStyle(fontSize: 14),
-                              ),
-                            ],
-                            if (expertReview['treatmentPlan'] != null) ...[
-                              const SizedBox(height: 12),
-                              Text(
-                                tr('treatment_plan'),
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              if (expertReview['treatmentPlan']['recommendations'] !=
-                                  null) ...[
-                                for (var rec
-                                    in expertReview['treatmentPlan']['recommendations']) ...[
-                                  Text(
-                                    '• ${rec['treatment'] ?? tr('no_treatment_specified')}',
-                                    style: const TextStyle(fontSize: 14),
-                                  ),
-                                ],
-                              ],
-                              if (expertReview['treatmentPlan']['precautions'] !=
-                                  null) ...[
-                                const SizedBox(height: 8),
-                                Text(
-                                  '${tr('precautions')} ${expertReview['treatmentPlan']['precautions']}',
-                                  style: const TextStyle(fontSize: 14),
-                                ),
-                              ],
-                            ],
-                          ],
-                        ),
-                      ),
-                    const Divider(height: 24),
-                    for (int idx = 0; idx < images.length; idx++) ...[
-                      Card(
-                        margin: const EdgeInsets.symmetric(vertical: 8),
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (images[idx]['imageUrl'] != null &&
-                                  (images[idx]['imageUrl'] as String)
-                                      .isNotEmpty)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: CachedNetworkImage(
-                                    imageUrl: images[idx]['imageUrl'],
-                                    width: 320,
-                                    height: 180,
-                                    fit: BoxFit.cover,
-                                    placeholder:
-                                        (context, url) => const Center(
-                                          child: CircularProgressIndicator(),
-                                        ),
-                                    errorWidget:
-                                        (context, url, error) => const Icon(
-                                          Icons.broken_image,
-                                          size: 40,
-                                          color: Colors.grey,
-                                        ),
-                                  ),
-                                )
-                              else if (images[idx]['imagePath'] != null)
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.file(
-                                    File(images[idx]['imagePath']),
-                                    width: 320,
-                                    height: 180,
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              const SizedBox(height: 8),
-                              Text(
-                                tr('results'),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              ...((images[idx]['results'] as List?) ?? []).map((
-                                res,
-                              ) {
-                                final disease = res['disease'] ?? 'Unknown';
-                                final confidence = res['confidence'];
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 2,
-                                  ),
-                                  child: Text(
-                                    confidence != null
-                                        ? '${TrackingModels.formatLabel(disease)} (${(confidence * 100).toStringAsFixed(1)}%)'
-                                        : TrackingModels.formatLabel(disease),
-                                    style: const TextStyle(fontSize: 15),
-                                  ),
-                                );
-                              }).toList(),
-                            ],
+                        child: Text(
+                          source,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
                           ),
                         ),
                       ),
                     ],
+                  ),
+                  content: SizedBox(
+                    width: 400,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Bounding boxes toggle removed per request
+                          Text(
+                            '${tr('date')} ${session['date'] != null ? DateFormat('MMM d, yyyy – h:mma').format(DateTime.parse(session['date'])) : tr('unknown')}',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            tr(
+                              'image_count',
+                              namedArgs: {'count': images.length.toString()},
+                            ),
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                          // Show expert review if available
+                          if (expertReview != null &&
+                              (session['source'] == 'completed' ||
+                                  session['source'] == 'reviewed'))
+                            Container(
+                              margin: const EdgeInsets.only(top: 16),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Colors.green.withOpacity(0.3),
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.check_circle,
+                                        color: Colors.green,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        tr('expert_review'),
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.green,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (expertName != null &&
+                                      expertName.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      tr(
+                                        'reviewed_by',
+                                        namedArgs: {'name': expertName},
+                                      ),
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                  if (expertReview['comment'] != null) ...[
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      tr('comment'),
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      expertReview['comment'],
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                  ],
+                                  if (expertReview['treatmentPlan'] !=
+                                      null) ...[
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      tr('treatment_plan'),
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    if (expertReview['treatmentPlan']['recommendations'] !=
+                                        null) ...[
+                                      for (var rec
+                                          in expertReview['treatmentPlan']['recommendations']) ...[
+                                        Text(
+                                          '• ${rec['treatment'] ?? tr('no_treatment_specified')}',
+                                          style: const TextStyle(fontSize: 14),
+                                        ),
+                                      ],
+                                    ],
+                                    if (expertReview['treatmentPlan']['precautions'] !=
+                                        null) ...[
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        '${tr('precautions')} ${expertReview['treatmentPlan']['precautions']}',
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                    ],
+                                  ],
+                                ],
+                              ),
+                            ),
+                          const Divider(height: 24),
+                          for (int idx = 0; idx < images.length; idx++) ...[
+                            Card(
+                              margin: const EdgeInsets.symmetric(vertical: 8),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    SizedBox(
+                                      width: 320,
+                                      height: 180,
+                                      child: Stack(
+                                        children: [
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                            child:
+                                                images[idx]['imageUrl'] !=
+                                                            null &&
+                                                        (images[idx]['imageUrl']
+                                                                    as String?)
+                                                                ?.isNotEmpty ==
+                                                            true
+                                                    ? CachedNetworkImage(
+                                                      imageUrl:
+                                                          images[idx]['imageUrl'],
+                                                      width: 320,
+                                                      height: 180,
+                                                      fit: BoxFit.cover,
+                                                      placeholder:
+                                                          (
+                                                            context,
+                                                            url,
+                                                          ) => const Center(
+                                                            child:
+                                                                CircularProgressIndicator(),
+                                                          ),
+                                                      errorWidget:
+                                                          (
+                                                            context,
+                                                            url,
+                                                            error,
+                                                          ) => const Icon(
+                                                            Icons.broken_image,
+                                                            size: 40,
+                                                            color: Colors.grey,
+                                                          ),
+                                                    )
+                                                    : images[idx]['imagePath'] !=
+                                                        null
+                                                    ? Image.file(
+                                                      File(
+                                                        images[idx]['imagePath'],
+                                                      ),
+                                                      width: 320,
+                                                      height: 180,
+                                                      fit: BoxFit.cover,
+                                                    )
+                                                    : Container(
+                                                      width: 320,
+                                                      height: 180,
+                                                      color: Colors.grey[300],
+                                                      child: const Icon(
+                                                        Icons.image,
+                                                        color: Colors.grey,
+                                                      ),
+                                                    ),
+                                          ),
+                                          // Bounding boxes overlay removed
+                                          /* if (showBoundingBoxes)
+                                             Builder(
+                                              builder: (context) {
+                                                final imgMap =
+                                                    images[idx] as Map;
+                                                final double? originalW =
+                                                    (imgMap['imageWidth']
+                                                            is num)
+                                                        ? (imgMap['imageWidth']
+                                                                as num)
+                                                            .toDouble()
+                                                        : null;
+                                                final double? originalH =
+                                                    (imgMap['imageHeight']
+                                                            is num)
+                                                        ? (imgMap['imageHeight']
+                                                                as num)
+                                                            .toDouble()
+                                                        : null;
+                                                final List results =
+                                                    (imgMap['results']
+                                                        as List?) ??
+                                                    [];
+                                                if (originalW == null ||
+                                                    originalH == null ||
+                                                    results.isEmpty) {
+                                                  return const SizedBox.shrink();
+                                                }
+                                                // Compute displayed size and offset for BoxFit.cover on 320x180
+                                                const double widgetW = 320;
+                                                const double widgetH = 180;
+                                                final double widgetAspect =
+                                                    widgetW / widgetH;
+                                                final double imageAspect =
+                                                    originalW / originalH;
+                                                double displayW,
+                                                    displayH,
+                                                    dx = 0,
+                                                    dy = 0;
+                                                if (widgetAspect >
+                                                    imageAspect) {
+                                                  displayW = widgetW;
+                                                  displayH =
+                                                      widgetW / imageAspect;
+                                                  dy = (widgetH - displayH) / 2;
+                                                } else {
+                                                  displayH = widgetH;
+                                                  displayW =
+                                                      widgetH * imageAspect;
+                                                  dx = (widgetW - displayW) / 2;
+                                                }
+                                                final boxes =
+                                                    results
+                                                        .whereType<Map>()
+                                                        .where(
+                                                          (r) =>
+                                                              r['boundingBox']
+                                                                  is Map,
+                                                        )
+                                                        .cast<
+                                                          Map<String, dynamic>
+                                                        >()
+                                                        .toList();
+                                                return CustomPaint(
+                                                  painter: _MapBoxPainter(
+                                                    boxes: boxes,
+                                                    originalImageSize: Size(
+                                                      originalW,
+                                                      originalH,
+                                                    ),
+                                                    displayedImageSize: Size(
+                                                      displayW,
+                                                      displayH,
+                                                    ),
+                                                    displayedImageOffset:
+                                                        Offset(dx, dy),
+                                                  ),
+                                                  size: const Size(
+                                                    widgetW,
+                                                    widgetH,
+                                                  ),
+                                                );
+                                               },
+                                             ), */
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      tr('results'),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    ...((images[idx]['results'] as List?) ?? [])
+                                        .map((res) {
+                                          final disease =
+                                              res['disease'] ?? 'Unknown';
+                                          final confidence = res['confidence'];
+                                          return Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 2,
+                                            ),
+                                            child: Text(
+                                              confidence != null
+                                                  ? '${TrackingModels.formatLabel(disease)} (${(confidence * 100).toStringAsFixed(1)}%)'
+                                                  : TrackingModels.formatLabel(
+                                                    disease,
+                                                  ),
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                              ),
+                                            ),
+                                          );
+                                        })
+                                        .toList(),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text(tr('close')),
+                    ),
                   ],
                 ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text(tr('close')),
-              ),
-            ],
           ),
     );
   }
@@ -1670,3 +1814,5 @@ class _TrackingPageState extends State<TrackingPage> {
     );
   }
 }
+
+// Bounding box painter removed as overlay option is disabled

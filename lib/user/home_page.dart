@@ -19,6 +19,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:lottie/lottie.dart';
 import 'dart:async';
 import 'tracking_page.dart';
+import 'tracking_models.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -1163,6 +1164,11 @@ class _HomePageState extends State<HomePage> {
         statusIcon = Icons.check_circle;
         statusText = tr('completed');
         break;
+      case 'tracking':
+        statusColor = Colors.blue;
+        statusIcon = Icons.track_changes;
+        statusText = tr('tracking');
+        break;
       case 'pending_review':
         statusColor = Colors.blue;
         statusIcon = Icons.rate_review;
@@ -1176,8 +1182,48 @@ class _HomePageState extends State<HomePage> {
 
     // Get primary disease name and normalize Tip Burn to Unknown
     String diseaseName = 'Analyzing...';
+    Map<String, dynamic>? topDisease;
     if (diseaseSummary.isNotEmpty) {
-      final rawName = (diseaseSummary[0]['name'] ?? '').toString();
+      // Choose the dominant disease by highest count (matches My Requests logic)
+      final List<Map<String, dynamic>> list =
+          diseaseSummary.whereType<Map<String, dynamic>>().toList();
+      if (list.isNotEmpty) {
+        list.sort((a, b) {
+          final num countA = (a['count'] is num) ? a['count'] as num : 0;
+          final num countB = (b['count'] is num) ? b['count'] as num : 0;
+          return countB.compareTo(countA);
+        });
+        topDisease = list.first;
+      }
+    } else {
+      // Fallback: compute dominant disease from images[].results if present
+      if (data['images'] is List) {
+        final Map<String, int> counts = {};
+        for (final img in (data['images'] as List)) {
+          if (img is Map && img['results'] is List) {
+            for (final r in (img['results'] as List)) {
+              if (r is Map && r['disease'] != null) {
+                final label = r['disease'].toString();
+                counts[label] = (counts[label] ?? 0) + 1;
+              }
+            }
+          }
+        }
+        if (counts.isNotEmpty) {
+          final sorted =
+              counts.entries.toList()
+                ..sort((a, b) => b.value.compareTo(a.value));
+          final best = sorted.first;
+          topDisease = {
+            'name': best.key,
+            'label': best.key,
+            'count': best.value,
+          };
+        }
+      }
+    }
+    if (topDisease != null) {
+      final rawName = (topDisease['name'] ?? '').toString();
       final lower = rawName.toLowerCase();
       if (lower == 'tip_burn' || lower == 'tip burn') {
         diseaseName = 'Unknown';
@@ -1204,6 +1250,148 @@ class _HomePageState extends State<HomePage> {
       timeAgo = _formatTimeAgo(submittedDate);
     }
 
+    void _showTrackingModalFromRecent(Map<String, dynamic> sourceData) {
+      // Build a lightweight session object compatible with tracking modal content
+      final String dateStr = sourceData['submittedAt']?.toString() ?? '';
+      final String formattedDate =
+          dateStr.isNotEmpty && DateTime.tryParse(dateStr) != null
+              ? DateFormat(
+                'MMM d, yyyy – h:mma',
+              ).format(DateTime.parse(dateStr))
+              : tr('unknown');
+      final List images = (sourceData['images'] as List?) ?? [];
+
+      showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      tr('session_details'),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.blue,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      tr('tracking'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 400,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${tr('date')} $formattedDate',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        tr(
+                          'image_count',
+                          namedArgs: {'count': images.length.toString()},
+                        ),
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      const Divider(height: 24),
+                      for (int idx = 0; idx < images.length; idx++) ...[
+                        Card(
+                          margin: const EdgeInsets.symmetric(vertical: 8),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (images[idx]['imageUrl'] != null &&
+                                    (images[idx]['imageUrl'] as String)
+                                        .isNotEmpty)
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: CachedNetworkImage(
+                                      imageUrl: images[idx]['imageUrl'],
+                                      width: 320,
+                                      height: 180,
+                                      fit: BoxFit.cover,
+                                      placeholder:
+                                          (context, url) => const Center(
+                                            child: CircularProgressIndicator(),
+                                          ),
+                                      errorWidget:
+                                          (context, url, error) => const Icon(
+                                            Icons.broken_image,
+                                            size: 40,
+                                            color: Colors.grey,
+                                          ),
+                                    ),
+                                  ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  tr('results'),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                ...((images[idx]['results'] as List?) ?? []).map((
+                                  res,
+                                ) {
+                                  final disease =
+                                      res['disease']?.toString() ?? 'Unknown';
+                                  final confidence = res['confidence'];
+                                  final label = TrackingModels.formatLabel(
+                                    disease,
+                                  );
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 2,
+                                    ),
+                                    child: Text(
+                                      confidence != null
+                                          ? '$label (${(confidence * 100).toStringAsFixed(1)}%)'
+                                          : label,
+                                      style: const TextStyle(fontSize: 15),
+                                    ),
+                                  );
+                                }).toList(),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(tr('close')),
+                ),
+              ],
+            ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Card(
@@ -1212,6 +1400,10 @@ class _HomePageState extends State<HomePage> {
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: () {
+            if (status == 'tracking') {
+              _showTrackingModalFromRecent(data);
+              return;
+            }
             // Navigate to request detail page
             Navigator.push(
               context,
