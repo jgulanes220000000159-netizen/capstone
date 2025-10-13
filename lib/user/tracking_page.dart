@@ -92,7 +92,7 @@ class _TrackingPageState extends State<TrackingPage> {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('Select Month and Year'),
+              title: Text(tr('select_month_year')),
               content: SizedBox(
                 width: 300,
                 height: 400,
@@ -234,7 +234,7 @@ class _TrackingPageState extends State<TrackingPage> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context, null),
-                  child: const Text('Cancel'),
+                  child: Text(tr('cancel')),
                 ),
                 ElevatedButton(
                   onPressed: () => Navigator.pop(context, selectedDate),
@@ -242,7 +242,7 @@ class _TrackingPageState extends State<TrackingPage> {
                     backgroundColor: const Color(0xFF2D7204),
                     foregroundColor: Colors.white,
                   ),
-                  child: const Text('OK'),
+                  child: Text(tr('ok')),
                 ),
               ],
             );
@@ -975,7 +975,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'Scan Summary',
+                                  tr('scan_summary'),
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
@@ -993,7 +993,13 @@ class _TrackingPageState extends State<TrackingPage> {
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
-                                    '${filteredSessions.length} Total',
+                                    tr(
+                                      'total_count',
+                                      namedArgs: {
+                                        'count':
+                                            filteredSessions.length.toString(),
+                                      },
+                                    ),
                                     style: TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.bold,
@@ -1008,7 +1014,7 @@ class _TrackingPageState extends State<TrackingPage> {
                               children: [
                                 Expanded(
                                   child: _buildStatusCard(
-                                    'Pending',
+                                    tr('pending'),
                                     pendingCount,
                                     Icons.schedule,
                                     Colors.orange,
@@ -1017,7 +1023,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: _buildStatusCard(
-                                    'Tracking',
+                                    tr('tracking'),
                                     trackingCount,
                                     Icons.track_changes,
                                     Colors.blue,
@@ -1026,7 +1032,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: _buildStatusCard(
-                                    'Completed',
+                                    tr('completed'),
                                     completedCount,
                                     Icons.check_circle,
                                     Colors.green,
@@ -1104,7 +1110,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Farm Health Breakdown',
+                                    tr('farm_health_breakdown'),
                                     style: TextStyle(
                                       fontSize: 18,
                                       fontWeight: FontWeight.bold,
@@ -1131,7 +1137,10 @@ class _TrackingPageState extends State<TrackingPage> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
-                                '$total Total',
+                                tr(
+                                  'total_count',
+                                  namedArgs: {'count': total.toString()},
+                                ),
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
@@ -1413,211 +1422,241 @@ class _TrackingPageState extends State<TrackingPage> {
 
                       return Card(
                         margin: const EdgeInsets.symmetric(vertical: 6),
-                        child: ListTile(
-                          leading:
-                              images.isNotEmpty &&
-                                      images[0]['imageUrl'] != null &&
-                                      (images[0]['imageUrl'] as String)
-                                          .isNotEmpty
-                                  ? CachedNetworkImage(
-                                    imageUrl: images[0]['imageUrl'],
-                                    width: 56,
-                                    height: 56,
-                                    fit: BoxFit.cover,
-                                    placeholder:
-                                        (context, url) => const Center(
-                                          child: CircularProgressIndicator(),
-                                        ),
-                                    errorWidget:
-                                        (context, url, error) => const Icon(
-                                          Icons.broken_image,
-                                          size: 40,
-                                          color: Colors.grey,
-                                        ),
-                                  )
-                                  : images.isNotEmpty &&
-                                      images[0]['imagePath'] != null
-                                  ? Image.file(
-                                    File(images[0]['imagePath']),
-                                    width: 56,
-                                    height: 56,
-                                    fit: BoxFit.cover,
-                                  )
-                                  : const Icon(Icons.image, size: 56),
-                          title: Text(tr('session', namedArgs: {'date': date})),
-                          subtitle: Text(
-                            tr(
-                              'image_count',
-                              namedArgs: {'count': images.length.toString()},
+                        child: InkWell(
+                          onTap: () => _showSessionDetails(session),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
                             ),
-                          ),
-                          trailing: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
+                            isThreeLine: true,
+                            leading:
+                                images.isNotEmpty &&
+                                        images[0]['imageUrl'] != null &&
+                                        (images[0]['imageUrl'] as String)
+                                            .isNotEmpty
+                                    ? CachedNetworkImage(
+                                      imageUrl: images[0]['imageUrl'],
+                                      width: 56,
+                                      height: 56,
+                                      fit: BoxFit.cover,
+                                      placeholder:
+                                          (context, url) => const Center(
+                                            child: CircularProgressIndicator(),
+                                          ),
+                                      errorWidget:
+                                          (context, url, error) => const Icon(
+                                            Icons.broken_image,
+                                            size: 40,
+                                            color: Colors.grey,
+                                          ),
+                                    )
+                                    : images.isNotEmpty &&
+                                        images[0]['imagePath'] != null
+                                    ? Image.file(
+                                      File(images[0]['imagePath']),
+                                      width: 56,
+                                      height: 56,
+                                      fit: BoxFit.cover,
+                                    )
+                                    : const Icon(Icons.image, size: 56),
+                            title: Text(
+                              tr('session', namedArgs: {'date': date}),
                             ),
-                            decoration: BoxDecoration(
-                              color: TrackingModels.getSourceColor(
-                                session['source'],
+                            subtitle: Text(
+                              tr(
+                                'image_count',
+                                namedArgs: {'count': images.length.toString()},
                               ),
-                              borderRadius: BorderRadius.circular(12),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            child: Text(
-                              TrackingModels.getSourceDisplayText(
-                                session['source'],
-                              ),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          onLongPress:
-                              session['source'] != 'completed' &&
-                                      session['source'] != 'reviewed'
-                                  ? () async {
-                                    final confirm = await showDialog<bool>(
-                                      context: context,
-                                      builder:
-                                          (context) => AlertDialog(
-                                            title: Text(tr('delete_session')),
-                                            content: Text(
-                                              tr('delete_session_confirm'),
-                                            ),
-                                            actions: [
-                                              TextButton(
-                                                onPressed:
-                                                    () => Navigator.of(
-                                                      context,
-                                                    ).pop(false),
-                                                child: Text(tr('cancel')),
+                            trailing: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                if (session['source'] != 'completed' &&
+                                    session['source'] != 'reviewed')
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(12),
+                                    onTap: () async {
+                                      final confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder:
+                                            (context) => AlertDialog(
+                                              title: Text(tr('delete_session')),
+                                              content: Text(
+                                                tr('delete_session_confirm'),
                                               ),
-                                              TextButton(
-                                                onPressed:
-                                                    () => Navigator.of(
-                                                      context,
-                                                    ).pop(true),
-                                                child: Text(
-                                                  tr('delete'),
-                                                  style: const TextStyle(
-                                                    color: Colors.red,
+                                              actions: [
+                                                TextButton(
+                                                  onPressed:
+                                                      () => Navigator.of(
+                                                        context,
+                                                      ).pop(false),
+                                                  child: Text(tr('cancel')),
+                                                ),
+                                                TextButton(
+                                                  onPressed:
+                                                      () => Navigator.of(
+                                                        context,
+                                                      ).pop(true),
+                                                  child: Text(
+                                                    tr('delete'),
+                                                    style: const TextStyle(
+                                                      color: Colors.red,
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
-                                            ],
-                                          ),
-                                    );
-                                    if (confirm == true) {
-                                      final images =
-                                          (session['images'] as List?) ?? [];
-                                      bool imageDeleteError = false;
-                                      for (final img in images) {
-                                        try {
-                                          final storagePath =
-                                              img['storagePath'] as String?;
-                                          final imageUrl =
-                                              img['imageUrl'] as String?;
+                                              ],
+                                            ),
+                                      );
+                                      if (confirm == true) {
+                                        final images =
+                                            (session['images'] as List?) ?? [];
+                                        bool imageDeleteError = false;
+                                        for (final img in images) {
+                                          try {
+                                            final storagePath =
+                                                img['storagePath'] as String?;
+                                            final imageUrl =
+                                                img['imageUrl'] as String?;
 
-                                          if (storagePath != null &&
-                                              storagePath.isNotEmpty) {
-                                            // Preferred: delete by known storage path
-                                            await FirebaseStorage.instance
-                                                .ref()
-                                                .child(storagePath)
-                                                .delete();
-                                          } else if (imageUrl != null &&
-                                              imageUrl.isNotEmpty) {
-                                            // If it's a Firebase URL, delete via URL
-                                            if (imageUrl.startsWith('gs://') ||
-                                                imageUrl.startsWith(
-                                                  'https://firebasestorage.googleapis.com',
-                                                )) {
+                                            if (storagePath != null &&
+                                                storagePath.isNotEmpty) {
+                                              // Preferred: delete by known storage path
                                               await FirebaseStorage.instance
-                                                  .refFromURL(imageUrl)
+                                                  .ref()
+                                                  .child(storagePath)
                                                   .delete();
-                                            } else {
-                                              // Legacy Supabase cleanup (best-effort)
-                                              final uri = Uri.parse(imageUrl);
-                                              final segments = uri.pathSegments;
-                                              final bucketIndex = segments
-                                                  .indexOf('mangosense');
-                                              if (bucketIndex != -1 &&
-                                                  bucketIndex + 1 <
-                                                      segments.length) {
-                                                final supabase =
-                                                    Supabase.instance.client;
-                                                final supabasePath = segments
-                                                    .sublist(bucketIndex + 1)
-                                                    .join('/');
-                                                await supabase.storage
-                                                    .from('mangosense')
-                                                    .remove([supabasePath]);
+                                            } else if (imageUrl != null &&
+                                                imageUrl.isNotEmpty) {
+                                              // If it's a Firebase URL, delete via URL
+                                              if (imageUrl.startsWith(
+                                                    'gs://',
+                                                  ) ||
+                                                  imageUrl.startsWith(
+                                                    'https://firebasestorage.googleapis.com',
+                                                  )) {
+                                                await FirebaseStorage.instance
+                                                    .refFromURL(imageUrl)
+                                                    .delete();
+                                              } else {
+                                                // Legacy Supabase cleanup (best-effort)
+                                                final uri = Uri.parse(imageUrl);
+                                                final segments =
+                                                    uri.pathSegments;
+                                                final bucketIndex = segments
+                                                    .indexOf('mangosense');
+                                                if (bucketIndex != -1 &&
+                                                    bucketIndex + 1 <
+                                                        segments.length) {
+                                                  final supabase =
+                                                      Supabase.instance.client;
+                                                  final supabasePath = segments
+                                                      .sublist(bucketIndex + 1)
+                                                      .join('/');
+                                                  await supabase.storage
+                                                      .from('mangosense')
+                                                      .remove([supabasePath]);
+                                                }
                                               }
                                             }
+                                          } catch (e) {
+                                            imageDeleteError = true;
+                                          }
+                                        }
+                                        try {
+                                          if (session['source'] == 'pending') {
+                                            final docId =
+                                                session['sessionId'] ??
+                                                session['id'];
+                                            await FirebaseFirestore.instance
+                                                .collection('scan_requests')
+                                                .doc(docId)
+                                                .delete();
+                                          } else {
+                                            final docId =
+                                                session['sessionId'] ??
+                                                session['id'];
+                                            await FirebaseFirestore.instance
+                                                .collection('tracking')
+                                                .doc(docId)
+                                                .delete();
+                                          }
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  imageDeleteError
+                                                      ? tr(
+                                                        'session_deleted_with_errors',
+                                                      )
+                                                      : tr('session_deleted'),
+                                                ),
+                                                backgroundColor:
+                                                    imageDeleteError
+                                                        ? Colors.orange
+                                                        : Colors.red,
+                                              ),
+                                            );
                                           }
                                         } catch (e) {
-                                          imageDeleteError = true;
-                                        }
-                                      }
-                                      try {
-                                        if (session['source'] == 'pending') {
-                                          final docId =
-                                              session['sessionId'] ??
-                                              session['id'];
-                                          await FirebaseFirestore.instance
-                                              .collection('scan_requests')
-                                              .doc(docId)
-                                              .delete();
-                                        } else {
-                                          final docId =
-                                              session['sessionId'] ??
-                                              session['id'];
-                                          await FirebaseFirestore.instance
-                                              .collection('tracking')
-                                              .doc(docId)
-                                              .delete();
-                                        }
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                imageDeleteError
-                                                    ? tr(
-                                                      'session_deleted_with_errors',
-                                                    )
-                                                    : tr('session_deleted'),
-                                              ),
-                                              backgroundColor:
-                                                  imageDeleteError
-                                                      ? Colors.orange
-                                                      : Colors.red,
-                                            ),
-                                          );
-                                        }
-                                      } catch (e) {
-                                        if (context.mounted) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                tr(
-                                                  'failed_to_delete_session',
-                                                  args: [e.toString()],
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  tr(
+                                                    'failed_to_delete_session',
+                                                    args: [e.toString()],
+                                                  ),
                                                 ),
+                                                backgroundColor: Colors.red,
                                               ),
-                                              backgroundColor: Colors.red,
-                                            ),
-                                          );
+                                            );
+                                          }
                                         }
                                       }
-                                    }
-                                  }
-                                  : null,
-                          onTap: () => _showSessionDetails(session),
+                                    },
+                                    child: const Icon(
+                                      Icons.delete,
+                                      color: Colors.red,
+                                      size: 22,
+                                    ),
+                                  ),
+                                if (session['source'] != 'completed' &&
+                                    session['source'] != 'reviewed')
+                                  const SizedBox(height: 10),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: TrackingModels.getSourceColor(
+                                      session['source'],
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    TrackingModels.getSourceDisplayText(
+                                      session['source'],
+                                    ),
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       );
                     },

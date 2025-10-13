@@ -405,7 +405,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'No detections found',
+              tr('no_detections'),
               style: TextStyle(
                 fontSize: 16,
                 color: Colors.grey[700],
@@ -837,7 +837,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                                     ),
                                     const SizedBox(width: 8),
                                     Text(
-                                      'Information Not Available',
+                                      tr('information_not_available'),
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
@@ -848,7 +848,12 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Detailed information for "${_formatLabel(disease)}" is not currently available in our database.',
+                                  tr(
+                                    'detailed_info_not_available_for',
+                                    namedArgs: {
+                                      'disease': _formatLabel(disease),
+                                    },
+                                  ),
                                   style: TextStyle(
                                     fontSize: 14,
                                     color: Colors.orange[600],
@@ -856,7 +861,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'Please contact an expert for more information about this condition.',
+                                  tr('contact_expert_for_more_info'),
                                   style: TextStyle(
                                     fontSize: 14,
                                     color: Colors.orange[600],
@@ -1349,7 +1354,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            const Text('Show Bounding Boxes'),
+                            Text(tr('show_bounding_boxes')),
                             Switch(
                               value: showBoundingBoxes,
                               onChanged: (value) async {

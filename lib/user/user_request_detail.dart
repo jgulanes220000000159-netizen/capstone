@@ -383,9 +383,9 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.green,
-        title: const Text(
-          'Request Details',
-          style: TextStyle(color: Colors.white),
+        title: Text(
+          tr('request_details'),
+          style: const TextStyle(color: Colors.white),
         ),
         elevation: 0,
         actions: [],
@@ -421,11 +421,43 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
-                              'Your Request',
+                              tr('your_request'),
                               style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.green,
+                              ),
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color:
+                                  isCompleted
+                                      ? Colors.green.withOpacity(0.1)
+                                      : Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color:
+                                    isCompleted
+                                        ? Colors.green.withOpacity(0.3)
+                                        : Colors.orange.withOpacity(0.3),
+                              ),
+                            ),
+                            child: Text(
+                              isCompleted
+                                  ? tr('completed')
+                                  : (status == 'pending_review'
+                                      ? tr('pending_review')
+                                      : tr('pending')),
+                              style: TextStyle(
+                                color:
+                                    isCompleted ? Colors.green : Colors.orange,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
                               ),
                             ),
                           ),
@@ -440,9 +472,9 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                             color: Colors.grey,
                           ),
                           const SizedBox(width: 4),
-                          const Text(
-                            'Submitted:',
-                            style: TextStyle(
+                          Text(
+                            tr('submitted'),
+                            style: const TextStyle(
                               fontSize: 12,
                               color: Colors.black54,
                             ),
@@ -467,9 +499,9 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                               color: Colors.green,
                             ),
                             const SizedBox(width: 4),
-                            const Text(
-                              'Reviewed:',
-                              style: TextStyle(
+                            Text(
+                              tr('reviewed'),
+                              style: const TextStyle(
                                 fontSize: 12,
                                 color: Colors.black54,
                               ),
@@ -500,9 +532,9 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Submitted Images',
-                      style: TextStyle(
+                    Text(
+                      tr('submitted_images'),
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
@@ -512,7 +544,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        const Text('Show Bounding Boxes'),
+                        Text(tr('show_bounding_boxes')),
                         Switch(
                           value: _showBoundingBoxes,
                           onChanged: (value) async {
@@ -539,6 +571,12 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                         final img = images[idx];
                         final imageUrl = img['imageUrl'] ?? '';
                         final detections = (img['results'] as List?) ?? [];
+                        final int detectionCount =
+                            detections
+                                .where(
+                                  (d) => d is Map && d['boundingBox'] != null,
+                                )
+                                .length;
 
                         // Debug: Print image path information
                         print('🖼️ Image $idx debug:');
@@ -1261,9 +1299,19 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                     borderRadius: BorderRadius.circular(8),
                                   ),
                                   child: Text(
-                                    detections.isNotEmpty
-                                        ? '${detections.length} Detection${detections.length > 1 ? 's' : ''}'
-                                        : 'No Detections',
+                                    detectionCount > 0
+                                        ? (detectionCount == 1
+                                            ? tr(
+                                              'detections_one',
+                                              namedArgs: {'count': '1'},
+                                            )
+                                            : tr(
+                                              'detections_other',
+                                              namedArgs: {
+                                                'count': '$detectionCount',
+                                              },
+                                            ))
+                                        : tr('no_detections'),
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontWeight: FontWeight.bold,
@@ -1303,9 +1351,9 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Disease Summary',
-                        style: TextStyle(
+                      Text(
+                        tr('disease_summary'),
+                        style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
@@ -1367,7 +1415,10 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                         borderRadius: BorderRadius.circular(20),
                                       ),
                                       child: Text(
-                                        '$count found',
+                                        tr(
+                                          'found_count',
+                                          namedArgs: {'count': '$count'},
+                                        ),
                                         style: TextStyle(
                                           color: color,
                                           fontWeight: FontWeight.bold,
@@ -1385,7 +1436,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                             CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            'Percentage of Total Leaves',
+                                            tr('percentage_of_total_leaves'),
                                             style: TextStyle(
                                               color: Colors.grey[600],
                                               fontSize: 14,
@@ -1443,7 +1494,13 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                         const Icon(Icons.person, color: Colors.green, size: 18),
                         const SizedBox(width: 6),
                         Text(
-                          'Reviewed by: ${expertName.isNotEmpty ? expertName : 'Expert'}',
+                          tr(
+                            'reviewed_by',
+                            namedArgs: {
+                              'name':
+                                  expertName.isNotEmpty ? expertName : 'Expert',
+                            },
+                          ),
                           style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             color: Colors.green,
@@ -1453,9 +1510,9 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Expert Review',
-                      style: TextStyle(
+                    Text(
+                      tr('expert_review'),
+                      style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                       ),
@@ -1469,9 +1526,9 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Severity Assessment',
-                                style: TextStyle(
+                              Text(
+                                tr('severity_assessment'),
+                                style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -1488,10 +1545,11 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
-                                    (expertReview['severityAssessment']['level'] ??
-                                            'low')
-                                        .toString()
-                                        .toUpperCase(),
+                                    _formatSeverityLevel(
+                                      (expertReview['severityAssessment']['level'] ??
+                                              'low')
+                                          .toString(),
+                                    ),
                                     style: TextStyle(
                                       color: _getSeverityColor(
                                         expertReview['severityAssessment']['level'] ??
@@ -1516,9 +1574,9 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Treatment Plan',
-                                style: TextStyle(
+                              Text(
+                                tr('treatment_plan'),
+                                style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -1538,7 +1596,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                               bottom: 4,
                                             ),
                                             child: Text(
-                                              'Treatment: ${treatment['treatment']}',
+                                              '${tr('treatment')} ${treatment['treatment']}',
                                               style: const TextStyle(
                                                 fontWeight: FontWeight.w500,
                                               ),
@@ -1550,7 +1608,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                               bottom: 4,
                                             ),
                                             child: Text(
-                                              'Dosage: ${treatment['dosage']}',
+                                              '${tr('dosage')} ${treatment['dosage']}',
                                             ),
                                           ),
                                         if (treatment['frequency'] != null)
@@ -1559,7 +1617,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                               bottom: 4,
                                             ),
                                             child: Text(
-                                              'Frequency: ${treatment['frequency']}',
+                                              '${tr('frequency')} ${treatment['frequency']}',
                                             ),
                                           ),
                                         if (treatment['precautions'] != null)
@@ -1568,7 +1626,7 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                               bottom: 4,
                                             ),
                                             child: Text(
-                                              'Precautions: ${treatment['precautions']}',
+                                              '${tr('precautions')} ${treatment['precautions']}',
                                             ),
                                           ),
                                         const SizedBox(height: 8),
@@ -1631,9 +1689,9 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Expert Comment',
-                                style: TextStyle(
+                              Text(
+                                tr('expert_comment'),
+                                style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -1654,12 +1712,12 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                 ),
               )
             else if (!isCompleted)
-              const Padding(
-                padding: EdgeInsets.all(16),
+              Padding(
+                padding: const EdgeInsets.all(16),
                 child: Center(
                   child: Text(
-                    'Awaiting expert review...',
-                    style: TextStyle(
+                    tr('awaiting_expert_review'),
+                    style: const TextStyle(
                       fontSize: 16,
                       color: Colors.orange,
                       fontWeight: FontWeight.w500,
@@ -1683,6 +1741,19 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
         return Colors.green;
       default:
         return Colors.grey;
+    }
+  }
+
+  String _formatSeverityLevel(String severity) {
+    switch (severity.toLowerCase()) {
+      case 'high':
+        return tr('severity_high');
+      case 'medium':
+        return tr('severity_medium');
+      case 'low':
+        return tr('severity_low');
+      default:
+        return severity.toUpperCase();
     }
   }
 

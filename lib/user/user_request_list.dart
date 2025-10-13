@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hive/hive.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'user_request_detail.dart';
@@ -377,28 +378,26 @@ class _UserRequestListState extends State<UserRequestList> {
                   if (status == 'pending' || status == 'pending_review')
                     IconButton(
                       icon: const Icon(Icons.delete, color: Colors.red),
-                      tooltip: 'Delete Report',
+                      tooltip: tr('delete'),
                       onPressed: () async {
                         final confirm = await showDialog<bool>(
                           context: context,
                           builder:
                               (context) => AlertDialog(
-                                title: const Text('Delete Report'),
-                                content: const Text(
-                                  'Are you sure you want to delete this report? This action cannot be undone.',
-                                ),
+                                title: Text(tr('delete_report_title')),
+                                content: Text(tr('delete_report_confirm')),
                                 actions: [
                                   TextButton(
                                     onPressed:
                                         () => Navigator.of(context).pop(false),
-                                    child: const Text('Cancel'),
+                                    child: Text(tr('cancel')),
                                   ),
                                   TextButton(
                                     onPressed:
                                         () => Navigator.of(context).pop(true),
-                                    child: const Text(
-                                      'Delete',
-                                      style: TextStyle(color: Colors.red),
+                                    child: Text(
+                                      tr('delete'),
+                                      style: const TextStyle(color: Colors.red),
                                     ),
                                   ),
                                 ],
@@ -461,8 +460,8 @@ class _UserRequestListState extends State<UserRequestList> {
                                 SnackBar(
                                   content: Text(
                                     imageDeleteError
-                                        ? 'Report deleted, but some images could not be removed from storage.'
-                                        : 'Report deleted successfully!',
+                                        ? tr('session_deleted_with_errors')
+                                        : tr('session_deleted'),
                                   ),
                                   backgroundColor:
                                       imageDeleteError
@@ -480,7 +479,12 @@ class _UserRequestListState extends State<UserRequestList> {
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text('Failed to delete report: $e'),
+                                  content: Text(
+                                    tr(
+                                      'failed_to_delete_session',
+                                      namedArgs: {'error': '$e'},
+                                    ),
+                                  ),
                                   backgroundColor: Colors.red,
                                 ),
                               );
@@ -496,7 +500,7 @@ class _UserRequestListState extends State<UserRequestList> {
                 children: [
                   Expanded(
                     child: _buildStatItem(
-                      'Images',
+                      tr('images'),
                       totalImages.toString(),
                       Icons.image,
                     ),
@@ -504,7 +508,7 @@ class _UserRequestListState extends State<UserRequestList> {
                   Container(width: 1, height: 40, color: Colors.grey[300]),
                   Expanded(
                     child: _buildStatItem(
-                      'Detections',
+                      tr('detections'),
                       totalDetections.toString(),
                       Icons.search,
                     ),
@@ -521,12 +525,11 @@ class _UserRequestListState extends State<UserRequestList> {
   String _formatStatusLabel(String status) {
     switch (status) {
       case 'pending_review':
-        return 'Pending';
+        return tr('pending_review');
       case 'completed':
-        return 'Completed';
+        return tr('completed');
       default:
-        return status[0].toUpperCase() +
-            status.substring(1).replaceAll('_', ' ');
+        return tr('pending');
     }
   }
 

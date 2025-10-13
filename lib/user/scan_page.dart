@@ -28,7 +28,7 @@ class _ScanPageState extends State<ScanPage> {
         const SizedBox(height: 16),
         // Processing text
         Text(
-          'Processing...',
+          tr('processing_images'),
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w500,
@@ -137,19 +137,13 @@ class _ScanPageState extends State<ScanPage> {
                       _buildProcessingIndicator(),
                       const SizedBox(height: 16),
                       Text(
-                        'Analyzing ${images.length} image${images.length > 1 ? 's' : ''}...',
+                        tr('processing_please_wait'),
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: Colors.grey[600],
                           fontSize: 16,
                           fontWeight: FontWeight.w500,
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Please wait, this may take a moment...',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.grey[500], fontSize: 14),
                       ),
                     ],
                   ),
@@ -354,7 +348,7 @@ class _ScanPageState extends State<ScanPage> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Choose how you want to analyze your plants',
+                        tr('choose_analysis_method'),
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 16, color: Colors.grey[600]),
                       ),
@@ -370,7 +364,7 @@ class _ScanPageState extends State<ScanPage> {
                     onPressed: () => _takePicture(context),
                     icon: const Icon(Icons.camera_alt, size: 24),
                     label: Text(
-                      'Take Photo',
+                      tr('take_photo'),
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
@@ -397,7 +391,7 @@ class _ScanPageState extends State<ScanPage> {
                     onPressed: () => _selectFromGallery(context),
                     icon: const Icon(Icons.photo_library, size: 24),
                     label: Text(
-                      'Choose from Gallery',
+                      tr('select_from_gallery'),
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,

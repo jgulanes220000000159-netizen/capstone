@@ -695,6 +695,24 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  String _formatTimeAgo(DateTime submittedDate) {
+    final difference = DateTime.now().difference(submittedDate);
+    if (difference.inDays > 0) {
+      return tr('time_ago_days', namedArgs: {'count': '${difference.inDays}'});
+    } else if (difference.inHours > 0) {
+      return tr(
+        'time_ago_hours',
+        namedArgs: {'count': '${difference.inHours}'},
+      );
+    } else if (difference.inMinutes > 0) {
+      return tr(
+        'time_ago_minutes',
+        namedArgs: {'count': '${difference.inMinutes}'},
+      );
+    }
+    return tr('just_now');
+  }
+
   Widget _buildRecentActivitySection() {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -759,7 +777,7 @@ class _HomePageState extends State<HomePage> {
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            'No Recent Activity',
+                            tr('no_recent_activity'),
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
@@ -768,7 +786,7 @@ class _HomePageState extends State<HomePage> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Start scanning to see your activity here',
+                            tr('start_scanning_recent_activity'),
                             style: TextStyle(
                               fontSize: 14,
                               color: Colors.grey[600],
@@ -871,7 +889,7 @@ class _HomePageState extends State<HomePage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          'Recent Activity',
+                          tr('recent_activity'),
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w600,
@@ -884,9 +902,9 @@ class _HomePageState extends State<HomePage> {
                               _selectedIndex = 2;
                             });
                           },
-                          child: const Text(
-                            'View All',
-                            style: TextStyle(
+                          child: Text(
+                            tr('view_all'),
+                            style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
                             ),
@@ -930,7 +948,7 @@ class _HomePageState extends State<HomePage> {
                         Icon(Icons.history, size: 48, color: Colors.grey[400]),
                         const SizedBox(height: 12),
                         Text(
-                          'No Recent Activity',
+                          tr('no_recent_activity'),
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -939,7 +957,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Start scanning to see your activity here',
+                          tr('start_scanning_recent_activity'),
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.grey[600],
@@ -1029,7 +1047,7 @@ class _HomePageState extends State<HomePage> {
               Row(
                 children: [
                   Text(
-                    'Recent Activity',
+                    tr('recent_activity'),
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w600,
@@ -1048,9 +1066,12 @@ class _HomePageState extends State<HomePage> {
                     _selectedIndex = 2; // Navigate to Requests tab
                   });
                 },
-                child: const Text(
-                  'View All',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                child: Text(
+                  tr('view_all'),
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],
@@ -1140,36 +1161,47 @@ class _HomePageState extends State<HomePage> {
       case 'reviewed':
         statusColor = Colors.green;
         statusIcon = Icons.check_circle;
-        statusText = 'Completed';
+        statusText = tr('completed');
         break;
       case 'pending_review':
         statusColor = Colors.blue;
         statusIcon = Icons.rate_review;
-        statusText = 'In Review';
+        statusText = tr('pending_review');
         break;
       default:
         statusColor = Colors.orange;
         statusIcon = Icons.pending;
-        statusText = 'Pending';
+        statusText = tr('pending');
     }
 
-    // Get primary disease name
+    // Get primary disease name and normalize Tip Burn to Unknown
     String diseaseName = 'Analyzing...';
     if (diseaseSummary.isNotEmpty) {
-      diseaseName = diseaseSummary[0]['name'] ?? 'Unknown';
+      final rawName = (diseaseSummary[0]['name'] ?? '').toString();
+      final lower = rawName.toLowerCase();
+      if (lower == 'tip_burn' || lower == 'tip burn') {
+        diseaseName = 'Unknown';
+      } else if (lower == 'backterial_blackspot') {
+        diseaseName = 'Bacterial black spot';
+      } else if (lower == 'powdery_mildew') {
+        diseaseName = 'Powdery Mildew';
+      } else if (rawName.isEmpty) {
+        diseaseName = 'Unknown';
+      } else {
+        diseaseName = rawName
+            .split('_')
+            .map(
+              (word) =>
+                  word.isEmpty ? '' : word[0].toUpperCase() + word.substring(1),
+            )
+            .join(' ');
+      }
     }
 
     // Format date
-    String timeAgo = 'Just now';
+    String timeAgo = tr('just_now');
     if (submittedDate != null) {
-      final difference = DateTime.now().difference(submittedDate);
-      if (difference.inDays > 0) {
-        timeAgo = '${difference.inDays}d ago';
-      } else if (difference.inHours > 0) {
-        timeAgo = '${difference.inHours}h ago';
-      } else if (difference.inMinutes > 0) {
-        timeAgo = '${difference.inMinutes}m ago';
-      }
+      timeAgo = _formatTimeAgo(submittedDate);
     }
 
     return Padding(
@@ -1328,6 +1360,22 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+  }
+
+  // Normalize Firestore disease names to image map keys
+  String _normalizeDiseaseKey(String name) {
+    final lower = name.toLowerCase().trim();
+    final underscored = lower.replaceAll(' ', '_');
+    if (underscored == 'bacterial_black_spot' ||
+        underscored == 'bacterial_blackspot' ||
+        underscored == 'backterial_blackspot') {
+      // Keep asset key consistent with existing filename map
+      return 'backterial_blackspot';
+    }
+    if (underscored == 'powdery_mildew') {
+      return 'powdery_mildew';
+    }
+    return underscored;
   }
 
   @override
@@ -1577,11 +1625,13 @@ class _HomePageState extends State<HomePage> {
                                     ),
                                   ),
                                   const SizedBox(height: 8),
-                                  // Disease cards (from Firestore) - match image by name
+                                  // Disease cards (from Firestore) - match image by normalized name
                                   for (final name in diseaseNames)
                                     _buildDiseaseCard(
                                       name,
-                                      diseaseImageMap[name.toLowerCase()] ??
+                                      diseaseImageMap[_normalizeDiseaseKey(
+                                            name,
+                                          )] ??
                                           'assets/replace_disease/healthy_image.jpg',
                                     ),
                                   const SizedBox(height: 16),
@@ -1601,7 +1651,7 @@ class _HomePageState extends State<HomePage> {
                                     ),
                                   ),
                                   _buildDiseaseCard(
-                                    tr('healthy'),
+                                    'Healthy',
                                     'assets/replace_disease/healthy_image.jpg',
                                   ),
                                   const SizedBox(height: 16),
