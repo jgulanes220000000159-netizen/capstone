@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'login_page.dart';
 import 'edit_profile_page.dart';
+import 'login_page.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../about_app_page.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -12,6 +14,8 @@ import 'package:hive/hive.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/painting.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({Key? key}) : super(key: key);
@@ -53,6 +57,79 @@ class _ProfilePageState extends State<ProfilePage> {
       _notificationsEnabled =
           settingsBox.get('enableNotifications', defaultValue: true) as bool;
     } catch (_) {}
+  }
+
+  Future<void> _wipeAllLocalData() async {
+    try {
+      // Stop Firestore listeners and clear cache
+      try {
+        await FirebaseFirestore.instance.terminate();
+        await FirebaseFirestore.instance.clearPersistence();
+      } catch (_) {}
+
+      // Delete Hive boxes if present
+      for (final name in ['userBox', 'trackingBox', 'diseaseBox', 'settings']) {
+        try {
+          if (Hive.isBoxOpen(name)) {
+            final box = Hive.box(name);
+            await box.deleteFromDisk();
+          } else {
+            final box = await Hive.openBox(name);
+            await box.deleteFromDisk();
+          }
+        } catch (_) {}
+      }
+
+      // Clear Flutter image cache
+      try {
+        PaintingBinding.instance.imageCache.clear();
+        PaintingBinding.instance.imageCache.clearLiveImages();
+      } catch (_) {}
+
+      // Clear temporary directory contents
+      try {
+        final tmpDir = await getTemporaryDirectory();
+        if (await tmpDir.exists()) {
+          await tmpDir.delete(recursive: true);
+        }
+      } catch (_) {}
+    } catch (_) {}
+  }
+
+  void _showBlockingProgress(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.6),
+                  ),
+                  const SizedBox(width: 16),
+                  Flexible(
+                    child: Text(
+                      message,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+    );
   }
 
   void _loadMemberSince() {
@@ -1000,11 +1077,25 @@ class _ProfilePageState extends State<ProfilePage> {
                                     ),
                               );
                               if (shouldLogout == true) {
+                                _showBlockingProgress(
+                                  context,
+                                  tr('logging_out'),
+                                );
                                 // Sign out from Firebase
                                 await FirebaseAuth.instance.signOut();
-                                // Clear Hive userBox
-                                final userBox = await Hive.openBox('userBox');
-                                await userBox.clear();
+                                // Also sign out and disconnect Google so account chooser shows next time
+                                try {
+                                  final google = GoogleSignIn();
+                                  await google.signOut();
+                                  await google.disconnect();
+                                } catch (_) {}
+                                // Wipe local data but keep app running
+                                await _wipeAllLocalData();
+                                if (!mounted) return;
+                                Navigator.of(
+                                  context,
+                                  rootNavigator: true,
+                                ).pop(); // dismiss loader
                                 Navigator.pushAndRemoveUntil(
                                   context,
                                   MaterialPageRoute(
@@ -1377,7 +1468,12 @@ class _ProfilePageState extends State<ProfilePage> {
     final TextEditingController confirmPasswordController =
         TextEditingController();
     final ValueNotifier<String?> errorNotifier = ValueNotifier<String?>(null);
-    final ValueNotifier<bool> isLoadingNotifier = ValueNotifier<bool>(false);
+    final ValueNotifier<bool> isLoadingNotifier = ValueNotifier<bool>(
+      false,
+    ); // Visibility toggles for password fields
+    final ValueNotifier<bool> hideCurrent = ValueNotifier<bool>(true);
+    final ValueNotifier<bool> hideNew = ValueNotifier<bool>(true);
+    final ValueNotifier<bool> hideConfirm = ValueNotifier<bool>(true);
 
     showDialog(
       context: context,
@@ -1409,34 +1505,70 @@ class _ProfilePageState extends State<ProfilePage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: currentPasswordController,
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      labelText: tr('current_password'),
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      border: const OutlineInputBorder(),
-                    ),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: hideCurrent,
+                    builder:
+                        (context, hidden, _) => TextField(
+                          controller: currentPasswordController,
+                          obscureText: hidden,
+                          decoration: InputDecoration(
+                            labelText: tr('current_password'),
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                hidden
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                              ),
+                              onPressed: () => hideCurrent.value = !hidden,
+                            ),
+                          ),
+                        ),
                   ),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: newPasswordController,
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      labelText: tr('new_password'),
-                      prefixIcon: const Icon(Icons.lock),
-                      border: const OutlineInputBorder(),
-                    ),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: hideNew,
+                    builder:
+                        (context, hidden, _) => TextField(
+                          controller: newPasswordController,
+                          obscureText: hidden,
+                          decoration: InputDecoration(
+                            labelText: tr('new_password'),
+                            prefixIcon: const Icon(Icons.lock),
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                hidden
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                              ),
+                              onPressed: () => hideNew.value = !hidden,
+                            ),
+                          ),
+                        ),
                   ),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: confirmPasswordController,
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      labelText: tr('confirm_new_password'),
-                      prefixIcon: const Icon(Icons.lock),
-                      border: const OutlineInputBorder(),
-                    ),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: hideConfirm,
+                    builder:
+                        (context, hidden, _) => TextField(
+                          controller: confirmPasswordController,
+                          obscureText: hidden,
+                          decoration: InputDecoration(
+                            labelText: tr('confirm_new_password'),
+                            prefixIcon: const Icon(Icons.lock),
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                hidden
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                              ),
+                              onPressed: () => hideConfirm.value = !hidden,
+                            ),
+                          ),
+                        ),
                   ),
                   const SizedBox(height: 16),
                   ValueListenableBuilder<String?>(

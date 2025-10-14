@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'dart:io';
 // import 'dart:convert';
-// import 'package:path_provider/path_provider.dart';
+import 'package:path_provider/path_provider.dart';
 // import 'package:uuid/uuid.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -136,6 +136,36 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     return diseaseCounts[disease]! / totalLeaves;
   }
 
+  // Compress image without resizing dimensions. Only re-encodes pixels.
+  Future<File> _compressJpegSameSize(File original, {int quality = 85}) async {
+    final bytes = await original.readAsBytes();
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return original;
+
+    final encoded = img.encodeJpg(decoded, quality: quality);
+    final tempDir = await getTemporaryDirectory();
+    final out = File(
+      '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}_q$quality.jpg',
+    );
+    await out.writeAsBytes(encoded, flush: true);
+    return out;
+  }
+
+  // If file exceeds 30 MB, progressively lower quality (85→65) until under limit.
+  Future<File> _compressIfOver30Mb(File original) async {
+    const int limitBytes = 30 * 1024 * 1024;
+    final int sizeBytes = await original.length();
+    if (sizeBytes <= limitBytes) return original;
+
+    // Try descending quality steps; always re-encode from original bytes
+    for (final quality in [85, 80, 75, 70, 65]) {
+      final candidate = await _compressJpegSameSize(original, quality: quality);
+      if (await candidate.length() <= limitBytes) return candidate;
+    }
+    // Return the smallest (last) attempt if still over limit
+    return await _compressJpegSameSize(original, quality: 65);
+  }
+
   Future<void> _loadImageSizes() async {
     for (int index = 0; index < widget.imagePaths.length; index++) {
       final image = File(widget.imagePaths[index]);
@@ -200,7 +230,9 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       // --- Upload images to Firebase Storage and get URLs ---
       final List<Map<String, String>> uploadedImages = [];
       for (int i = 0; i < widget.imagePaths.length; i++) {
-        final file = File(widget.imagePaths[i]);
+        final originalFile = File(widget.imagePaths[i]);
+        // Compress only if over 30MB; keep dimensions unchanged
+        final file = await _compressIfOver30Mb(originalFile);
         final fileName =
             '${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
         final storagePath = 'leaf/$fileName';
@@ -1155,7 +1187,9 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       // --- Upload images to Firebase Storage and get URLs ---
       final List<Map<String, String>> uploadedImages2 = [];
       for (int i = 0; i < widget.imagePaths.length; i++) {
-        final file = File(widget.imagePaths[i]);
+        final originalFile = File(widget.imagePaths[i]);
+        // Compress only if over 30MB; keep dimensions unchanged
+        final file = await _compressIfOver30Mb(originalFile);
         final fileName =
             '${userId}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
         final storagePath = 'leaf/$fileName';

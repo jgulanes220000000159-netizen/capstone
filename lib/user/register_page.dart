@@ -329,13 +329,16 @@ class _RegisterPageState extends State<RegisterPage> {
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
-            padding: const EdgeInsets.all(24.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20.0,
+              vertical: 16.0,
+            ),
             child: Form(
               key: _formKey,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   // Logo and App Name
                   Center(
                     child: Column(
@@ -352,11 +355,11 @@ class _RegisterPageState extends State<RegisterPage> {
                               ),
                             ],
                           ),
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(6),
                           child: Image.asset(
-                            'assets/logo.png',
-                            width: 60,
-                            height: 60,
+                            'assets/applogo_header.png',
+                            width: 56,
+                            height: 56,
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -384,7 +387,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 20),
                   // Sign Up Text
                   const Text(
                     'Sign Up!',
@@ -398,7 +401,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     'Create an account, it\'s free',
                     style: TextStyle(color: Colors.white70, fontSize: 16),
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 20),
                   // Form Fields
                   _buildTextField(
                     label: 'Full Name',
@@ -407,7 +410,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     validator: _validateFullName,
                     keyboardType: TextInputType.name,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   _buildTextField(
                     label: 'Address',
                     controller: _addressController,
@@ -415,7 +418,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     validator: _validateAddress,
                     keyboardType: TextInputType.streetAddress,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   _buildTextField(
                     label: 'Phone Number',
                     controller: _phoneController,
@@ -427,7 +430,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       LengthLimitingTextInputFormatter(15),
                     ],
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   _buildTextField(
                     label: 'Email',
                     controller: _emailController,
@@ -435,7 +438,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     validator: _validateEmail,
                     keyboardType: TextInputType.emailAddress,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   _buildTextField(
                     label: 'Password',
                     controller: _passwordController,
@@ -513,7 +516,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       ),
                     ),
                   ],
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   _buildTextField(
                     label: 'Confirm Password',
                     controller: _confirmPasswordController,
@@ -535,12 +538,12 @@ class _RegisterPageState extends State<RegisterPage> {
                     ),
                     prefixIcon: Icons.lock_outline,
                   ),
+                  const SizedBox(height: 12),
                   const SizedBox(height: 20),
-                  const SizedBox(height: 30),
                   // Register Button
                   SizedBox(
                     width: double.infinity,
-                    height: 55,
+                    height: 52,
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _handleRegister,
                       style: ElevatedButton.styleFrom(
@@ -572,7 +575,7 @@ class _RegisterPageState extends State<RegisterPage> {
                               ),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
                   // Login Link
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,

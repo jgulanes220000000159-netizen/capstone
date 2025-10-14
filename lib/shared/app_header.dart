@@ -29,13 +29,25 @@ class AppHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white,
+              GestureDetector(
+                onTap: () {
+                  // Pop all routes until first (home) if possible
+                  Navigator.of(context).popUntil((route) => route.isFirst);
+                },
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                  ),
+                  padding: const EdgeInsets.all(2),
+                  child: Image.asset(
+                    'assets/applogo_header.png',
+                    width: 37,
+                    height: 37,
+                  ),
                 ),
-                padding: const EdgeInsets.all(8),
-                child: Image.asset('assets/logo.png', width: 30, height: 30),
               ),
               const SizedBox(width: 8),
               Text(

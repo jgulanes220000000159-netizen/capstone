@@ -1606,39 +1606,76 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Row(
                       children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          padding: const EdgeInsets.all(7),
-                          child: Image.asset(
-                            'assets/logo.png',
-                            width: 30,
-                            height: 30,
+                        GestureDetector(
+                          onTap: () {
+                            if (mounted) {
+                              setState(() {
+                                _selectedIndex = 0; // go to Home tab
+                              });
+                            }
+                          },
+                          child: Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            padding: const EdgeInsets.all(2),
+                            child: Image.asset(
+                              'assets/applogo_header.png',
+                              width: 37,
+                              height: 37,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
-                        const Text(
-                          'MangoSense',
-                          style: TextStyle(
-                            color: Colors.yellow,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            shadows: [
-                              Shadow(
-                                color: Colors.black26,
-                                offset: Offset(0, 2),
-                                blurRadius: 4,
+                        GestureDetector(
+                          onTap: () {
+                            if (mounted) {
+                              setState(() {
+                                _selectedIndex = 0; // go Home on title tap
+                              });
+                            }
+                          },
+                          child: Row(
+                            children: const [
+                              Text(
+                                'Mango',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black26,
+                                      offset: Offset(0, 2),
+                                      blurRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Text(
+                                'Sense',
+                                style: TextStyle(
+                                  color: Colors.yellow,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black26,
+                                      offset: Offset(0, 2),
+                                      blurRadius: 4,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),

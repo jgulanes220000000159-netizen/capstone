@@ -12,6 +12,9 @@ import 'package:hive/hive.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter/painting.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class ExpertProfile extends StatefulWidget {
   const ExpertProfile({Key? key}) : super(key: key);
@@ -51,6 +54,82 @@ class _ExpertProfileState extends State<ExpertProfile> {
           settingsBox.get('enableNotifications', defaultValue: true) as bool;
       _notificationsEnabled = enabled;
     } catch (_) {}
+  }
+
+  Future<void> _wipeAllLocalData() async {
+    try {
+      // Stop Firestore listeners and clear cache
+      try {
+        await FirebaseFirestore.instance.terminate();
+        await FirebaseFirestore.instance.clearPersistence();
+      } catch (_) {}
+
+      // Delete Hive boxes if present
+      for (final name in ['userBox', 'trackingBox', 'diseaseBox', 'settings']) {
+        try {
+          if (Hive.isBoxOpen(name)) {
+            final box = Hive.box(name);
+            await box.deleteFromDisk();
+          } else {
+            final box = await Hive.openBox(name);
+            await box.deleteFromDisk();
+          }
+        } catch (_) {}
+      }
+
+      // Clear Flutter image cache
+      try {
+        PaintingBinding.instance.imageCache.clear();
+        PaintingBinding.instance.imageCache.clearLiveImages();
+      } catch (_) {}
+
+      // Clear temporary directory contents
+      try {
+        final tmp = Directory.systemTemp;
+        // Attempt to wipe common temp area; ignore errors on restricted platforms
+        for (final f in tmp.listSync()) {
+          try {
+            f.deleteSync(recursive: true);
+          } catch (_) {}
+        }
+      } catch (_) {}
+    } catch (_) {}
+  }
+
+  void _showBlockingProgress(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.6),
+                  ),
+                  const SizedBox(width: 16),
+                  Flexible(
+                    child: Text(
+                      message,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+    );
   }
 
   void _listenToProfileUpdates() {
@@ -730,6 +809,10 @@ class _ExpertProfileState extends State<ExpertProfile> {
     final TextEditingController confirmPasswordController =
         TextEditingController();
     final ValueNotifier<String?> errorNotifier = ValueNotifier<String?>(null);
+    // Visibility toggles for password fields
+    final ValueNotifier<bool> hideCurrent = ValueNotifier<bool>(true);
+    final ValueNotifier<bool> hideNew = ValueNotifier<bool>(true);
+    final ValueNotifier<bool> hideConfirm = ValueNotifier<bool>(true);
 
     showDialog(
       context: context,
@@ -761,34 +844,70 @@ class _ExpertProfileState extends State<ExpertProfile> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: currentPasswordController,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Current Password',
-                      prefixIcon: Icon(Icons.lock_outline),
-                      border: OutlineInputBorder(),
-                    ),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: hideCurrent,
+                    builder:
+                        (context, hidden, _) => TextField(
+                          controller: currentPasswordController,
+                          obscureText: hidden,
+                          decoration: InputDecoration(
+                            labelText: 'Current Password',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                hidden
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                              ),
+                              onPressed: () => hideCurrent.value = !hidden,
+                            ),
+                          ),
+                        ),
                   ),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: newPasswordController,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'New Password',
-                      prefixIcon: Icon(Icons.lock),
-                      border: OutlineInputBorder(),
-                    ),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: hideNew,
+                    builder:
+                        (context, hidden, _) => TextField(
+                          controller: newPasswordController,
+                          obscureText: hidden,
+                          decoration: InputDecoration(
+                            labelText: 'New Password',
+                            prefixIcon: const Icon(Icons.lock),
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                hidden
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                              ),
+                              onPressed: () => hideNew.value = !hidden,
+                            ),
+                          ),
+                        ),
                   ),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: confirmPasswordController,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Confirm New Password',
-                      prefixIcon: Icon(Icons.lock),
-                      border: OutlineInputBorder(),
-                    ),
+                  ValueListenableBuilder<bool>(
+                    valueListenable: hideConfirm,
+                    builder:
+                        (context, hidden, _) => TextField(
+                          controller: confirmPasswordController,
+                          obscureText: hidden,
+                          decoration: InputDecoration(
+                            labelText: 'Confirm New Password',
+                            prefixIcon: const Icon(Icons.lock),
+                            border: const OutlineInputBorder(),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                hidden
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
+                              ),
+                              onPressed: () => hideConfirm.value = !hidden,
+                            ),
+                          ),
+                        ),
                   ),
                   const SizedBox(height: 16),
                   ValueListenableBuilder<String?>(
@@ -1229,11 +1348,25 @@ class _ExpertProfileState extends State<ExpertProfile> {
                                     ),
                               );
                               if (shouldLogout == true) {
+                                _showBlockingProgress(
+                                  context,
+                                  'Logging out...',
+                                );
                                 // Sign out from Firebase
                                 await FirebaseAuth.instance.signOut();
-                                // Clear Hive userBox
-                                final userBox = await Hive.openBox('userBox');
-                                await userBox.clear();
+                                // Also sign out and disconnect Google so chooser shows
+                                try {
+                                  final google = GoogleSignIn();
+                                  await google.signOut();
+                                  await google.disconnect();
+                                } catch (_) {}
+                                // Wipe local data but keep app running
+                                await _wipeAllLocalData();
+                                if (!mounted) return;
+                                Navigator.of(
+                                  context,
+                                  rootNavigator: true,
+                                ).pop(); // dismiss loader
                                 Navigator.pushAndRemoveUntil(
                                   context,
                                   MaterialPageRoute(

@@ -39,11 +39,11 @@ class AboutAppPage extends StatelessWidget {
                           shape: BoxShape.circle,
                           color: Colors.white,
                         ),
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(8),
                         child: Image.asset(
-                          'assets/logo.png',
-                          width: 80,
-                          height: 80,
+                          'assets/applogo_header.png',
+                          width: 84,
+                          height: 84,
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -125,7 +125,7 @@ class AboutAppPage extends StatelessWidget {
                 // Version Info
                 Center(
                   child: Text(
-                    tr('version', args: ['1.0.0']),
+                    tr('version 1.0.0'),
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.7),
                       fontSize: 14,

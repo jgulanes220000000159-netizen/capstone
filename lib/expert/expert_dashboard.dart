@@ -151,185 +151,234 @@ class _ExpertDashboardState extends State<ExpertDashboard> {
       }
     }
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Main content
-          Column(
-            children: [
-              SafeArea(
-                bottom: false,
-                child: SizedBox(
-                  height: 64, // Height of the header + padding
-                ),
-              ),
-              Expanded(
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 15),
-                    child:
-                        _pages.isNotEmpty
-                            ? _pages[_selectedIndex]
-                            : const Center(child: CircularProgressIndicator()),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          // Green header with shadow on top
-          SafeArea(
-            bottom: false,
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.green,
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(20),
-                  bottomRight: Radius.circular(20),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                    spreadRadius: 1,
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  // Logo with circular container (matching farmer side)
-                  Container(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white,
-                    ),
-                    padding: const EdgeInsets.all(8),
-                    child: Image.asset(
-                      'assets/logo.png',
-                      width: 30,
-                      height: 30,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Title only (no subtitle)
-                  Expanded(
-                    child: Text(
-                      getTitle(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                  // Expert Panel badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.3),
-                        width: 1,
-                      ),
-                    ),
-                    child: Text(
-                      'Expert Panel',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.white,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 12,
-              offset: const Offset(0, -4),
-              spreadRadius: 1,
+      child: Scaffold(
+        body: Stack(
+          children: [
+            // Main content
+            Column(
+              children: [
+                SafeArea(
+                  bottom: false,
+                  child: SizedBox(
+                    height: 64, // Height of the header + padding
+                  ),
+                ),
+                Expanded(
+                  child: SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 15),
+                      child:
+                          _pages.isNotEmpty
+                              ? _pages[_selectedIndex]
+                              : const Center(
+                                child: CircularProgressIndicator(),
+                              ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: _onItemTapped,
-          selectedItemColor: Colors.green,
-          type: BottomNavigationBarType.fixed,
-          elevation: 0,
-          items: [
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.home),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  const Icon(Icons.list_alt),
-                  if (_pendingNotifications > 0)
-                    Positioned(
-                      right: -6,
-                      top: -6,
+            // Green header with shadow on top
+            SafeArea(
+              bottom: false,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green,
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(20),
+                    bottomRight: Radius.circular(20),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    // Logo with circular container (matching farmer side)
+                    GestureDetector(
+                      onTap: () => _onItemTapped(0),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 2,
-                        ),
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
-                          color: Colors.red,
                           shape: BoxShape.circle,
+                          color: Colors.white,
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withOpacity(0.2),
-                              blurRadius: 2,
-                              offset: const Offset(0, 1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
-                        constraints: const BoxConstraints(
-                          minWidth: 16,
-                          minHeight: 16,
-                        ),
-                        child: Text(
-                          _pendingNotifications > 9
-                              ? '9+'
-                              : '$_pendingNotifications',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          textAlign: TextAlign.center,
+                        padding: const EdgeInsets.all(2),
+                        child: Image.asset(
+                          'assets/applogo_header.png',
+                          width: 37,
+                          height: 37,
                         ),
                       ),
                     ),
-                ],
+                    const SizedBox(width: 8),
+                    // App title like farmer side
+                    GestureDetector(
+                      onTap: () => _onItemTapped(0),
+                      child: Row(
+                        children: const [
+                          Text(
+                            'Mango',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black26,
+                                  offset: Offset(0, 2),
+                                  blurRadius: 4,
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            'Sense',
+                            style: TextStyle(
+                              color: Colors.yellow,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black26,
+                                  offset: Offset(0, 2),
+                                  blurRadius: 4,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    // Right badge shows current page title
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        getTitle(),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              label: 'Requests',
-            ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.local_hospital),
-              label: 'Diseases',
-            ),
-            const BottomNavigationBarItem(
-              icon: Icon(Icons.person),
-              label: 'Profile',
             ),
           ],
+        ),
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 12,
+                offset: const Offset(0, -4),
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: BottomNavigationBar(
+            currentIndex: _selectedIndex,
+            onTap: _onItemTapped,
+            selectedItemColor: Colors.green,
+            type: BottomNavigationBarType.fixed,
+            elevation: 0,
+            items: [
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.home),
+                label: 'Home',
+              ),
+              BottomNavigationBarItem(
+                icon: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    const Icon(Icons.list_alt),
+                    if (_pendingNotifications > 0)
+                      Positioned(
+                        right: -6,
+                        top: -6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.2),
+                                blurRadius: 2,
+                                offset: const Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 16,
+                            minHeight: 16,
+                          ),
+                          child: Text(
+                            _pendingNotifications > 9
+                                ? '9+'
+                                : '$_pendingNotifications',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                label: 'Requests',
+              ),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.local_hospital),
+                label: 'Diseases',
+              ),
+              const BottomNavigationBarItem(
+                icon: Icon(Icons.person),
+                label: 'Profile',
+              ),
+            ],
+          ),
         ),
       ),
     );

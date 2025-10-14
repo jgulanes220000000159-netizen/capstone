@@ -65,6 +65,8 @@ flutter:
     - assets/labelsv2.txt
     - assets/v24.tflite
     - assets/logo.png
+    - assets/applogo.png
+    - assets/applogo_header.png
     - assets/google-icon-1.png
     - assets/replace_disease/
     - assets/lang/en.json

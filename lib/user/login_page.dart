@@ -489,14 +489,17 @@ class _LoginPageState extends State<LoginPage> {
         child: SingleChildScrollView(
           child: Center(
             child: Container(
-              constraints: const BoxConstraints(maxWidth: 400),
-              padding: const EdgeInsets.all(24.0),
+              constraints: const BoxConstraints(maxWidth: 380),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20.0,
+                vertical: 16.0,
+              ),
               child: Form(
                 key: _formKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 50),
+                    const SizedBox(height: 24),
                     // Logo and App Name
                     Center(
                       child: Column(
@@ -506,14 +509,14 @@ class _LoginPageState extends State<LoginPage> {
                               shape: BoxShape.circle,
                               color: Colors.white,
                             ),
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(6),
                             child: Image.asset(
-                              'assets/logo.png',
-                              width: 60,
-                              height: 60,
+                              'assets/applogo_header.png',
+                              width: 56,
+                              height: 56,
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 12),
                           const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -538,7 +541,7 @@ class _LoginPageState extends State<LoginPage> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 50),
+                    const SizedBox(height: 24),
                     // Welcome Text
                     const Text(
                       'Welcome Back!',
@@ -552,7 +555,7 @@ class _LoginPageState extends State<LoginPage> {
                       'Log in to your account now',
                       style: TextStyle(color: Colors.white70, fontSize: 16),
                     ),
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 20),
                     // Email Field
                     TextFormField(
                       controller: _emailController,
@@ -580,7 +583,7 @@ class _LoginPageState extends State<LoginPage> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 12),
                     // Password Field
                     TextFormField(
                       controller: _passwordController,
@@ -622,7 +625,7 @@ class _LoginPageState extends State<LoginPage> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     // Forgot Password
                     Align(
                       alignment: Alignment.centerRight,
@@ -634,11 +637,11 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 16),
                     // Login Button
                     SizedBox(
                       width: double.infinity,
-                      height: 55,
+                      height: 52,
                       child: ElevatedButton(
                         onPressed: _isLoading ? null : _handleLogin,
                         style: ElevatedButton.styleFrom(
@@ -669,11 +672,11 @@ class _LoginPageState extends State<LoginPage> {
                                 ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     // Google Sign-In Button
                     SizedBox(
                       width: double.infinity,
-                      height: 55,
+                      height: 52,
                       child: ElevatedButton.icon(
                         onPressed: _isLoading ? null : _handleGoogleSignIn,
                         style: ElevatedButton.styleFrom(
@@ -711,7 +714,7 @@ class _LoginPageState extends State<LoginPage> {
                                 ),
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     // Divider
                     Row(
                       children: [
@@ -730,7 +733,7 @@ class _LoginPageState extends State<LoginPage> {
                         Expanded(child: Divider(color: Colors.white70)),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     // Guest Mode Button
 
                     // Sign Up Link
