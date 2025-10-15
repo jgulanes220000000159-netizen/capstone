@@ -58,6 +58,17 @@ class _ExpertProfileState extends State<ExpertProfile> {
 
   Future<void> _wipeAllLocalData() async {
     try {
+      // Clear FCM token from current user's Firestore document before logout
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .update({'fcmToken': FieldValue.delete()});
+        }
+      } catch (_) {}
+
       // Stop Firestore listeners and clear cache
       try {
         await FirebaseFirestore.instance.terminate();

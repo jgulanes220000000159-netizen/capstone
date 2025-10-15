@@ -12,7 +12,6 @@ import 'package:hive/hive.dart';
 import 'package:image/image.dart' as img;
 import 'tflite_detector.dart';
 import 'detection_painter.dart';
-import 'detection_screen.dart';
 // import 'detection_carousel_screen.dart';
 // import 'detection_result_card.dart';
 // import 'tracking_page.dart';
@@ -66,7 +65,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     if (localDiseaseInfo != null && localDiseaseInfo is Map) {
       setState(() {
         _diseaseInfo = Map<String, Map<String, dynamic>>.from(
-          (localDiseaseInfo as Map).map(
+          localDiseaseInfo.map(
             (k, v) =>
                 MapEntry(k as String, Map<String, dynamic>.from(v as Map)),
           ),
@@ -649,7 +648,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
           final localDiseaseInfo = diseaseBox.get('diseaseInfo');
           if (localDiseaseInfo != null && localDiseaseInfo is Map) {
             _diseaseInfo = Map<String, Map<String, dynamic>>.from(
-              (localDiseaseInfo as Map).map(
+              localDiseaseInfo.map(
                 (k, v) =>
                     MapEntry(k as String, Map<String, dynamic>.from(v as Map)),
               ),
@@ -1039,59 +1038,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
         final imageSize = imageSizes[imagePath] ?? const Size(1, 1);
 
         return GestureDetector(
-          onTap: () {
-            showDialog(
-              context: context,
-              barrierDismissible: true,
-              builder:
-                  (context) => Dialog(
-                    insetPadding: EdgeInsets.zero,
-                    backgroundColor: Colors.black,
-                    child: Stack(
-                      children: [
-                        DetectionScreen(
-                          imagePath: imagePath,
-                          results: results,
-                          imageSize: imageSize,
-                          allImagePaths: widget.imagePaths,
-                          currentIndex: index,
-                          allResults: widget.allResults.values.toList(),
-                          imageSizes:
-                              widget.imagePaths
-                                  .map(
-                                    (path) =>
-                                        imageSizes[path] ?? const Size(1, 1),
-                                  )
-                                  .toList(),
-                          showAppBar: false,
-                        ),
-                        Positioned(
-                          top: 24,
-                          left: 16,
-                          child: Material(
-                            color: Colors.transparent,
-                            child: Ink(
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.6),
-                                shape: BoxShape.circle,
-                              ),
-                              child: IconButton(
-                                icon: const Icon(
-                                  Icons.arrow_back,
-                                  color: Colors.white,
-                                  size: 32,
-                                ),
-                                onPressed: () => Navigator.of(context).pop(),
-                                tooltip: tr('back'),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-            );
-          },
+          onTap: () => _showImageCarousel(index),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final widgetW = constraints.maxWidth;
@@ -1165,6 +1112,21 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
           ),
         );
       },
+    );
+  }
+
+  void _showImageCarousel(int initialIndex) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder:
+          (context) => _ImageCarouselViewer(
+            imagePaths: widget.imagePaths,
+            allResults: widget.allResults,
+            imageSizes: imageSizes,
+            initialIndex: initialIndex,
+            showBoundingBoxes: showBoundingBoxes,
+          ),
     );
   }
 
@@ -1539,6 +1501,326 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                 ),
               )
               : null,
+    );
+  }
+}
+
+class _ImageCarouselViewer extends StatefulWidget {
+  final List<String> imagePaths;
+  final Map<int, List<DetectionResult>> allResults;
+  final Map<String, Size> imageSizes;
+  final int initialIndex;
+  final bool showBoundingBoxes;
+
+  const _ImageCarouselViewer({
+    required this.imagePaths,
+    required this.allResults,
+    required this.imageSizes,
+    required this.initialIndex,
+    required this.showBoundingBoxes,
+  });
+
+  @override
+  State<_ImageCarouselViewer> createState() => _ImageCarouselViewerState();
+}
+
+class _ImageCarouselViewerState extends State<_ImageCarouselViewer> {
+  late PageController _pageController;
+  late int _currentIndex;
+  bool _showControls = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _toggleControls() {
+    setState(() {
+      _showControls = !_showControls;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: EdgeInsets.zero,
+      backgroundColor: Colors.black,
+      child: Stack(
+        children: [
+          // Full screen image carousel
+          GestureDetector(
+            onTap: _toggleControls,
+            child: PageView.builder(
+              controller: _pageController,
+              onPageChanged: (index) {
+                setState(() {
+                  _currentIndex = index;
+                });
+              },
+              itemCount: widget.imagePaths.length,
+              itemBuilder: (context, index) {
+                final imagePath = widget.imagePaths[index];
+                final results = widget.allResults[index] ?? [];
+                final imageSize =
+                    widget.imageSizes[imagePath] ?? const Size(1, 1);
+
+                return Stack(
+                  children: [
+                    // Image layer - always centered
+                    Center(
+                      child: InteractiveViewer(
+                        minScale: 0.5,
+                        maxScale: 3.0,
+                        child: Image.file(
+                          File(imagePath),
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: Colors.grey[800],
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.error_outline,
+                                      color: Colors.white,
+                                      size: 64,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      tr('error_loading_image'),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    // Bounding boxes overlay - positioned absolutely
+                    if (widget.showBoundingBoxes &&
+                        results.isNotEmpty &&
+                        widget.imageSizes.isNotEmpty)
+                      Positioned.fill(
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            // Calculate the actual displayed image size and position
+                            final screenSize = MediaQuery.of(context).size;
+                            final imageAspect =
+                                imageSize.width / imageSize.height;
+                            final screenAspect =
+                                screenSize.width / screenSize.height;
+
+                            Size displayedImageSize;
+                            Offset displayedImageOffset;
+
+                            if (screenAspect > imageAspect) {
+                              // Screen is wider than image - image fits height
+                              displayedImageSize = Size(
+                                screenSize.height * imageAspect,
+                                screenSize.height,
+                              );
+                              displayedImageOffset = Offset(
+                                (screenSize.width - displayedImageSize.width) /
+                                    2,
+                                0,
+                              );
+                            } else {
+                              // Screen is taller than image - image fits width
+                              displayedImageSize = Size(
+                                screenSize.width,
+                                screenSize.width / imageAspect,
+                              );
+                              displayedImageOffset = Offset(
+                                0,
+                                (screenSize.height -
+                                        displayedImageSize.height) /
+                                    2,
+                              );
+                            }
+
+                            return CustomPaint(
+                              painter: DetectionPainter(
+                                results: results,
+                                originalImageSize: imageSize,
+                                displayedImageSize: displayedImageSize,
+                                displayedImageOffset: displayedImageOffset,
+                              ),
+                              size: screenSize,
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+          // Controls overlay
+          if (_showControls) ...[
+            // Top controls
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                  ),
+                ),
+                padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top + 16,
+                  left: 16,
+                  right: 16,
+                  bottom: 16,
+                ),
+                child: Row(
+                  children: [
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () => Navigator.of(context).pop(),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Icon(
+                            Icons.arrow_back,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${_currentIndex + 1} / ${widget.imagePaths.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    // Detection count
+                    if (widget.allResults[_currentIndex]?.isNotEmpty == true)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.visibility,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${widget.allResults[_currentIndex]!.length}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            // Bottom controls with page indicators
+            if (widget.imagePaths.length > 1)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.7),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                  padding: EdgeInsets.only(
+                    top: 16,
+                    left: 16,
+                    right: 16,
+                    bottom: MediaQuery.of(context).padding.bottom + 16,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(
+                      widget.imagePaths.length,
+                      (index) => GestureDetector(
+                        onTap: () {
+                          _pageController.animateToPage(
+                            index,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOut,
+                          );
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          width: _currentIndex == index ? 24 : 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(4),
+                            color:
+                                _currentIndex == index
+                                    ? Colors.white
+                                    : Colors.white.withOpacity(0.5),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
     );
   }
 }
