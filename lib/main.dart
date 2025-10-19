@@ -69,25 +69,48 @@ void main() {
             await box.delete('userProfile');
             return;
           }
-          await box.put('isLoggedIn', true);
-          // Ensure minimal profile is saved locally for routing
-          Map? profile = box.get('userProfile') as Map?;
-          if (profile == null || profile['userId'] != user.uid) {
-            try {
-              final doc =
-                  await FirebaseFirestore.instance
-                      .collection('users')
-                      .doc(user.uid)
-                      .get();
-              final data = doc.data() ?? {};
-              final updated = {
-                'userId': user.uid,
-                'fullName': data['fullName'] ?? profile?['fullName'] ?? '',
-                'email': data['email'] ?? profile?['email'] ?? user.email ?? '',
-                'role': data['role'] ?? profile?['role'],
-              };
-              await box.put('userProfile', updated);
-            } catch (_) {}
+
+          // Check user status before saving login state
+          try {
+            final doc =
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.uid)
+                    .get();
+
+            if (doc.exists) {
+              final data = doc.data() as Map<String, dynamic>;
+              final status = data['status'];
+
+              // Only save login state if user is active
+              if (status == 'active') {
+                await box.put('isLoggedIn', true);
+                // Ensure minimal profile is saved locally for routing
+                Map? profile = box.get('userProfile') as Map?;
+                if (profile == null || profile['userId'] != user.uid) {
+                  final updated = {
+                    'userId': user.uid,
+                    'fullName': data['fullName'] ?? profile?['fullName'] ?? '',
+                    'email':
+                        data['email'] ?? profile?['email'] ?? user.email ?? '',
+                    'role': data['role'] ?? profile?['role'],
+                  };
+                  await box.put('userProfile', updated);
+                }
+              } else {
+                // User is not active, clear any existing login state
+                await box.put('isLoggedIn', false);
+                await box.delete('userProfile');
+              }
+            } else {
+              // User document doesn't exist, clear login state
+              await box.put('isLoggedIn', false);
+              await box.delete('userProfile');
+            }
+          } catch (_) {
+            // On error, don't save login state
+            await box.put('isLoggedIn', false);
+            await box.delete('userProfile');
           }
         });
       } catch (_) {}
@@ -232,8 +255,39 @@ class CapstoneApp extends StatelessWidget {
 
     final userProfile = box.get('userProfile');
     final role = userProfile != null ? userProfile['role'] : null;
+    final userId = userProfile != null ? userProfile['userId'] : null;
 
     print('📱 User logged in as: $role');
+
+    // Check user approval status from Firestore
+    if (userId != null) {
+      try {
+        final doc =
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(userId)
+                .get();
+
+        if (doc.exists) {
+          final data = doc.data() as Map<String, dynamic>;
+          final status = data['status'];
+
+          // If user is not active, clear login state and show login page
+          if (status != 'active') {
+            print('📱 User status is $status, clearing login state');
+            await box.put('isLoggedIn', false);
+            await box.delete('userProfile');
+            return const LoginPage();
+          }
+        }
+      } catch (e) {
+        print('📱 Error checking user status: $e');
+        // On error, clear login state to be safe
+        await box.put('isLoggedIn', false);
+        await box.delete('userProfile');
+        return const LoginPage();
+      }
+    }
 
     if (role == 'expert') {
       return const ExpertDashboard();

@@ -206,16 +206,17 @@ class _RegisterPageState extends State<RegisterPage> {
               ],
             ),
             content: Text(
-              'Account created successfully! Awaiting admin approval. You will receive an email notification once your account is approved.',
+              'Account created successfully! Your account is now pending admin approval. You will receive an email notification once your account is approved. Please use the login page to check your account status.',
               style: TextStyle(fontSize: 16),
             ),
             actions: [
               TextButton(
                 onPressed: () {
                   Navigator.of(context).pop();
-                  Navigator.pushReplacement(
+                  Navigator.pushAndRemoveUntil(
                     context,
                     MaterialPageRoute(builder: (context) => const LoginPage()),
+                    (route) => false,
                   );
                 },
                 child: Text(
@@ -586,11 +587,12 @@ class _RegisterPageState extends State<RegisterPage> {
                       ),
                       TextButton(
                         onPressed: () {
-                          Navigator.pushReplacement(
+                          Navigator.pushAndRemoveUntil(
                             context,
                             MaterialPageRoute(
                               builder: (context) => const LoginPage(),
                             ),
+                            (route) => false,
                           );
                         },
                         child: const Text(
