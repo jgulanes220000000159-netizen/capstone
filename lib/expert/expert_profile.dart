@@ -255,30 +255,93 @@ class _ExpertProfileState extends State<ExpertProfile> {
     }
   }
 
-  void _loadMemberSince(User user) {
+  void _loadMemberSince(User user) async {
     try {
-      final creationTime = user.metadata.creationTime;
-      if (creationTime != null) {
-        // Format as "Month Year" (e.g., "January 2024")
-        final monthNames = [
-          tr('january'),
-          tr('february'),
-          tr('march'),
-          tr('april'),
-          tr('may'),
-          tr('june'),
-          tr('july'),
-          tr('august'),
-          tr('september'),
-          tr('october'),
-          tr('november'),
-          tr('december'),
-        ];
-        final month = monthNames[creationTime.month - 1];
-        final year = creationTime.year;
+      // Fetch user data from Firestore
+      final userDoc =
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
 
+      if (userDoc.exists) {
+        final data = userDoc.data() as Map<String, dynamic>;
+
+        // Debug: Print all data to see what we have
+        print('DEBUG: User data keys: ${data.keys.toList()}');
+        print('DEBUG: acceptedAt: ${data['acceptedAt']}');
+        print('DEBUG: createdAt: ${data['createdAt']}');
+
+        // Priority: acceptedAt > createdAt
+        dynamic dateValue;
+        if (data['acceptedAt'] != null) {
+          dateValue = data['acceptedAt'];
+          print('DEBUG: Using acceptedAt: $dateValue');
+        } else if (data['createdAt'] != null) {
+          dateValue = data['createdAt'];
+          print('DEBUG: Using createdAt: $dateValue');
+        } else {
+          print('DEBUG: No date fields found');
+        }
+
+        if (dateValue != null) {
+          // Parse the date - handle Firestore Timestamps
+          DateTime? memberDate;
+          try {
+            // Handle different date formats
+            if (dateValue is DateTime) {
+              memberDate = dateValue;
+            } else if (dateValue is Timestamp) {
+              // Handle Firestore Timestamp
+              memberDate = dateValue.toDate();
+              print('DEBUG: Converted Timestamp to DateTime: $memberDate');
+            } else if (dateValue is String) {
+              // Try parsing the full date string
+              memberDate = DateTime.parse(
+                dateValue.replaceAll(' at ', ' ').split(' UTC')[0],
+              );
+            }
+          } catch (e) {
+            print('Error parsing date: $e');
+            // Fallback to current time if parsing fails
+            memberDate = DateTime.now();
+          }
+
+          if (memberDate != null) {
+            // Format as "Month Year" (e.g., "January 2024")
+            final monthNames = [
+              tr('january'),
+              tr('february'),
+              tr('march'),
+              tr('april'),
+              tr('may'),
+              tr('june'),
+              tr('july'),
+              tr('august'),
+              tr('september'),
+              tr('october'),
+              tr('november'),
+              tr('december'),
+            ];
+            final month = monthNames[memberDate.month - 1];
+            final year = memberDate.year;
+
+            setState(() {
+              _memberSince = '$month $year';
+            });
+          } else {
+            setState(() {
+              _memberSince = 'N/A';
+            });
+          }
+        } else {
+          setState(() {
+            _memberSince = 'N/A';
+          });
+        }
+      } else {
         setState(() {
-          _memberSince = '$month $year';
+          _memberSince = 'N/A';
         });
       }
     } catch (e) {
