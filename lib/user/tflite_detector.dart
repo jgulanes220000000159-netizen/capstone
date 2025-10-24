@@ -21,9 +21,15 @@ class DetectionResult {
 class TFLiteDetector {
   Interpreter? _interpreter;
   List<String> _labels = [];
-  static const double confidenceThreshold = 0.1;
-  static const double nmsThreshold = 0.1;
+  static const double confidenceThreshold =
+      0.5; // Set to 50% confidence threshold
+  static const double nmsThreshold =
+      0.3; // Increased from 0.1 to 0.3 to allow more detections
   static const int inputSize = 640;
+
+  // Configurable thresholds for testing
+  double _currentConfidenceThreshold = confidenceThreshold;
+  double _currentNmsThreshold = nmsThreshold;
 
   img.Image letterbox(img.Image src, int targetW, int targetH) {
     final srcW = src.width;
@@ -50,7 +56,7 @@ class TFLiteDetector {
               .map((e) => e.trim())
               .where((e) => e.isNotEmpty)
               .toList();
-      _interpreter = await Interpreter.fromAsset('assets/v24.tflite');
+      _interpreter = await Interpreter.fromAsset('assets/v38.tflite');
       print('✅ Model loaded with ${_labels.length} labels');
     } catch (e) {
       print('❌ Failed to load model: $e');
@@ -83,7 +89,9 @@ class TFLiteDetector {
       final inputShape = [1, inputSize, inputSize, 3];
       final outputShape = [
         1,
-        11, // 4 bbox + 1 obj + 6 class scores
+        5 +
+            _labels
+                .length, // 4 bbox + 1 obj + N class scores (dynamic based on labels)
         8400,
       ];
 
@@ -97,12 +105,23 @@ class TFLiteDetector {
       final results = <DetectionResult>[];
       final outputData = output[0];
 
+      print('🔍 Detection Debug Info:');
+      print('   - Image size: ${image.width}x${image.height}');
+      print('   - Input size: ${inputSize}x${inputSize}');
+      print('   - Labels loaded: ${_labels.length} (${_labels.join(", ")})');
+      print('   - Confidence threshold: $_currentConfidenceThreshold');
+      print('   - NMS threshold: $_currentNmsThreshold');
+
       final detections = <DetectionResult>[];
+      int totalDetections = 0;
+      int validDetections = 0;
+
       for (var i = 0; i < outputData[0].length; i++) {
+        totalDetections++;
         var maxConf = 0.0;
         var maxClass = 0;
 
-        for (var c = 5; c < 11; c++) {
+        for (var c = 5; c < 5 + _labels.length; c++) {
           final conf = outputData[c][i];
           if (conf > maxConf) {
             maxConf = conf;
@@ -110,15 +129,16 @@ class TFLiteDetector {
           }
         }
 
-        if (maxConf > confidenceThreshold) {
+        if (maxConf > _currentConfidenceThreshold) {
+          validDetections++;
           // YOLO outputs normalized coordinates (0-1) for center point and dimensions
           final centerX = outputData[0][i];
           final centerY = outputData[1][i];
           final width = outputData[2][i];
           final height = outputData[3][i];
 
-          // Calculate letterboxing parameters
-          final scale = inputSize / max(image.width, image.height);
+          // Calculate letterboxing parameters - fixed logic
+          final scale = min(inputSize / image.width, inputSize / image.height);
           final newUnpaddedW = image.width * scale;
           final newUnpaddedH = image.height * scale;
           final padX = (inputSize - newUnpaddedW) / 2;
@@ -165,11 +185,31 @@ class TFLiteDetector {
           final intersectionArea = intersection.width * intersection.height;
           final otherArea = other.boundingBox.width * other.boundingBox.height;
           final iou = intersectionArea / otherArea;
-          return iou > nmsThreshold;
+          return iou > _currentNmsThreshold;
         });
       }
 
-      print('Detected ${results.length} objects after NMS');
+      print('📊 Detection Summary:');
+      print('   - Total raw detections: $totalDetections');
+      print('   - Valid detections (above threshold): $validDetections');
+      print('   - Final detections after NMS: ${results.length}');
+
+      if (results.isNotEmpty) {
+        print('🎯 Detected objects:');
+        for (var result in results) {
+          print(
+            '   - ${result.label}: ${(result.confidence * 100).toStringAsFixed(1)}% at ${result.boundingBox}',
+          );
+        }
+      } else {
+        print('⚠️  No objects detected! Consider:');
+        print(
+          '   - Lowering confidence threshold (currently $_currentConfidenceThreshold)',
+        );
+        print('   - Checking if model is appropriate for your images');
+        print('   - Verifying image quality and lighting');
+      }
+
       return results;
     } catch (e) {
       print('❌ Error during detection: $e');
@@ -182,6 +222,46 @@ class TFLiteDetector {
       return _labels[classId];
     }
     return 'Unknown($classId)';
+  }
+
+  // Method to adjust thresholds for better detection
+  void setThresholds({double? confidence, double? nms}) {
+    if (confidence != null) {
+      _currentConfidenceThreshold = confidence;
+      print('🔧 Confidence threshold set to: $confidence');
+    }
+    if (nms != null) {
+      _currentNmsThreshold = nms;
+      print('🔧 NMS threshold set to: $nms');
+    }
+  }
+
+  // Method to reset to default thresholds
+  void resetThresholds() {
+    _currentConfidenceThreshold = confidenceThreshold;
+    _currentNmsThreshold = nmsThreshold;
+    print(
+      '🔄 Thresholds reset to defaults: confidence=$confidenceThreshold, nms=$nmsThreshold',
+    );
+  }
+
+  // Method to test different threshold combinations
+  Future<List<DetectionResult>> detectWithThresholds(
+    String imagePath, {
+    double? confidence,
+    double? nms,
+  }) async {
+    final originalConfidence = _currentConfidenceThreshold;
+    final originalNms = _currentNmsThreshold;
+
+    setThresholds(confidence: confidence, nms: nms);
+    final results = await detectDiseases(imagePath);
+
+    // Restore original thresholds
+    _currentConfidenceThreshold = originalConfidence;
+    _currentNmsThreshold = originalNms;
+
+    return results;
   }
 
   void closeModel() {
