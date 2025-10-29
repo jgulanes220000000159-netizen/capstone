@@ -593,6 +593,28 @@ class _ScanRequestListState extends State<ScanRequestList>
                             color: Colors.redAccent,
                           ),
                           onPressed: () async {
+                            // Block deletion if another expert has an active lock
+                            if (isLockedByOther) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Row(
+                                    children: const [
+                                      Icon(Icons.lock, color: Colors.white),
+                                      SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          'This report is being reviewed. Deletion is disabled until it is unlocked.',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  backgroundColor: Colors.blue.shade700,
+                                  duration: const Duration(seconds: 3),
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
+                              return;
+                            }
                             final docId = (request['_docId'] ?? '').toString();
                             if (docId.isEmpty) {
                               await showDialog<void>(
@@ -676,6 +698,68 @@ class _ScanRequestListState extends State<ScanRequestList>
                               );
                               return;
                             }
+                            // Re-check current lock from Firestore to avoid races
+                            try {
+                              final docSnap =
+                                  await FirebaseFirestore.instance
+                                      .collection('scan_requests')
+                                      .doc(docId)
+                                      .get();
+                              if (docSnap.exists) {
+                                final data =
+                                    docSnap.data() as Map<String, dynamic>;
+                                final reviewingByUid = data['reviewingByUid'];
+                                final reviewingAt = data['reviewingAt'];
+                                final currentUserUid =
+                                    FirebaseAuth.instance.currentUser?.uid;
+                                bool lockedNow = false;
+                                if (reviewingByUid != null &&
+                                    reviewingByUid != currentUserUid &&
+                                    reviewingAt != null) {
+                                  try {
+                                    final lockTime = DateTime.parse(
+                                      reviewingAt.toString(),
+                                    );
+                                    final diff =
+                                        DateTime.now()
+                                            .difference(lockTime)
+                                            .inMinutes;
+                                    lockedNow = diff < 15;
+                                  } catch (_) {
+                                    lockedNow = false;
+                                  }
+                                }
+                                if (lockedNow) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Row(
+                                          children: [
+                                            const Icon(
+                                              Icons.lock,
+                                              color: Colors.white,
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Text(
+                                                'This report is currently being reviewed and cannot be deleted.',
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        backgroundColor: Colors.blue.shade700,
+                                        duration: const Duration(seconds: 3),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
+                                  return;
+                                }
+                              }
+                            } catch (_) {
+                              // If re-check fails, fall through to confirmation
+                            }
+
                             final confirm = await showDialog<bool>(
                               context: context,
                               builder:
