@@ -4,9 +4,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hive/hive.dart';
-import 'package:intl/intl.dart';
 import 'user_request_list.dart';
-import 'user_request_detail.dart';
 
 class UserRequestTabbedList extends StatefulWidget {
   final int initialTabIndex;
@@ -166,7 +164,11 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
 
         final docs = snapshot.data?.docs ?? [];
         final allRequests =
-            docs.map((d) => d.data() as Map<String, dynamic>).toList();
+            docs.map((d) {
+              final data = d.data() as Map<String, dynamic>;
+              // Attach Firestore document ID for actions like delete
+              return {...data, '_docId': d.id};
+            }).toList();
 
         // Cache requests for offline fallback
         _cacheRequestsToHive(allRequests);
@@ -298,7 +300,11 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
               .get();
 
       final allRequests =
-          query.docs.map((doc) => doc.data() as Map<String, dynamic>).toList();
+          query.docs.map((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            // Attach Firestore document ID for actions like delete
+            return {...data, '_docId': doc.id};
+          }).toList();
 
       // Cache requests to Hive for offline access
       await _cacheRequestsToHive(allRequests);

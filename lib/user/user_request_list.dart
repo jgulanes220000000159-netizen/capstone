@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:hive/hive.dart';
@@ -377,58 +378,269 @@ class _UserRequestListState extends State<UserRequestList> {
                   ),
                   if (status == 'pending' || status == 'pending_review')
                     IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.red),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.redAccent,
+                      ),
                       tooltip: tr('delete'),
                       onPressed: () async {
+                        debugPrint(
+                          '[UserRequestList] delete tapped id=' +
+                              ((request['id'] ?? request['requestId'] ?? '')
+                                  .toString()) +
+                              ' status=' +
+                              status,
+                        );
+                        final docId =
+                            (request['_docId'] ??
+                                    request['id'] ??
+                                    request['requestId'] ??
+                                    '')
+                                .toString();
+                        if (docId.isEmpty) {
+                          debugPrint(
+                            '[UserRequestList] Cannot delete: missing docId',
+                          );
+                          await showDialog<void>(
+                            context: context,
+                            builder:
+                                (ctx) => Dialog(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: Colors.orange.shade50,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(
+                                            Icons.warning_amber_rounded,
+                                            size: 48,
+                                            color: Colors.orange.shade700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 20),
+                                        Text(
+                                          tr('cannot_delete') ??
+                                              'Cannot Delete',
+                                          style: const TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          tr('cannot_delete_missing_id') ??
+                                              'Unable to delete: missing document ID.',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey[700],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 24),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          child: ElevatedButton(
+                                            onPressed: () => Navigator.pop(ctx),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.orange.shade700,
+                                              foregroundColor: Colors.white,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    vertical: 14,
+                                                  ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              elevation: 0,
+                                            ),
+                                            child: const Text(
+                                              'OK',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                          );
+                          return;
+                        }
+
+                        debugPrint(
+                          '[UserRequestList] showing confirm for docId=' +
+                              docId,
+                        );
                         final confirm = await showDialog<bool>(
                           context: context,
                           builder:
-                              (context) => AlertDialog(
-                                title: Text(tr('delete_report_title')),
-                                content: Text(tr('delete_report_confirm')),
-                                actions: [
-                                  TextButton(
-                                    onPressed:
-                                        () => Navigator.of(context).pop(false),
-                                    child: Text(tr('cancel')),
+                              (ctx) => Dialog(
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.all(12),
+                                        decoration: BoxDecoration(
+                                          color: Colors.red.shade50,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          Icons.delete_outline_rounded,
+                                          size: 48,
+                                          color: Colors.red.shade700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 20),
+                                      Text(
+                                        tr('delete_report_title') ??
+                                            'Delete Request?',
+                                        style: const TextStyle(
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        tr('delete_report_confirm') ??
+                                            'This action cannot be undone. The pending request will be permanently deleted.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.grey[700],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 24),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: OutlinedButton(
+                                              onPressed:
+                                                  () =>
+                                                      Navigator.pop(ctx, false),
+                                              style: OutlinedButton.styleFrom(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      vertical: 14,
+                                                    ),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                                side: BorderSide(
+                                                  color: Colors.grey.shade300,
+                                                ),
+                                              ),
+                                              child: Text(
+                                                tr('cancel') ?? 'Cancel',
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: Colors.grey[700],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: ElevatedButton(
+                                              onPressed:
+                                                  () =>
+                                                      Navigator.pop(ctx, true),
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor:
+                                                    Colors.red.shade700,
+                                                foregroundColor: Colors.white,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      vertical: 14,
+                                                    ),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                                elevation: 0,
+                                              ),
+                                              child: Text(
+                                                tr('delete') ?? 'Delete',
+                                                style: const TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
-                                  TextButton(
-                                    onPressed:
-                                        () => Navigator.of(context).pop(true),
-                                    child: Text(
-                                      tr('delete'),
-                                      style: const TextStyle(color: Colors.red),
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
                         );
-                        if (confirm == true) {
-                          final docId = request['id'] ?? request['requestId'];
-                          final images = (request['images'] as List?) ?? [];
-                          bool imageDeleteError = false;
-                          for (final img in images) {
-                            try {
-                              final storagePath = img['storagePath'] as String?;
-                              final imageUrl = img['imageUrl'] as String?;
+                        debugPrint(
+                          '[UserRequestList] confirm=' + confirm.toString(),
+                        );
+                        if (confirm != true) return;
 
-                              if (storagePath != null &&
-                                  storagePath.isNotEmpty) {
+                        // Capture a root-level navigator context BEFORE any delete triggers rebuild
+                        final rootNavigator = Navigator.of(
+                          context,
+                          rootNavigator: true,
+                        );
+                        final rootContext = rootNavigator.context;
+                        debugPrint(
+                          '[UserRequestList] captured rootContext for dialogs',
+                        );
+
+                        final images = (request['images'] as List?) ?? [];
+                        bool imageDeleteError = false;
+                        for (final img in images) {
+                          try {
+                            final storagePath = img['storagePath'] as String?;
+                            final imageUrl = img['imageUrl'] as String?;
+
+                            if (storagePath != null && storagePath.isNotEmpty) {
+                              debugPrint(
+                                '[UserRequestList] deleting Firebase Storage path=' +
+                                    storagePath,
+                              );
+                              await FirebaseStorage.instance
+                                  .ref()
+                                  .child(storagePath)
+                                  .delete();
+                            } else if (imageUrl != null &&
+                                imageUrl.isNotEmpty) {
+                              debugPrint(
+                                '[UserRequestList] deleting by imageUrl=' +
+                                    imageUrl,
+                              );
+                              if (imageUrl.startsWith('gs://') ||
+                                  imageUrl.startsWith(
+                                    'https://firebasestorage.googleapis.com',
+                                  )) {
                                 await FirebaseStorage.instance
-                                    .ref()
-                                    .child(storagePath)
+                                    .refFromURL(imageUrl)
                                     .delete();
-                              } else if (imageUrl != null &&
-                                  imageUrl.isNotEmpty) {
-                                if (imageUrl.startsWith('gs://') ||
-                                    imageUrl.startsWith(
-                                      'https://firebasestorage.googleapis.com',
-                                    )) {
-                                  await FirebaseStorage.instance
-                                      .refFromURL(imageUrl)
-                                      .delete();
-                                } else {
-                                  // Legacy Supabase cleanup (best-effort)
+                              } else {
+                                // Legacy Supabase cleanup (best-effort) - network errors are non-critical
+                                try {
                                   final uri = Uri.parse(imageUrl);
                                   final segments = uri.pathSegments;
                                   final bucketIndex = segments.indexOf(
@@ -444,52 +656,246 @@ class _UserRequestListState extends State<UserRequestList> {
                                         .from('mangosense')
                                         .remove([supabasePath]);
                                   }
+                                } catch (supabaseError) {
+                                  // Supabase/network errors for legacy images are non-critical
+                                  // Don't flag as error since Firestore deletion is the main operation
+                                  debugPrint(
+                                    '[UserRequestList] Supabase cleanup failed (non-critical): ' +
+                                        supabaseError.toString(),
+                                  );
                                 }
                               }
-                            } catch (e) {
-                              imageDeleteError = true;
-                            }
-                          }
-                          try {
-                            await FirebaseFirestore.instance
-                                .collection('scan_requests')
-                                .doc(docId)
-                                .delete();
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    imageDeleteError
-                                        ? tr('session_deleted_with_errors')
-                                        : tr('session_deleted'),
-                                  ),
-                                  backgroundColor:
-                                      imageDeleteError
-                                          ? Colors.orange
-                                          : Colors.red,
-                                ),
-                              );
-                              setState(() {
-                                widget.requests.removeWhere(
-                                  (r) => (r['id'] ?? r['requestId']) == docId,
-                                );
-                              });
                             }
                           } catch (e) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    tr(
-                                      'failed_to_delete_session',
-                                      namedArgs: {'error': '$e'},
-                                    ),
-                                  ),
-                                  backgroundColor: Colors.red,
-                                ),
+                            // Only flag as error for Firebase Storage failures, not network issues
+                            final errorMsg = e.toString().toLowerCase();
+                            final isNetworkError =
+                                errorMsg.contains('socket') ||
+                                errorMsg.contains('network') ||
+                                errorMsg.contains('host lookup') ||
+                                errorMsg.contains('failed to resolve');
+
+                            if (!isNetworkError) {
+                              debugPrint(
+                                '[UserRequestList] image delete error: ' +
+                                    e.toString(),
+                              );
+                              imageDeleteError = true;
+                            } else {
+                              debugPrint(
+                                '[UserRequestList] image delete network error (non-critical): ' +
+                                    e.toString(),
                               );
                             }
                           }
+                        }
+                        try {
+                          debugPrint(
+                            '[UserRequestList] deleting Firestore docId=' +
+                                docId,
+                          );
+                          await FirebaseFirestore.instance
+                              .collection('scan_requests')
+                              .doc(docId)
+                              .delete();
+
+                          debugPrint(
+                            '[UserRequestList] Firestore delete completed; showing success dialog',
+                          );
+
+                          // Show dialog using captured rootContext even if this widget unmounted
+                          await showDialog<void>(
+                            context: rootContext,
+                            barrierDismissible: false,
+                            builder:
+                                (ctx) => Dialog(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                imageDeleteError
+                                                    ? Colors.orange.shade50
+                                                    : Colors.green.shade50,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(
+                                            imageDeleteError
+                                                ? Icons.warning_amber_rounded
+                                                : Icons
+                                                    .check_circle_outline_rounded,
+                                            size: 48,
+                                            color:
+                                                imageDeleteError
+                                                    ? Colors.orange.shade700
+                                                    : Colors.green.shade700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 20),
+                                        Text(
+                                          imageDeleteError
+                                              ? tr(
+                                                    'session_deleted_with_errors',
+                                                  ) ??
+                                                  'Deleted with Warnings'
+                                              : tr('session_deleted') ??
+                                                  'Successfully Deleted',
+                                          style: const TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          imageDeleteError
+                                              ? tr(
+                                                    'session_deleted_with_errors',
+                                                  ) ??
+                                                  'The request has been deleted, but some images could not be removed from storage.'
+                                              : tr(
+                                                    'request_deleted_permanently',
+                                                  ) ??
+                                                  'The request has been permanently deleted from the system.',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey[700],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 24),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          child: ElevatedButton(
+                                            onPressed: () {
+                                              debugPrint(
+                                                '[UserRequestList] success dialog OK pressed',
+                                              );
+                                              Navigator.pop(ctx);
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  imageDeleteError
+                                                      ? Colors.orange.shade700
+                                                      : Colors.green.shade700,
+                                              foregroundColor: Colors.white,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    vertical: 14,
+                                                  ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              elevation: 0,
+                                            ),
+                                            child: const Text(
+                                              'OK',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                          );
+                        } catch (e) {
+                          debugPrint(
+                            '[UserRequestList] Firestore delete error: ' +
+                                e.toString(),
+                          );
+                          // Show error dialog using captured rootContext
+                          await showDialog<void>(
+                            context: rootContext,
+                            builder:
+                                (ctx) => Dialog(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(
+                                            color: Colors.red.shade50,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(
+                                            Icons.error_outline_rounded,
+                                            size: 48,
+                                            color: Colors.red.shade700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 20),
+                                        Text(
+                                          tr(
+                                                'failed_to_delete_session',
+                                              )?.split(':').first ??
+                                              'Delete Failed',
+                                          style: const TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          tr(
+                                                'failed_to_delete_session',
+                                                namedArgs: {'error': '$e'},
+                                              ) ??
+                                              'An error occurred while deleting the request:\n$e',
+                                          textAlign: TextAlign.center,
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey[700],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 24),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          child: ElevatedButton(
+                                            onPressed: () => Navigator.pop(ctx),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.red.shade700,
+                                              foregroundColor: Colors.white,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    vertical: 14,
+                                                  ),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              elevation: 0,
+                                            ),
+                                            child: const Text(
+                                              'OK',
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                          );
                         }
                       },
                     ),
