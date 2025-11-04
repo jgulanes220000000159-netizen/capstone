@@ -943,13 +943,14 @@ class _TrackingPageState extends State<TrackingPage> {
           monthlyMonth: _monthlyMonth,
         );
         final flatScans = TrackingModels.flattenScans(filteredSessions);
-        final chartData = TrackingChart.chartData(
+        final chartData = TrackingChart.chartDataPercentBinned(
           flatScans,
           _selectedRangeIndex,
           customStart: _customStartDate,
           customEnd: _customEndDate,
           monthlyYear: _monthlyYear,
           monthlyMonth: _monthlyMonth,
+          bins: 6,
         );
         final overallCounts = TrackingModels.overallHealthyAndDiseases(
           flatScans,
@@ -1345,17 +1346,11 @@ class _TrackingPageState extends State<TrackingPage> {
                             : LineChart(
                               LineChartData(
                                 minY: 0,
-                                maxY:
-                                    chartData
-                                        .expand(
-                                          (m) => m.values.whereType<int>(),
-                                        )
-                                        .fold<double>(
-                                          0,
-                                          (prev, e) =>
-                                              e > prev ? e.toDouble() : prev,
-                                        ) *
-                                    1.2,
+                                maxY: 100,
+                                minX: 0,
+                                maxX: chartData.isEmpty
+                                    ? 0
+                                    : (chartData.length - 1).toDouble(),
                                 lineBarsData: [
                                   // Healthy line
                                   LineChartBarData(
@@ -1363,7 +1358,7 @@ class _TrackingPageState extends State<TrackingPage> {
                                       for (int i = 0; i < chartData.length; i++)
                                         FlSpot(
                                           i.toDouble(),
-                                          (chartData[i]['healthy'] as int?)
+                                          (chartData[i]['healthy'] as num?)
                                                   ?.toDouble() ??
                                               0,
                                         ),
@@ -1375,20 +1370,14 @@ class _TrackingPageState extends State<TrackingPage> {
                                     dotData: FlDotData(show: true),
                                     belowBarData: BarAreaData(show: false),
                                   ),
-                                  // Disease lines
+                                  // Percentage disease lines
                                   for (final d in TrackingModels.diseaseLabels)
                                     LineChartBarData(
                                       spots: [
-                                        for (
-                                          int i = 0;
-                                          i < chartData.length;
-                                          i++
-                                        )
+                                        for (int i = 0; i < chartData.length; i++)
                                           FlSpot(
                                             i.toDouble(),
-                                            (chartData[i][d] as int?)
-                                                    ?.toDouble() ??
-                                                0,
+                                            (chartData[i][d] as num?)?.toDouble() ?? 0,
                                           ),
                                       ],
                                       isCurved: true,
@@ -1402,82 +1391,21 @@ class _TrackingPageState extends State<TrackingPage> {
                                   show: true,
                                   bottomTitles: AxisTitles(
                                     sideTitles: SideTitles(
-                                      showTitles: _selectedRangeIndex == 0,
-                                      reservedSize:
-                                          _selectedRangeIndex == 0 ? 48 : 0,
+                                      showTitles: true,
+                                      reservedSize: 36,
+                                      interval: 1,
                                       getTitlesWidget: (value, meta) {
-                                        if (value < 0 ||
-                                            value >= chartData.length) {
+                                        if (value < 0 || value >= chartData.length) {
                                           return const SizedBox.shrink();
                                         }
-                                        final group =
-                                            chartData[value.toInt()]['group']
-                                                as String;
-                                        Widget labelWidget;
-                                        if (_selectedRangeIndex == 0) {
-                                          int n = chartData.length > 24 ? 3 : 1;
-                                          if (value.toInt() % n != 0 &&
-                                              chartData.length > 12) {
-                                            return const SizedBox.shrink();
-                                          }
-                                          if (group.length >= 7 &&
-                                              group.contains('-')) {
-                                            labelWidget = Transform.rotate(
-                                              angle: -0.5708,
-                                              child: Text(
-                                                group.substring(5),
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            );
-                                          } else {
-                                            labelWidget = Transform.rotate(
-                                              angle: -0.5708,
-                                              child: Text(
-                                                group,
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                ),
-                                              ),
-                                            );
-                                          }
-                                        } else if (_selectedRangeIndex >= 1 &&
-                                            _selectedRangeIndex <= 4) {
-                                          labelWidget = Transform.rotate(
-                                            angle: -0.5708,
-                                            child: Text(
-                                              group,
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          );
-                                        } else {
-                                          final year = int.parse(
-                                            group.substring(0, 4),
-                                          );
-                                          final month = int.parse(
-                                            group.substring(5),
-                                          );
-                                          final monthAbbr = DateFormat(
-                                            'MMM',
-                                          ).format(DateTime(year, month));
-                                          labelWidget = Transform.rotate(
-                                            angle: -0.5708,
-                                            child: Text(
-                                              monthAbbr,
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          );
+                                        // Show only integer tick positions (0..5)
+                                        if (value != value.roundToDouble()) {
+                                          return const SizedBox.shrink();
                                         }
-                                        return Padding(
-                                          padding: const EdgeInsets.only(
-                                            top: 16,
-                                          ),
-                                          child: labelWidget,
+                                        final group = chartData[value.toInt()]['group'] as String;
+                                        return Text(
+                                          group,
+                                          style: const TextStyle(fontSize: 12),
                                         );
                                       },
                                     ),
@@ -1485,29 +1413,29 @@ class _TrackingPageState extends State<TrackingPage> {
                                   leftTitles: AxisTitles(
                                     sideTitles: SideTitles(
                                       showTitles: true,
-                                      reservedSize: 32,
+                                      reservedSize: 36,
+                                      interval: 25,
                                       getTitlesWidget: (value, meta) {
-                                        if (value % 1 == 0) {
+                                        if (value % 25 == 0) {
                                           return Text(
-                                            value.toInt().toString(),
-                                            style: const TextStyle(
-                                              fontSize: 12,
-                                            ),
+                                            '${value.toInt()}%',
+                                            style: const TextStyle(fontSize: 12),
                                           );
                                         }
                                         return const SizedBox.shrink();
                                       },
                                     ),
                                   ),
-                                  topTitles: AxisTitles(
+                                  topTitles: const AxisTitles(
                                     sideTitles: SideTitles(showTitles: false),
                                   ),
-                                  rightTitles: AxisTitles(
+                                  rightTitles: const AxisTitles(
                                     sideTitles: SideTitles(showTitles: false),
                                   ),
                                 ),
-                                gridData: FlGridData(
+                                gridData: const FlGridData(
                                   show: true,
+                                  horizontalInterval: 25,
                                   drawVerticalLine: false,
                                 ),
                                 borderData: FlBorderData(show: false),
