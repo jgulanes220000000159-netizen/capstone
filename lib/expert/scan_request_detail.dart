@@ -252,8 +252,17 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
   }
 
   void _submitReview() async {
-    if (_commentController.text.isEmpty || _treatmentController.text.isEmpty)
+    // Validate required fields
+    if (_commentController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please fill in the required field: Expert Comment'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
       return;
+    }
 
     setState(() {
       _isSubmitting = true;
@@ -1589,7 +1598,7 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                 TextField(
                   controller: _treatmentController,
                   decoration: const InputDecoration(
-                    labelText: 'Recommended Treatment',
+                    labelText: 'Recommended Treatment (Optional)',
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -1597,7 +1606,7 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                 TextField(
                   controller: _dosageController,
                   decoration: const InputDecoration(
-                    labelText: 'Dosage',
+                    labelText: 'Dosage (Optional)',
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -1605,7 +1614,7 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                 TextField(
                   controller: _frequencyController,
                   decoration: const InputDecoration(
-                    labelText: 'Application Frequency',
+                    labelText: 'Application Frequency (Optional)',
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -1614,7 +1623,7 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                   controller: _precautionsController,
                   maxLines: 2,
                   decoration: const InputDecoration(
-                    labelText: 'Precautions',
+                    labelText: 'Precautions (Optional)',
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -1631,7 +1640,7 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Preventive Measures',
+                  'Preventive Measures (Optional)',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
@@ -1679,8 +1688,9 @@ class _ScanRequestDetailState extends State<ScanRequestDetail> {
                   controller: _commentController,
                   maxLines: 4,
                   decoration: const InputDecoration(
+                    labelText: 'Expert Comment *',
                     hintText:
-                        'Enter your expert analysis and recommendations...',
+                        'Enter your analysis and recommendations... (Required)',
                     border: OutlineInputBorder(),
                   ),
                 ),

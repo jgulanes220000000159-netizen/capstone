@@ -420,7 +420,10 @@ class _CameraPageState extends State<CameraPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Take Photos'),
+        title: Text(
+          'Take photos',
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.green,
         actions: [
           if (_capturedImages.length < 5)

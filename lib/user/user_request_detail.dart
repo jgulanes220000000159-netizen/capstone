@@ -42,6 +42,47 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
     return english;
   }
 
+  // Check if treatment plan has any content
+  bool _hasTreatmentContent(Map<String, dynamic>? treatmentPlan) {
+    if (treatmentPlan == null) return false;
+    
+    final recommendations = treatmentPlan['recommendations'] as List?;
+    if (recommendations == null || recommendations.isEmpty) return false;
+    
+    // Check if any recommendation has actual content
+    for (var rec in recommendations) {
+      if (rec == null) continue;
+      final treatment = rec['treatment']?.toString().trim() ?? '';
+      final dosage = rec['dosage']?.toString().trim() ?? '';
+      final frequency = rec['frequency']?.toString().trim() ?? '';
+      final precautions = rec['precautions']?.toString().trim() ?? '';
+      
+      if (treatment.isNotEmpty || dosage.isNotEmpty || 
+          frequency.isNotEmpty || precautions.isNotEmpty) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  // Check if preventive measures has any content
+  bool _hasPreventiveMeasures(Map<String, dynamic>? treatmentPlan) {
+    if (treatmentPlan == null) return false;
+    
+    final measures = treatmentPlan['preventiveMeasures'] as List?;
+    if (measures == null || measures.isEmpty) return false;
+    
+    // Check if any measure has actual content
+    for (var measure in measures) {
+      if (measure?.toString().trim().isNotEmpty ?? false) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1568,8 +1609,8 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                         ),
                       ),
                     const SizedBox(height: 16),
-                    // Treatment Plan
-                    if (expertReview['treatmentPlan'] != null)
+                    // Treatment Plan (only show if has content)
+                    if (_hasTreatmentContent(expertReview['treatmentPlan']))
                       Card(
                         child: Padding(
                           padding: const EdgeInsets.all(16),
@@ -1592,7 +1633,11 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        if (treatment['treatment'] != null)
+                                        if (treatment['treatment'] != null &&
+                                            treatment['treatment']
+                                                .toString()
+                                                .trim()
+                                                .isNotEmpty)
                                           Padding(
                                             padding: const EdgeInsets.only(
                                               bottom: 4,
@@ -1604,7 +1649,11 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                               ),
                                             ),
                                           ),
-                                        if (treatment['dosage'] != null)
+                                        if (treatment['dosage'] != null &&
+                                            treatment['dosage']
+                                                .toString()
+                                                .trim()
+                                                .isNotEmpty)
                                           Padding(
                                             padding: const EdgeInsets.only(
                                               bottom: 4,
@@ -1613,7 +1662,11 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                               '${tr('dosage')} ${treatment['dosage']}',
                                             ),
                                           ),
-                                        if (treatment['frequency'] != null)
+                                        if (treatment['frequency'] != null &&
+                                            treatment['frequency']
+                                                .toString()
+                                                .trim()
+                                                .isNotEmpty)
                                           Padding(
                                             padding: const EdgeInsets.only(
                                               bottom: 4,
@@ -1622,7 +1675,11 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                                               '${tr('frequency')} ${treatment['frequency']}',
                                             ),
                                           ),
-                                        if (treatment['precautions'] != null)
+                                        if (treatment['precautions'] != null &&
+                                            treatment['precautions']
+                                                .toString()
+                                                .trim()
+                                                .isNotEmpty)
                                           Padding(
                                             padding: const EdgeInsets.only(
                                               bottom: 4,
@@ -1640,10 +1697,10 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                           ),
                         ),
                       ),
-                    const SizedBox(height: 16),
-                    // Preventive Measures
-                    if (expertReview['treatmentPlan']?['preventiveMeasures'] !=
-                        null)
+                    if (_hasTreatmentContent(expertReview['treatmentPlan']))
+                      const SizedBox(height: 16),
+                    // Preventive Measures (only show if has content)
+                    if (_hasPreventiveMeasures(expertReview['treatmentPlan']))
                       Card(
                         child: Padding(
                           padding: const EdgeInsets.all(16),
@@ -1682,7 +1739,39 @@ class _UserRequestDetailState extends State<UserRequestDetail> {
                           ),
                         ),
                       ),
-                    const SizedBox(height: 16),
+                    if (_hasPreventiveMeasures(expertReview['treatmentPlan']))
+                      const SizedBox(height: 16),
+                    // Info message if both treatment and preventive measures are empty
+                    if (!_hasTreatmentContent(expertReview['treatmentPlan']) &&
+                        !_hasPreventiveMeasures(expertReview['treatmentPlan']))
+                      Card(
+                        color: Colors.blue.shade50,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: Colors.blue.shade700,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  tr('no_treatment_details_note'),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: Colors.blue.shade900,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    if (!_hasTreatmentContent(expertReview['treatmentPlan']) &&
+                        !_hasPreventiveMeasures(expertReview['treatmentPlan']))
+                      const SizedBox(height: 16),
                     // Expert Comment
                     if (expertReview['comment'] != null)
                       Card(
