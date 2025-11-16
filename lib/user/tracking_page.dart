@@ -417,6 +417,806 @@ class _TrackingPageState extends State<TrackingPage> {
     );
   }
 
+  Widget _buildHealthInsights(
+    int healthy,
+    int diseased,
+    int total,
+    Map<String, int> overallCounts,
+  ) {
+    final healthPercentage = (healthy / total * 100).round();
+
+    // Determine health status
+    String statusKey;
+    Color statusColor;
+    IconData statusIcon;
+
+    if (healthPercentage >= 80) {
+      statusKey = 'farm_health_excellent';
+      statusColor = Colors.green;
+      statusIcon = Icons.sentiment_very_satisfied;
+    } else if (healthPercentage >= 60) {
+      statusKey = 'farm_health_good';
+      statusColor = Colors.lightGreen;
+      statusIcon = Icons.sentiment_satisfied;
+    } else if (healthPercentage >= 40) {
+      statusKey = 'farm_health_moderate';
+      statusColor = Colors.orange;
+      statusIcon = Icons.sentiment_neutral;
+    } else if (healthPercentage >= 20) {
+      statusKey = 'farm_health_poor';
+      statusColor = Colors.deepOrange;
+      statusIcon = Icons.sentiment_dissatisfied;
+    } else {
+      statusKey = 'farm_health_critical';
+      statusColor = Colors.red;
+      statusIcon = Icons.sentiment_very_dissatisfied;
+    }
+
+    // Find most prevalent disease
+    String? topDisease;
+    int topDiseaseCount = 0;
+    for (final disease in TrackingModels.diseaseLabels) {
+      final count = overallCounts[disease] ?? 0;
+      if (count > topDiseaseCount) {
+        topDiseaseCount = count;
+        topDisease = disease;
+      }
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [statusColor.withOpacity(0.1), statusColor.withOpacity(0.05)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: statusColor.withOpacity(0.3), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(statusIcon, color: statusColor, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tr('farm_health_status'),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    Text(
+                      tr(statusKey),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: statusColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  '$healthPercentage%',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.grey[200]!),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.lightbulb_outline,
+                      color: Colors.amber[700],
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      tr('recommendations'),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (healthPercentage >= 80) ...[
+                  _buildRecommendationItem(tr('rec_excellent_maintain')),
+                  _buildRecommendationItem(tr('rec_excellent_monitor')),
+                ] else if (healthPercentage >= 60) ...[
+                  _buildRecommendationItem(tr('rec_good_continue')),
+                  if (topDisease != null)
+                    _buildRecommendationItem(
+                      tr(
+                        'rec_good_watch',
+                        namedArgs: {
+                          'disease': TrackingModels.formatLabel(topDisease),
+                        },
+                      ),
+                    ),
+                ] else if (healthPercentage >= 40) ...[
+                  _buildRecommendationItem(tr('rec_moderate_action')),
+                  if (topDisease != null)
+                    _buildRecommendationItem(
+                      tr(
+                        'rec_moderate_treat',
+                        namedArgs: {
+                          'disease': TrackingModels.formatLabel(topDisease),
+                        },
+                      ),
+                    ),
+                  _buildRecommendationItem(tr('rec_moderate_expert')),
+                ] else if (healthPercentage >= 20) ...[
+                  _buildRecommendationItem(tr('rec_poor_urgent')),
+                  if (topDisease != null)
+                    _buildRecommendationItem(
+                      tr(
+                        'rec_poor_focus',
+                        namedArgs: {
+                          'disease': TrackingModels.formatLabel(topDisease),
+                        },
+                      ),
+                    ),
+                  _buildRecommendationItem(tr('rec_poor_consult')),
+                ] else ...[
+                  _buildRecommendationItem(tr('rec_critical_immediate')),
+                  _buildRecommendationItem(tr('rec_critical_expert')),
+                  _buildRecommendationItem(tr('rec_critical_isolate')),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecommendationItem(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '• ',
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey[700],
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey[700],
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCombinedTrendAnalysis(
+    List<Map<String, dynamic>> chartData,
+    Map<String, int> overallCounts,
+  ) {
+    if (chartData.length < 2) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[200]!, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Overall Trend Section
+          _buildOverallTrendSection(chartData),
+
+          // Divider
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: Divider(height: 1, color: Colors.grey[300]),
+          ),
+
+          // Disease-Specific Section
+          _buildDiseaseSpecificSection(chartData, overallCounts),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverallTrendSection(List<Map<String, dynamic>> chartData) {
+    if (chartData.length < 2) return const SizedBox.shrink();
+
+    // Get first half average and second half average
+    final halfPoint = (chartData.length / 2).ceil();
+    double firstHalfTotal = 0;
+    double secondHalfTotal = 0;
+
+    for (int i = 0; i < halfPoint; i++) {
+      firstHalfTotal += (chartData[i]['healthy'] as num?)?.toDouble() ?? 0;
+    }
+    for (int i = halfPoint; i < chartData.length; i++) {
+      secondHalfTotal += (chartData[i]['healthy'] as num?)?.toDouble() ?? 0;
+    }
+
+    final firstHalfAvg = firstHalfTotal / halfPoint;
+    final secondHalfAvg = secondHalfTotal / (chartData.length - halfPoint);
+    final overallChange = secondHalfAvg - firstHalfAvg;
+
+    // Determine trend status based on actual change
+    String trendKey;
+    Color trendColor;
+    IconData trendIcon;
+    String changeValue;
+
+    // Always show the actual change
+    changeValue =
+        '${overallChange >= 0 ? '+' : ''}${overallChange.toStringAsFixed(1)}%';
+
+    if (overallChange > 5) {
+      trendKey = 'trend_improving';
+      trendColor = Colors.green;
+      trendIcon = Icons.trending_up;
+    } else if (overallChange < -5) {
+      trendKey = 'trend_declining';
+      trendColor = Colors.red;
+      trendIcon = Icons.trending_down;
+    } else {
+      trendKey = 'trend_stable';
+      trendColor = Colors.blue;
+      trendIcon = Icons.trending_flat;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section Header
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.eco, color: Colors.green[700], size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tr('overall_health_trend'),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                  Text(
+                    tr('overall_health_trend_subtitle'),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                trendColor.withOpacity(0.1),
+                trendColor.withOpacity(0.05),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: trendColor.withOpacity(0.3), width: 1.5),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: trendColor.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(trendIcon, color: trendColor, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          tr('trend_analysis'),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        Text(
+                          tr(trendKey),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: trendColor,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: trendColor.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      changeValue,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: trendColor,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.lightbulb_outline,
+                          color: Colors.amber[700],
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          tr('trend_insights'),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          overallChange < -5
+                              ? Icons.warning_amber_rounded
+                              : Icons.check_circle_outline,
+                          color:
+                              overallChange < -5
+                                  ? Colors.orange[700]
+                                  : Colors.green[700],
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            overallChange > 5
+                                ? tr('trend_rec_improving')
+                                : overallChange < -5
+                                ? tr('trend_rec_declining')
+                                : tr('trend_rec_stable'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[800],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDiseaseSpecificSection(
+    List<Map<String, dynamic>> chartData,
+    Map<String, int> overallCounts,
+  ) {
+    if (chartData.length < 2) return const SizedBox.shrink();
+
+    // Analyze each disease trend
+    Map<String, Map<String, dynamic>> diseaseAnalysis = {};
+
+    for (final disease in TrackingModels.diseaseLabels) {
+      final count = overallCounts[disease] ?? 0;
+      if (count == 0) continue; // Skip diseases with no occurrences
+
+      // Calculate first half vs second half average for this disease
+      final halfPoint = (chartData.length / 2).ceil();
+      double firstHalfTotal = 0;
+      double secondHalfTotal = 0;
+
+      for (int i = 0; i < halfPoint; i++) {
+        firstHalfTotal += (chartData[i][disease] as num?)?.toDouble() ?? 0;
+      }
+      for (int i = halfPoint; i < chartData.length; i++) {
+        secondHalfTotal += (chartData[i][disease] as num?)?.toDouble() ?? 0;
+      }
+
+      final firstHalfAvg = firstHalfTotal / halfPoint;
+      final secondHalfAvg = secondHalfTotal / (chartData.length - halfPoint);
+      final change = secondHalfAvg - firstHalfAvg;
+
+      diseaseAnalysis[disease] = {
+        'change': change,
+        'firstHalf': firstHalfAvg,
+        'secondHalf': secondHalfAvg,
+        'count': count,
+      };
+    }
+
+    if (diseaseAnalysis.isEmpty) return const SizedBox.shrink();
+
+    // Sort diseases by absolute change (most significant changes first)
+    final sortedDiseases =
+        diseaseAnalysis.entries.toList()..sort(
+          (a, b) => b.value['change'].abs().compareTo(a.value['change'].abs()),
+        );
+
+    // Get top concerning diseases (increasing or high presence)
+    List<MapEntry<String, Map<String, dynamic>>> concerningDiseases = [];
+    List<MapEntry<String, Map<String, dynamic>>> improvingDiseases = [];
+
+    for (final entry in sortedDiseases) {
+      final change = entry.value['change'] as double;
+      if (change > 3) {
+        concerningDiseases.add(entry);
+      } else if (change < -3) {
+        improvingDiseases.add(entry);
+      }
+    }
+
+    // If no significant changes, don't show this section
+    if (concerningDiseases.isEmpty && improvingDiseases.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Section Header
+        Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.purple[50],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.coronavirus_outlined,
+                color: Colors.purple[700],
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tr('disease_specific_trends'),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                  Text(
+                    tr('disease_specific_trends_subtitle'),
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Concerning diseases (increasing)
+        if (concerningDiseases.isNotEmpty) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.red[50],
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.red[200]!),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.trending_up, color: Colors.red[700], size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      tr('diseases_increasing'),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red[900],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ...concerningDiseases.take(3).map((entry) {
+                  final diseaseName = TrackingModels.formatLabel(entry.key);
+                  final change = entry.value['change'] as double;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: TrackingModels.diseaseColors[entry.key],
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            diseaseName,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey[800],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '+${change.toStringAsFixed(1)}%',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.orange[700],
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          concerningDiseases.length == 1
+                              ? tr(
+                                'disease_trend_rec_single',
+                                namedArgs: {
+                                  'disease': TrackingModels.formatLabel(
+                                    concerningDiseases[0].key,
+                                  ),
+                                },
+                              )
+                              : tr('disease_trend_rec_multiple'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
+        // Improving diseases (decreasing)
+        if (improvingDiseases.isNotEmpty) ...[
+          if (concerningDiseases.isNotEmpty) const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.green[50],
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.green[200]!),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.trending_down,
+                      color: Colors.green[700],
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      tr('diseases_decreasing'),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green[900],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ...improvingDiseases.take(3).map((entry) {
+                  final diseaseName = TrackingModels.formatLabel(entry.key);
+                  final change = entry.value['change'] as double;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: TrackingModels.diseaseColors[entry.key],
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            diseaseName,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey[800],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${change.toStringAsFixed(1)}%',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.green[700],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        color: Colors.green[700],
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          tr('disease_trend_rec_decreasing'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[800],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _buildDiseaseRow(
     String name,
     int count,
@@ -1321,6 +2121,14 @@ class _TrackingPageState extends State<TrackingPage> {
                       ],
                     ),
                   ),
+                  // Health Insights
+                  if (total > 0)
+                    _buildHealthInsights(
+                      healthy,
+                      totalDiseased,
+                      total,
+                      overallCounts,
+                    ),
                   // Trend Bar Chart
                   Text(
                     tr('farm_health_trend'),
@@ -1348,9 +2156,77 @@ class _TrackingPageState extends State<TrackingPage> {
                                 minY: 0,
                                 maxY: 100,
                                 minX: 0,
-                                maxX: chartData.isEmpty
-                                    ? 0
-                                    : (chartData.length - 1).toDouble(),
+                                maxX:
+                                    chartData.isEmpty
+                                        ? 0
+                                        : (chartData.length - 1).toDouble(),
+                                lineTouchData: LineTouchData(
+                                  touchTooltipData: LineTouchTooltipData(
+                                    tooltipBgColor: const Color.fromARGB(
+                                      255,
+                                      255,
+                                      255,
+                                      255,
+                                    ),
+                                    tooltipRoundedRadius: 8,
+                                    tooltipPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    tooltipBorder: BorderSide(
+                                      color: Colors.grey[300]!,
+                                      width: 1.5,
+                                    ),
+                                    getTooltipItems: (touchedSpots) {
+                                      return touchedSpots.map((spot) {
+                                        final percentage = spot.y
+                                            .toStringAsFixed(1);
+                                        // Get disease name from bar index
+                                        String diseaseName;
+                                        Color lineColor;
+
+                                        if (spot.barIndex == 0) {
+                                          // First line is healthy
+                                          diseaseName = 'Healthy';
+                                          lineColor =
+                                              TrackingModels
+                                                  .diseaseColors['healthy']!;
+                                        } else {
+                                          // Other lines are diseases
+                                          final diseaseIndex =
+                                              spot.barIndex - 1;
+                                          if (diseaseIndex <
+                                              TrackingModels
+                                                  .diseaseLabels
+                                                  .length) {
+                                            final diseaseKey =
+                                                TrackingModels
+                                                    .diseaseLabels[diseaseIndex];
+                                            diseaseName =
+                                                TrackingModels.formatLabel(
+                                                  diseaseKey,
+                                                );
+                                            lineColor =
+                                                TrackingModels
+                                                    .diseaseColors[diseaseKey]!;
+                                          } else {
+                                            diseaseName = 'Unknown';
+                                            lineColor = Colors.grey;
+                                          }
+                                        }
+
+                                        return LineTooltipItem(
+                                          '$diseaseName\n$percentage%',
+                                          TextStyle(
+                                            color: lineColor,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        );
+                                      }).toList();
+                                    },
+                                  ),
+                                ),
                                 lineBarsData: [
                                   // Healthy line
                                   LineChartBarData(
@@ -1374,10 +2250,16 @@ class _TrackingPageState extends State<TrackingPage> {
                                   for (final d in TrackingModels.diseaseLabels)
                                     LineChartBarData(
                                       spots: [
-                                        for (int i = 0; i < chartData.length; i++)
+                                        for (
+                                          int i = 0;
+                                          i < chartData.length;
+                                          i++
+                                        )
                                           FlSpot(
                                             i.toDouble(),
-                                            (chartData[i][d] as num?)?.toDouble() ?? 0,
+                                            (chartData[i][d] as num?)
+                                                    ?.toDouble() ??
+                                                0,
                                           ),
                                       ],
                                       isCurved: true,
@@ -1392,20 +2274,30 @@ class _TrackingPageState extends State<TrackingPage> {
                                   bottomTitles: AxisTitles(
                                     sideTitles: SideTitles(
                                       showTitles: true,
-                                      reservedSize: 36,
+                                      reservedSize: 42,
                                       interval: 1,
                                       getTitlesWidget: (value, meta) {
-                                        if (value < 0 || value >= chartData.length) {
+                                        if (value < 0 ||
+                                            value >= chartData.length) {
                                           return const SizedBox.shrink();
                                         }
                                         // Show only integer tick positions (0..5)
                                         if (value != value.roundToDouble()) {
                                           return const SizedBox.shrink();
                                         }
-                                        final group = chartData[value.toInt()]['group'] as String;
-                                        return Text(
-                                          group,
-                                          style: const TextStyle(fontSize: 12),
+                                        final group =
+                                            chartData[value.toInt()]['group']
+                                                as String;
+                                        return Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: 8.0,
+                                          ),
+                                          child: Text(
+                                            group,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                            ),
+                                          ),
                                         );
                                       },
                                     ),
@@ -1419,7 +2311,9 @@ class _TrackingPageState extends State<TrackingPage> {
                                         if (value % 25 == 0) {
                                           return Text(
                                             '${value.toInt()}%',
-                                            style: const TextStyle(fontSize: 12),
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                            ),
                                           );
                                         }
                                         return const SizedBox.shrink();
@@ -1460,6 +2354,9 @@ class _TrackingPageState extends State<TrackingPage> {
                       ],
                     ),
                   ),
+                  // Combined Trend Analysis
+                  if (chartData.length >= 2)
+                    _buildCombinedTrendAnalysis(chartData, overallCounts),
                   const SizedBox(height: 32),
                   Text(
                     tr('history'),
