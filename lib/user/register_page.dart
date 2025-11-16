@@ -23,6 +23,8 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _acceptedTerms = false;
+  bool _hasValidated = false;
+  Map<String, String?> _fieldErrors = {};
 
   // Password strength tracking
   String _passwordStrength = '';
@@ -85,7 +87,7 @@ class _RegisterPageState extends State<RegisterPage> {
     final phoneRegex = RegExp(r'^09\d{9}$');
     String cleanNumber = value.replaceAll(RegExp(r'[\s\-\(\)]'), '');
     if (!phoneRegex.hasMatch(cleanNumber)) {
-      return 'Please enter a valid Philippine mobile number (09XXXXXXXXX)';
+      return 'Please enter a valid mobile number (09XXXXXXXXX)';
     }
     return null;
   }
@@ -131,7 +133,22 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 
   void _handleRegister() async {
-    if (!_formKey.currentState!.validate()) {
+    setState(() {
+      _hasValidated = true;
+      // Validate all fields and store errors
+      _fieldErrors = {
+        'fullName': _validateFullName(_fullNameController.text),
+        'address': _validateAddress(_addressController.text),
+        'phone': _validatePhone(_phoneController.text),
+        'email': _validateEmail(_emailController.text),
+        'password': _validatePassword(_passwordController.text),
+        'confirmPassword': _validateConfirmPassword(
+          _confirmPasswordController.text,
+        ),
+      };
+    });
+    // Check if there are any validation errors
+    if (_fieldErrors.values.any((error) => error != null && error.isNotEmpty)) {
       return;
     }
 
@@ -434,6 +451,7 @@ class _RegisterPageState extends State<RegisterPage> {
   Widget _buildTextField({
     required String label,
     required TextEditingController controller,
+    required String fieldKey,
     bool isPassword = false,
     bool? obscureText,
     Widget? suffixIcon,
@@ -443,38 +461,133 @@ class _RegisterPageState extends State<RegisterPage> {
     List<TextInputFormatter>? inputFormatters,
     void Function(String)? onChanged,
   }) {
-    return TextFormField(
-      controller: controller,
-      obscureText: isPassword ? (obscureText ?? true) : false,
-      style: const TextStyle(color: Colors.white),
-      keyboardType: keyboardType,
-      inputFormatters: inputFormatters,
-      onChanged: onChanged,
-      validator: validator,
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: Colors.white70),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.white70),
+    final errorText = _hasValidated ? _fieldErrors[fieldKey] : null;
+    final hasError = errorText != null && errorText.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Builder(
+          builder:
+              (context) => Theme(
+                data: Theme.of(context).copyWith(
+                  textTheme: Theme.of(context).textTheme.apply(
+                    bodyColor: Colors.white,
+                    displayColor: Colors.white,
+                  ),
+                  colorScheme: Theme.of(context).colorScheme.copyWith(
+                    error: Colors.redAccent,
+                    onError: Colors.white,
+                    onSurface: Colors.white,
+                  ),
+                ),
+                child: DefaultTextStyle(
+                  style: const TextStyle(color: Colors.white),
+                  child: TextField(
+                    key: ValueKey('textfield_$fieldKey'),
+                    controller: controller,
+                    obscureText: isPassword ? (obscureText ?? true) : false,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      decorationColor: Colors.white,
+                      fontSize: 16,
+                    ),
+                    cursorColor: Colors.white,
+                    strutStyle: const StrutStyle(
+                      fontSize: 16,
+                      height: 1.0,
+                      leading: 0,
+                    ),
+                    keyboardType: keyboardType,
+                    inputFormatters: inputFormatters,
+                    onChanged: (value) {
+                      if (onChanged != null) onChanged(value);
+                      if (_hasValidated && _fieldErrors.containsKey(fieldKey)) {
+                        setState(() {
+                          _fieldErrors[fieldKey] = validator?.call(value);
+                        });
+                      }
+                    },
+                    decoration: InputDecoration(
+                      labelText: label,
+                      labelStyle: const TextStyle(color: Colors.white70),
+                      filled: true,
+                      fillColor:
+                          hasError
+                              ? Colors.redAccent.withOpacity(0.1)
+                              : Colors.transparent,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: hasError ? Colors.redAccent : Colors.white70,
+                          width: hasError ? 1.5 : 1,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: hasError ? Colors.redAccent : Colors.white,
+                          width: hasError ? 1.5 : 1,
+                        ),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: Colors.redAccent,
+                          width: 1.5,
+                        ),
+                      ),
+                      focusedErrorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: Colors.redAccent,
+                          width: 1.5,
+                        ),
+                      ),
+                      prefixIcon:
+                          prefixIcon != null
+                              ? Icon(prefixIcon, color: Colors.white70)
+                              : null,
+                      suffixIcon: suffixIcon,
+                      errorStyle: const TextStyle(height: 0, fontSize: 0),
+                    ),
+                  ),
+                ),
+              ),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.white),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.red),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.red),
-        ),
-        prefixIcon:
-            prefixIcon != null ? Icon(prefixIcon, color: Colors.white70) : null,
-        suffixIcon: suffixIcon,
-        errorStyle: const TextStyle(color: Colors.redAccent),
-      ),
+        if (hasError)
+          Padding(
+            padding: const EdgeInsets.only(left: 12, top: 6, right: 12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.redAccent,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      errorText ?? '',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -562,6 +675,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   _buildTextField(
                     label: 'Full Name',
                     controller: _fullNameController,
+                    fieldKey: 'fullName',
                     prefixIcon: Icons.person,
                     validator: _validateFullName,
                     keyboardType: TextInputType.name,
@@ -570,6 +684,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   _buildTextField(
                     label: 'Address',
                     controller: _addressController,
+                    fieldKey: 'address',
                     prefixIcon: Icons.home,
                     validator: _validateAddress,
                     keyboardType: TextInputType.streetAddress,
@@ -578,6 +693,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   _buildTextField(
                     label: 'Phone Number',
                     controller: _phoneController,
+                    fieldKey: 'phone',
                     prefixIcon: Icons.phone,
                     validator: _validatePhone,
                     keyboardType: TextInputType.phone,
@@ -590,6 +706,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   _buildTextField(
                     label: 'Email',
                     controller: _emailController,
+                    fieldKey: 'email',
                     prefixIcon: Icons.email,
                     validator: _validateEmail,
                     keyboardType: TextInputType.emailAddress,
@@ -598,6 +715,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   _buildTextField(
                     label: 'Password',
                     controller: _passwordController,
+                    fieldKey: 'password',
                     isPassword: true,
                     obscureText: _obscurePassword,
                     validator: _validatePassword,
@@ -676,6 +794,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   _buildTextField(
                     label: 'Confirm Password',
                     controller: _confirmPasswordController,
+                    fieldKey: 'confirmPassword',
                     isPassword: true,
                     obscureText: _obscureConfirmPassword,
                     validator: _validateConfirmPassword,
