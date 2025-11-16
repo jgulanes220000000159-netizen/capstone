@@ -190,6 +190,7 @@
   "healthy_leaves": "Malulusog na Dahon",
   "not_applicable": "Hindi naaangkop",
   "no_additional_info_healthy_leaves": "Walang karagdagang impormasyon para sa malulusog na dahon.",
+  "no_additional_info_unknown": "Walang karagdagang impormasyon para sa hindi alam na mga detection.",
   "see_recommendation": "Tingnan ang Rekomendasyon",
   "information_not_available": "Walang Impormasyong Magagamit",
   "detailed_info_not_available_for": "Walang detalyadong impormasyon para sa \"{disease}\" sa aming database sa kasalukuyan.",

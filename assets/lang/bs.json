@@ -183,6 +183,7 @@
   "healthy_leaves": "Himsog nga mga Dahon",
   "not_applicable": "Dili Aplikable",
   "no_additional_info_healthy_leaves": "Walay dugang impormasyon para sa himsog nga mga dahon.",
+  "no_additional_info_unknown": "Walay dugang impormasyon para sa wala mahibalo nga mga detection.",
   "see_recommendation": "Tan-awa ang Rekomendasyon",
   "information_not_available": "Walay Makuhang Impormasyon",
   "detailed_info_not_available_for": "Walay detalyadong impormasyon para sa \"{disease}\" sa among database sa pagkakaron.",

@@ -1206,6 +1206,376 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
     }
   }
 
+  // Show dialog with performance targets and what to achieve
+  void _showPerformanceTargetsDialog(BuildContext context, double currentAvg) {
+    // Define performance levels
+    final performanceLevels = [
+      {
+        'name': 'Excellent',
+        'range': '0 - 6 hours',
+        'description': 'Lightning-fast response time',
+        'color': Colors.green[700]!,
+        'icon': Icons.emoji_events,
+        'threshold': 6.0,
+      },
+      {
+        'name': 'Great',
+        'range': '6 - 24 hours',
+        'description': 'Responding within the same day',
+        'color': Colors.green[600]!,
+        'icon': Icons.thumb_up,
+        'threshold': 24.0,
+      },
+      {
+        'name': 'Good',
+        'range': '24 - 48 hours',
+        'description': 'Good response time',
+        'color': Colors.blue[600]!,
+        'icon': Icons.check_circle_outline,
+        'threshold': 48.0,
+      },
+      {
+        'name': 'Room for Improvement',
+        'range': '48 - 72 hours',
+        'description': 'Try to respond faster',
+        'color': Colors.orange[700]!,
+        'icon': Icons.timeline,
+        'threshold': 72.0,
+      },
+      {
+        'name': 'Needs Improvement',
+        'range': 'More than 72 hours',
+        'description': 'Farmers expect faster responses',
+        'color': Colors.red[600]!,
+        'icon': Icons.warning_amber_rounded,
+        'threshold': double.infinity,
+      },
+    ];
+
+    // Determine current level and next target
+    String? currentLevel;
+    Map<String, dynamic>? nextTarget;
+    double hoursToImprove = 0;
+
+    if (currentAvg == 0) {
+      currentLevel = 'No data';
+      nextTarget = performanceLevels[0];
+      hoursToImprove = 0;
+    } else if (currentAvg < 6) {
+      currentLevel = 'Excellent';
+      nextTarget = null; // Already at the top
+    } else if (currentAvg < 24) {
+      currentLevel = 'Great';
+      nextTarget = performanceLevels[0];
+      hoursToImprove = currentAvg - 6;
+    } else if (currentAvg < 48) {
+      currentLevel = 'Good';
+      nextTarget = performanceLevels[1];
+      hoursToImprove = currentAvg - 24;
+    } else if (currentAvg < 72) {
+      currentLevel = 'Room for Improvement';
+      nextTarget = performanceLevels[2];
+      hoursToImprove = currentAvg - 48;
+    } else {
+      currentLevel = 'Needs Improvement';
+      nextTarget = performanceLevels[3];
+      hoursToImprove = currentAvg - 72;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.track_changes, color: Colors.blue[700]),
+            const SizedBox(width: 8),
+            Expanded(
+              child: const Text('Performance Targets'),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Current Status
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue[200]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Your Current Average',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatResponseTime(currentAvg),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue[900],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Level: $currentLevel',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.blue[700],
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              
+              // Next Target (if applicable)
+              if (nextTarget != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green[200]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.arrow_upward,
+                            color: Colors.green[700],
+                            size: 18,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Target to Achieve',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            nextTarget['icon'] as IconData,
+                            color: nextTarget['color'] as Color,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  nextTarget['name'] as String,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                    color: nextTarget['color'] as Color,
+                                  ),
+                                ),
+                                Text(
+                                  nextTarget['range'] as String,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.speed, size: 16, color: Colors.green[700]),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Reduce by ${_formatResponseTime(hoursToImprove)} to reach this level',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[800],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.amber[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.amber[200]!),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.star, color: Colors.amber[700], size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'You\'re already at the top level! Keep it up!',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.amber[900],
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // All Performance Levels
+              Text(
+                'Performance Levels',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[800],
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...performanceLevels.map((level) {
+                final isCurrent = level['name'] == currentLevel;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isCurrent
+                        ? (level['color'] as Color).withOpacity(0.1)
+                        : Colors.grey[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isCurrent
+                          ? (level['color'] as Color)
+                          : Colors.grey[300]!,
+                      width: isCurrent ? 2 : 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: level['color'] as Color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Icon(
+                        level['icon'] as IconData,
+                        color: level['color'] as Color,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    level['name'] as String,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: isCurrent
+                                          ? FontWeight.bold
+                                          : FontWeight.w600,
+                                      color: level['color'] as Color,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (isCurrent) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: level['color'] as Color,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Text(
+                                      'CURRENT',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              level['range'] as String,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Show loading state initially
@@ -1602,6 +1972,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                             final feedback = _getPerformanceFeedback(
                               _filteredAverageHours(),
                             );
+                            final currentAvg = _filteredAverageHours();
                             return Container(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
@@ -1636,6 +2007,22 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                                       ),
                                     ),
                                   ),
+                                  const SizedBox(width: 8),
+                                  InkWell(
+                                    onTap: () => _showPerformanceTargetsDialog(
+                                      context,
+                                      currentAvg,
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(4),
+                                      child: Icon(
+                                        Icons.info_outline,
+                                        color: feedback['color'] as Color,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ),
                             );
@@ -1644,7 +2031,7 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                         const SizedBox(height: 16),
                         if (_recentReviews.isNotEmpty) ...[
                           Text(
-                            'Response Time Trend',
+                            'Response Time Distribution',
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
@@ -1652,215 +2039,262 @@ class _ExpertHomePageState extends State<ExpertHomePage> {
                             ),
                           ),
                           const SizedBox(height: 12),
-                          SizedBox(
-                            height: 200,
-                            child: Builder(
-                              builder: (context) {
-                                // Filter reviews per selected range
-                                DateTime today = DateTime.now();
-                                DateTime start7 = DateTime(
-                                  today.year,
-                                  today.month,
-                                  today.day,
-                                ).subtract(const Duration(days: 6));
-                                final List<Map<String, dynamic>> filtered =
-                                    _recentReviews.where((r) {
-                                        final d = r['date'] as DateTime?;
-                                        if (d == null) return false;
-                                        final dayOnly = DateTime(
-                                          d.year,
-                                          d.month,
-                                          d.day,
-                                        );
-                                        if (_selectedRangeIndex == 0) {
-                                          return !dayOnly.isBefore(start7) &&
-                                              !dayOnly.isAfter(
-                                                DateTime(
-                                                  today.year,
-                                                  today.month,
-                                                  today.day,
-                                                ),
-                                              );
-                                        }
-                                        if (_selectedRangeIndex == 1 &&
-                                            _monthlyYear != null &&
-                                            _monthlyMonth != null) {
-                                          // Monthly filter
-                                          final startOfMonth = DateTime(
-                                            _monthlyYear!,
-                                            _monthlyMonth!,
-                                            1,
-                                          );
-                                          final endOfMonth = DateTime(
-                                            _monthlyYear!,
-                                            _monthlyMonth! + 1,
-                                            0,
-                                          );
-                                          return !dayOnly.isBefore(
-                                                startOfMonth,
-                                              ) &&
-                                              !dayOnly.isAfter(endOfMonth);
-                                        }
-                                        if (_selectedRangeIndex == 2) {
-                                          if (_customStartDate == null ||
-                                              _customEndDate == null)
-                                            return true;
-                                          final s = DateTime(
-                                            _customStartDate!.year,
-                                            _customStartDate!.month,
-                                            _customStartDate!.day,
-                                          );
-                                          final e = DateTime(
-                                            _customEndDate!.year,
-                                            _customEndDate!.month,
-                                            _customEndDate!.day,
-                                          );
-                                          return !dayOnly.isBefore(s) &&
-                                              !dayOnly.isAfter(e);
-                                        }
-                                        return true; // Fallback
-                                      }).toList()
-                                      ..sort(
-                                        (a, b) => (a['date'] as DateTime)
-                                            .compareTo(b['date'] as DateTime),
+                          Builder(
+                            builder: (context) {
+                              // Filter reviews per selected range
+                              DateTime today = DateTime.now();
+                              DateTime start7 = DateTime(
+                                today.year,
+                                today.month,
+                                today.day,
+                              ).subtract(const Duration(days: 6));
+                              final List<Map<String, dynamic>> filtered =
+                                  _recentReviews.where((r) {
+                                      final d = r['date'] as DateTime?;
+                                      if (d == null) return false;
+                                      final dayOnly = DateTime(
+                                        d.year,
+                                        d.month,
+                                        d.day,
                                       );
-
-                                final showBottomTitles =
-                                    true; // Show dates for all ranges
-                                // Find max value for better Y-axis scaling
-                                final maxValue =
-                                    filtered.isEmpty
-                                        ? 100.0
-                                        : filtered
-                                            .map(
-                                              (e) =>
-                                                  (e['responseTime'] as num)
-                                                      .toDouble(),
-                                            )
-                                            .reduce((a, b) => a > b ? a : b);
-                                final yInterval =
-                                    maxValue > 100
-                                        ? 100.0
-                                        : (maxValue > 50 ? 50.0 : 20.0);
-
-                                return LineChart(
-                                  LineChartData(
-                                    lineTouchData: LineTouchData(
-                                      enabled: true,
-                                      touchTooltipData: LineTouchTooltipData(
-                                        getTooltipItems: (touchedSpots) {
-                                          return touchedSpots.map((spot) {
-                                            final hours = spot.y;
-                                            final index = spot.x.toInt();
-                                            final date =
-                                                filtered[index]['date']
-                                                    as DateTime;
-                                            return LineTooltipItem(
-                                              '${_formatResponseTime(hours)}\n${date.day}/${date.month}/${date.year}',
-                                              const TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 12,
+                                      if (_selectedRangeIndex == 0) {
+                                        return !dayOnly.isBefore(start7) &&
+                                            !dayOnly.isAfter(
+                                              DateTime(
+                                                today.year,
+                                                today.month,
+                                                today.day,
                                               ),
                                             );
-                                          }).toList();
-                                        },
-                                      ),
-                                    ),
-                                    gridData: FlGridData(
-                                      show: true,
-                                      drawVerticalLine: true,
-                                      horizontalInterval: yInterval,
-                                    ),
-                                    titlesData: FlTitlesData(
-                                      leftTitles: AxisTitles(
-                                        sideTitles: SideTitles(
-                                          showTitles: true,
-                                          reservedSize: 45,
-                                          interval: yInterval,
-                                          getTitlesWidget: (value, meta) {
-                                            // Only show labels at specific intervals
-                                            if (value % yInterval != 0) {
-                                              return const SizedBox.shrink();
-                                            }
-                                            return Text(
-                                              '${value.toInt()}h',
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.black87,
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                      ),
-                                      bottomTitles: AxisTitles(
-                                        sideTitles: SideTitles(
-                                          showTitles: showBottomTitles,
-                                          reservedSize: 30,
-                                          getTitlesWidget: (value, meta) {
-                                            final idx = value.toInt();
-                                            if (idx >= 0 &&
-                                                idx < filtered.length) {
-                                              final date =
-                                                  filtered[idx]['date']
-                                                      as DateTime;
-                                              return Padding(
-                                                padding: const EdgeInsets.only(
-                                                  top: 8,
-                                                ),
-                                                child: Text(
-                                                  '${date.day}/${date.month}',
-                                                  style: const TextStyle(
-                                                    fontSize: 10,
-                                                  ),
+                                      }
+                                      if (_selectedRangeIndex == 1 &&
+                                          _monthlyYear != null &&
+                                          _monthlyMonth != null) {
+                                        // Monthly filter
+                                        final startOfMonth = DateTime(
+                                          _monthlyYear!,
+                                          _monthlyMonth!,
+                                          1,
+                                        );
+                                        final endOfMonth = DateTime(
+                                          _monthlyYear!,
+                                          _monthlyMonth! + 1,
+                                          0,
+                                        );
+                                        return !dayOnly.isBefore(
+                                              startOfMonth,
+                                            ) &&
+                                            !dayOnly.isAfter(endOfMonth);
+                                      }
+                                      if (_selectedRangeIndex == 2) {
+                                        if (_customStartDate == null ||
+                                            _customEndDate == null)
+                                          return true;
+                                        final s = DateTime(
+                                          _customStartDate!.year,
+                                          _customStartDate!.month,
+                                          _customStartDate!.day,
+                                        );
+                                        final e = DateTime(
+                                          _customEndDate!.year,
+                                          _customEndDate!.month,
+                                          _customEndDate!.day,
+                                        );
+                                        return !dayOnly.isBefore(s) &&
+                                            !dayOnly.isAfter(e);
+                                      }
+                                      return true; // Fallback
+                                    }).toList();
+
+                              // Calculate distribution into categories
+                              int excellent = 0; // 0-6h
+                              int good = 0; // 6-12h
+                              int acceptable = 0; // 12-24h
+                              int needsImprovement = 0; // 24-48h
+                              int critical = 0; // >48h
+
+                              for (var review in filtered) {
+                                final responseTime = (review['responseTime'] as num).toDouble();
+                                if (responseTime <= 6) {
+                                  excellent++;
+                                } else if (responseTime <= 12) {
+                                  good++;
+                                } else if (responseTime <= 24) {
+                                  acceptable++;
+                                } else if (responseTime <= 48) {
+                                  needsImprovement++;
+                                } else {
+                                  critical++;
+                                }
+                              }
+
+                              final distribution = [
+                                excellent,
+                                good,
+                                acceptable,
+                                needsImprovement,
+                                critical,
+                              ];
+
+                              final maxValue = distribution.isEmpty
+                                  ? 1.0
+                                  : distribution.reduce((a, b) => a > b ? a : b).toDouble();
+
+                              // Category labels and colors
+                              final categories = [
+                                {'label': '0-6h', 'color': Colors.green, 'name': 'Excellent'},
+                                {'label': '6-12h', 'color': Colors.lightGreen, 'name': 'Good'},
+                                {'label': '12-24h', 'color': Colors.orange, 'name': 'Acceptable'},
+                                {'label': '24-48h', 'color': Colors.deepOrange, 'name': 'Needs Improvement'},
+                                {'label': '>48h', 'color': Colors.red, 'name': 'Critical'},
+                              ];
+
+                              return Column(
+                                children: [
+                                  // Bar Chart
+                                  SizedBox(
+                                    height: 200,
+                                    child: BarChart(
+                                      BarChartData(
+                                        alignment: BarChartAlignment.spaceAround,
+                                        maxY: maxValue > 0 ? maxValue * 1.2 : 10,
+                                        barTouchData: BarTouchData(
+                                          enabled: true,
+                                          touchTooltipData: BarTouchTooltipData(
+                                            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                                              final category = categories[groupIndex];
+                                              return BarTooltipItem(
+                                                '${category['label']}\n${rod.toY.toInt()} reviews',
+                                                const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 12,
                                                 ),
                                               );
-                                            }
-                                            return const SizedBox.shrink();
+                                            },
+                                          ),
+                                        ),
+                                        titlesData: FlTitlesData(
+                                          show: true,
+                                          rightTitles: AxisTitles(
+                                            sideTitles: SideTitles(showTitles: false),
+                                          ),
+                                          topTitles: AxisTitles(
+                                            sideTitles: SideTitles(showTitles: false),
+                                          ),
+                                          bottomTitles: AxisTitles(
+                                            sideTitles: SideTitles(
+                                              showTitles: true,
+                                              getTitlesWidget: (value, meta) {
+                                                final index = value.toInt();
+                                                if (index >= 0 && index < categories.length) {
+                                                  return Padding(
+                                                    padding: const EdgeInsets.only(top: 8),
+                                                    child: Text(
+                                                      categories[index]['label'] as String,
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: Colors.grey[700],
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
+                                                return const SizedBox.shrink();
+                                              },
+                                              reservedSize: 30,
+                                            ),
+                                          ),
+                                          leftTitles: AxisTitles(
+                                            sideTitles: SideTitles(
+                                              showTitles: true,
+                                              reservedSize: 40,
+                                              getTitlesWidget: (value, meta) {
+                                                if (value % 1 == 0 && value >= 0) {
+                                                  return Text(
+                                                    value.toInt().toString(),
+                                                    style: TextStyle(
+                                                      fontSize: 10,
+                                                      color: Colors.grey[700],
+                                                    ),
+                                                  );
+                                                }
+                                                return const SizedBox.shrink();
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                        gridData: FlGridData(
+                                          show: true,
+                                          drawVerticalLine: false,
+                                          horizontalInterval: maxValue > 10 ? 5 : 1,
+                                          getDrawingHorizontalLine: (value) {
+                                            return FlLine(
+                                              color: Colors.grey[300]!,
+                                              strokeWidth: 1,
+                                            );
                                           },
                                         ),
-                                      ),
-                                      rightTitles: AxisTitles(
-                                        sideTitles: SideTitles(
-                                          showTitles: false,
+                                        borderData: FlBorderData(
+                                          show: true,
+                                          border: Border(
+                                            bottom: BorderSide(color: Colors.grey[400]!),
+                                            left: BorderSide(color: Colors.grey[400]!),
+                                          ),
                                         ),
-                                      ),
-                                      topTitles: AxisTitles(
-                                        sideTitles: SideTitles(
-                                          showTitles: false,
-                                        ),
+                                        barGroups: distribution.asMap().entries.map((entry) {
+                                          final index = entry.key;
+                                          final value = entry.value.toDouble();
+                                          return BarChartGroupData(
+                                            x: index,
+                                            barRods: [
+                                              BarChartRodData(
+                                                toY: value,
+                                                color: categories[index]['color'] as Color,
+                                                width: 40,
+                                                borderRadius: const BorderRadius.vertical(
+                                                  top: Radius.circular(4),
+                                                ),
+                                              ),
+                                            ],
+                                          );
+                                        }).toList(),
                                       ),
                                     ),
-                                    borderData: FlBorderData(show: true),
-                                    lineBarsData: [
-                                      LineChartBarData(
-                                        spots:
-                                            filtered
-                                                .asMap()
-                                                .entries
-                                                .map(
-                                                  (entry) => FlSpot(
-                                                    entry.key.toDouble(),
-                                                    (entry.value['responseTime']
-                                                            as num)
-                                                        .toDouble(),
-                                                  ),
-                                                )
-                                                .toList(),
-                                        isCurved: true,
-                                        color: Colors.blue,
-                                        barWidth: 3,
-                                        dotData: FlDotData(show: true),
-                                        belowBarData: BarAreaData(
-                                          show: true,
-                                          color: Colors.blue.withOpacity(0.1),
-                                        ),
-                                      ),
-                                    ],
                                   ),
-                                );
-                              },
-                            ),
+                                  const SizedBox(height: 12),
+                                  // Compact Legend - Performance names only
+                                  Wrap(
+                                    alignment: WrapAlignment.center,
+                                    spacing: 16,
+                                    runSpacing: 8,
+                                    children: categories.map((category) {
+                                      return Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 12,
+                                            height: 12,
+                                            decoration: BoxDecoration(
+                                              color: category['color'] as Color,
+                                              borderRadius: BorderRadius.circular(3),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            category['name'] as String,
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: Colors.grey[600],
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }).toList(),
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ] else ...[
                           Container(

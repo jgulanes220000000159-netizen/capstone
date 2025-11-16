@@ -413,7 +413,8 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       case 'powdery_mildew':
         return 'Powdery Mildew';
       case 'tip_burn':
-        return 'Tip Burn';
+      case 'unknown':
+        return 'Unknown';
       default:
         return label
             .split('_')
@@ -457,9 +458,9 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     final color = DetectionPainter.diseaseColors[disease] ?? Colors.grey;
     final percentage = _getDiseasePercentage(disease, diseaseCounts);
     final isHealthy = disease.toLowerCase() == 'healthy';
-    // final isUnknown = disease.toLowerCase() == 'tip_burn';
-
-    // Remove special handling for Unknown - use same card style as other diseases
+    final isUnknown =
+        disease.toLowerCase() == 'tip_burn' ||
+        disease.toLowerCase() == 'unknown';
 
     return Card(
       elevation: 4,
@@ -467,10 +468,12 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         onTap: () {
-          if (!isHealthy) {
-            _showDiseaseRecommendations(context, disease);
-          } else {
+          if (isHealthy) {
             _showHealthyStatus(context);
+          } else if (isUnknown) {
+            _showUnknownStatus(context);
+          } else {
+            _showDiseaseRecommendations(context, disease);
           }
         },
         borderRadius: BorderRadius.circular(16),
@@ -575,15 +578,15 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      isHealthy || disease.toLowerCase() == 'tip_burn'
+                      isHealthy || isUnknown
                           ? Icons.info_outline
                           : Icons.medical_services_outlined,
                       color: color,
-                      size: disease.toLowerCase() == 'tip_burn' ? 18 : 20,
+                      size: 20,
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      isHealthy || disease.toLowerCase() == 'tip_burn'
+                      isHealthy || isUnknown
                           ? tr('not_applicable')
                           : tr('see_recommendation'),
                       style: TextStyle(
@@ -601,7 +604,7 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
     );
   }
 
-  // Special cases for diseases not in Firestore (only for healthy and tip_burn)
+  // Special cases for diseases not in Firestore (only for healthy, tip_burn, and unknown)
   static const Map<String, Map<String, dynamic>> specialDiseaseInfo = {
     'healthy': {
       'symptoms': [
@@ -616,15 +619,12 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
       ],
     },
     'tip_burn': {
-      'symptoms': [
-        'The tips and edges of leaves turn brown and dry, often due to non-pathogenic causes such as nutrient imbalance or salt injury (Gardening Know How, n.d.).',
-      ],
-      'treatments': [
-        'Ensure consistent, deep watering to avoid drought stress that can worsen tip burn symptoms.',
-        'Avoid excessive use of nitrogen-rich or saline fertilizers which may lead to root toxicity and leaf damage.',
-        'Supplement calcium or potassium via foliar feeding if nutrient deficiency is suspected.',
-        'Conduct regular soil testing to detect salinity or imbalance that might affect leaf health.',
-      ],
+      'symptoms': ['N/A.'],
+      'treatments': ['N/A.'],
+    },
+    'unknown': {
+      'symptoms': ['N/A.'],
+      'treatments': ['N/A.'],
     },
   };
 
@@ -971,6 +971,77 @@ class _AnalysisSummaryScreenState extends State<AnalysisSummaryScreen> {
                           child: Text(
                             tr('no_additional_info_healthy_leaves'),
                             style: TextStyle(fontSize: 16, color: Colors.grey),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          ),
+    );
+  }
+
+  void _showUnknownStatus(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder:
+          (context) => DraggableScrollableSheet(
+            initialChildSize: 0.7,
+            minChildSize: 0.5,
+            maxChildSize: 0.95,
+            expand: false,
+            builder:
+                (context, scrollController) => SingleChildScrollView(
+                  controller: scrollController,
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.help_outline,
+                              color: Colors.grey,
+                              size: 24,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                tr('unknown'),
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close),
+                              onPressed: () => Navigator.pop(context),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 40),
+                        Center(
+                          child: Text(
+                            tr('not_applicable'),
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Center(
+                          child: Text(
+                            tr('no_additional_info_unknown'),
+                            style: TextStyle(fontSize: 16, color: Colors.grey),
+                            textAlign: TextAlign.center,
                           ),
                         ),
                       ],

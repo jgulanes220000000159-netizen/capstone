@@ -186,6 +186,7 @@
   "healthy_leaves": "Healthy Leaves",
   "not_applicable": "N/A",
   "no_additional_info_healthy_leaves": "No additional information for healthy leaves.",
+  "no_additional_info_unknown": "No additional information for unknown detections.",
   "see_recommendation": "See Recommendation",
   "information_not_available": "Information Not Available",
   "detailed_info_not_available_for": "Detailed information for \"{disease}\" is not currently available in our database.",

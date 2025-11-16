@@ -22,6 +22,7 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _acceptedTerms = false;
 
   // Password strength tracking
   String _passwordStrength = '';
@@ -131,6 +132,11 @@ class _RegisterPageState extends State<RegisterPage> {
 
   void _handleRegister() async {
     if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (!_acceptedTerms) {
+      _showErrorDialog('Please accept the Terms and Conditions to continue.');
       return;
     }
 
@@ -262,6 +268,155 @@ class _RegisterPageState extends State<RegisterPage> {
               ),
             ],
           ),
+    );
+  }
+
+  void _showTermsAndConditions() {
+    showDialog(
+      context: context,
+      builder:
+          (context) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Row(
+              children: [
+                Icon(Icons.description, color: Colors.green, size: 24),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Terms and Conditions',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'MangoSense Terms of Service',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Last Updated: November 16, 2025\n',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                  _buildTermsSection(
+                    '1. Acceptance of Terms',
+                    'By registering for and using MangoSense, you agree to be bound by these Terms and Conditions. If you do not agree to these terms, please do not use this application.',
+                  ),
+                  _buildTermsSection(
+                    '2. Service Description',
+                    'MangoSense is an agricultural technology application designed to assist farmers in detecting and identifying mango plant diseases using artificial intelligence and machine learning technology. The application provides diagnostic suggestions based on image analysis.',
+                  ),
+                  _buildTermsSection(
+                    '3. User Account and Registration',
+                    '• You must provide accurate and complete information during registration.\n'
+                        '• You are responsible for maintaining the confidentiality of your account credentials.\n'
+                        '• Your account is subject to admin approval before activation.',
+                  ),
+                  _buildTermsSection(
+                    '4. Use of Service',
+                    '• The application is intended for agricultural and educational purposes only.\n'
+                        '• Disease detection results are advisory and should not replace professional agricultural consultation.\n'
+                        '• You agree to use the service in compliance with all applicable laws and regulations.\n'
+                        '• You will not misuse, abuse, or attempt to manipulate the service.',
+                  ),
+                  _buildTermsSection(
+                    '5. Data Privacy and Collection',
+                    '• We collect personal information including name, address, phone number, and email for account management.\n'
+                        '• Images uploaded for disease detection may be stored and analyzed.\n'
+                        '• Your data will be handled in accordance with applicable data privacy laws.\n'
+                        '• We will not share your personal information with third parties without consent, except as required by law.',
+                  ),
+                  _buildTermsSection(
+                    '6. Disclaimer of Warranties',
+                    '• MangoSense is provided "as is" without warranties of any kind.\n'
+                        '• We do not guarantee 100% accuracy in disease detection.\n'
+                        '• Results should be verified by qualified agricultural professionals.\n'
+                        '• We are not liable for crop losses or damages resulting from reliance on app recommendations.',
+                  ),
+                  _buildTermsSection(
+                    '7. Limitation of Liability',
+                    'MangoSense, its developers, and administrators shall not be liable for any indirect, incidental, special, or consequential damages arising from the use or inability to use this service.',
+                  ),
+                  _buildTermsSection(
+                    '8. Intellectual Property',
+                    'All content, features, and functionality of MangoSense are owned by the application developers and are protected by copyright and intellectual property laws.',
+                  ),
+                  _buildTermsSection(
+                    '9. Account Termination',
+                    'We reserve the right to suspend or terminate accounts that violate these terms or engage in fraudulent, abusive, or illegal activities.',
+                  ),
+                  _buildTermsSection(
+                    '10. Changes to Terms',
+                    'We reserve the right to modify these Terms and Conditions at any time. Continued use of the service after changes constitutes acceptance of modified terms.',
+                  ),
+                  _buildTermsSection(
+                    '11. Contact Information',
+                    'For questions, concerns, or support regarding these terms or the MangoSense service, please contact us through the application support channels.',
+                  ),
+                  SizedBox(height: 12),
+                  Container(
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.green.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      'By clicking "I Accept," you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text('Close', style: TextStyle(color: Colors.grey[600])),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() {
+                    _acceptedTerms = true;
+                  });
+                  Navigator.of(context).pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text('I Accept', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
+    );
+  }
+
+  Widget _buildTermsSection(String title, String content) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          SizedBox(height: 4),
+          Text(content, style: TextStyle(fontSize: 13, height: 1.4)),
+        ],
+      ),
     );
   }
 
@@ -540,6 +695,50 @@ class _RegisterPageState extends State<RegisterPage> {
                     prefixIcon: Icons.lock_outline,
                   ),
                   const SizedBox(height: 12),
+                  // Terms and Conditions Checkbox
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Checkbox(
+                        value: _acceptedTerms,
+                        onChanged: (value) {
+                          setState(() {
+                            _acceptedTerms = value ?? false;
+                          });
+                        },
+                        activeColor: Colors.white,
+                        checkColor: Colors.green,
+                        side: BorderSide(color: Colors.white70, width: 2),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 12.0),
+                          child: GestureDetector(
+                            onTap: _showTermsAndConditions,
+                            child: RichText(
+                              text: TextSpan(
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                ),
+                                children: [
+                                  TextSpan(text: 'I agree to the '),
+                                  TextSpan(
+                                    text: 'Terms and Conditions',
+                                    style: TextStyle(
+                                      color: Colors.yellow,
+                                      fontWeight: FontWeight.bold,
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 20),
                   // Register Button
                   SizedBox(
