@@ -322,13 +322,31 @@ class _LoginPageState extends State<LoginPage> {
                 _isLoading = false;
               });
               String roleText = role == 'expert' ? 'expert' : 'farmer';
+              String statusText = status ?? 'inactive';
+              String statusMessage = '';
+              
+              // Create friendly status messages
+              switch (statusText) {
+                case 'pending':
+                  statusMessage = 'Your $roleText account is pending approval. You will receive an email notification once your account is approved by an administrator.';
+                  break;
+                case 'rejected':
+                case 'declined':
+                  statusMessage = 'Your $roleText account has been declined. Please contact support for more information.';
+                  break;
+                case 'suspended':
+                case 'banned':
+                  statusMessage = 'Your $roleText account has been suspended. Please contact support for assistance.';
+                  break;
+                default:
+                  statusMessage = 'Your $roleText account is currently $statusText. Please contact support for assistance.';
+              }
+              
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text(
-                    'Your $roleText account is currently  [38;5;9m${status ?? 'inactive'} [0m. Please contact support for assistance.',
-                  ),
-                  backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 4),
+                  content: Text(statusMessage),
+                  backgroundColor: statusText == 'pending' ? Colors.orange : Colors.red,
+                  duration: const Duration(seconds: 5),
                 ),
               );
             } else if (role == 'farmer') {
@@ -441,8 +459,10 @@ class _LoginPageState extends State<LoginPage> {
 
         switch (e.code) {
           case 'wrong-password':
+          case 'invalid-credential':
+          case 'INVALID_LOGIN_CREDENTIALS':
             message =
-                'Incorrect password. Please check your password and try again.';
+                'Incorrect email or password. Please check your credentials and try again.';
             backgroundColor = Colors.red;
             break;
           case 'user-not-found':
@@ -459,7 +479,7 @@ class _LoginPageState extends State<LoginPage> {
             backgroundColor = Colors.red;
             break;
           case 'too-many-requests':
-            message = 'Too many failed login attempts. Please try again later.';
+            message = 'Too many failed login attempts. Please try again later or reset your password.';
             backgroundColor = Colors.orange;
             break;
           case 'network-request-failed':
@@ -467,8 +487,17 @@ class _LoginPageState extends State<LoginPage> {
                 'Network error. Please check your internet connection and try again.';
             backgroundColor = Colors.orange;
             break;
+          case 'operation-not-allowed':
+            message = 'Email/password sign-in is not enabled. Please contact support.';
+            backgroundColor = Colors.red;
+            break;
+          case 'weak-password':
+            message = 'Password is too weak. Please choose a stronger password.';
+            backgroundColor = Colors.orange;
+            break;
           default:
-            message = 'Login failed. Please try again.';
+            // Show the actual error code for debugging purposes
+            message = 'Login failed: ${e.code}. Please try again or contact support.';
             backgroundColor = Colors.red;
         }
 
