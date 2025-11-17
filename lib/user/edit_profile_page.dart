@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -23,6 +24,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
   final ImagePicker _picker = ImagePicker();
   File? _profileImage;
   String? _profileImageUrl;
+  bool _hasValidated = false;
+  Map<String, String?> _fieldErrors = {};
 
   @override
   void initState() {
@@ -95,14 +98,65 @@ class _EditProfilePageState extends State<EditProfilePage> {
     }
   }
 
+  // Validation Functions
+  String? _validateFullName(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter your full name';
+    }
+    if (value.trim().length < 2) {
+      return 'Name must be at least 2 characters';
+    }
+    return null;
+  }
+
+  String? _validateAddress(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter your address';
+    }
+    if (value.trim().length < 5) {
+      return 'Please enter a complete address';
+    }
+    return null;
+  }
+
+  String? _validatePhone(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter your phone number';
+    }
+    // Philippine phone number validation: 09XXXXXXXXX (11 digits starting with 09)
+    final phoneRegex = RegExp(r'^09\d{9}$');
+    String cleanNumber = value.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+    if (!phoneRegex.hasMatch(cleanNumber)) {
+      return 'Please enter a valid mobile number (09XXXXXXXXX)';
+    }
+    return null;
+  }
+
+  String? _validateEmail(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Please enter your email';
+    }
+    final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+    if (!emailRegex.hasMatch(value)) {
+      return 'Please enter a valid email address';
+    }
+    return null;
+  }
+
   Future<void> _handleSave() async {
-    if (_fullNameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Full name is required'),
-          backgroundColor: Colors.red,
-        ),
-      );
+    setState(() {
+      _hasValidated = true;
+      // Validate all fields and store errors
+      _fieldErrors = {
+        'fullName': _validateFullName(_fullNameController.text),
+        'address': _validateAddress(_addressController.text),
+        'phone': _validatePhone(_phoneController.text),
+        'email': _validateEmail(_emailController.text),
+      };
+    });
+
+    // Check if there are any validation errors
+    if (_fieldErrors.values.any((error) => error != null && error.isNotEmpty)) {
       return;
     }
 
@@ -172,25 +226,102 @@ class _EditProfilePageState extends State<EditProfilePage> {
   Widget _buildTextField({
     required String label,
     required TextEditingController controller,
+    required String fieldKey,
     IconData? prefixIcon,
+    String? Function(String?)? validator,
+    TextInputType? keyboardType,
+    List<TextInputFormatter>? inputFormatters,
   }) {
-    return TextField(
-      controller: controller,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: Colors.white70),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.white70),
+    final errorText = _hasValidated ? _fieldErrors[fieldKey] : null;
+    final hasError = errorText != null && errorText.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: controller,
+          style: const TextStyle(color: Colors.white),
+          keyboardType: keyboardType,
+          inputFormatters: inputFormatters,
+          onChanged: (value) {
+            if (_hasValidated && _fieldErrors.containsKey(fieldKey)) {
+              setState(() {
+                _fieldErrors[fieldKey] = validator?.call(value);
+              });
+            }
+          },
+          decoration: InputDecoration(
+            labelText: label,
+            labelStyle: const TextStyle(color: Colors.white70),
+            filled: true,
+            fillColor:
+                hasError ? Colors.redAccent.withOpacity(0.1) : Colors.transparent,
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: hasError ? Colors.redAccent : Colors.white70,
+                width: hasError ? 1.5 : 1,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: hasError ? Colors.redAccent : Colors.white,
+                width: hasError ? 1.5 : 1,
+              ),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Colors.redAccent,
+                width: 1.5,
+              ),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(
+                color: Colors.redAccent,
+                width: 1.5,
+              ),
+            ),
+            prefixIcon:
+                prefixIcon != null ? Icon(prefixIcon, color: Colors.white70) : null,
+            errorStyle: const TextStyle(height: 0, fontSize: 0),
+          ),
         ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.white),
-        ),
-        prefixIcon:
-            prefixIcon != null ? Icon(prefixIcon, color: Colors.white70) : null,
-      ),
+        if (hasError)
+          Padding(
+            padding: const EdgeInsets.only(left: 12, top: 6, right: 12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.redAccent,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.white,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      errorText,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -214,27 +345,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
       body:
           user == null
               ? const Center(child: Text('Not logged in'))
-              : StreamBuilder<DocumentSnapshot>(
-                stream:
-                    FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(user.uid)
-                        .snapshots(),
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  final data = snapshot.data!.data() as Map<String, dynamic>?;
-                  if (data == null) {
-                    return const Center(child: Text('No user data found'));
-                  }
-                  _fullNameController.text = data['fullName'] ?? '';
-                  _addressController.text = data['address'] ?? '';
-                  _phoneController.text = data['phoneNumber'] ?? '';
-                  _emailController.text = data['email'] ?? '';
-                  _profileImageUrl = data['imageProfile'];
-                  _isLoadingData = false;
-                  return SingleChildScrollView(
+              : _isLoadingData
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
                     child: Padding(
                       padding: const EdgeInsets.all(24.0),
                       child: Column(
@@ -342,25 +455,41 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           _buildTextField(
                             label: 'Full Name',
                             controller: _fullNameController,
+                            fieldKey: 'fullName',
                             prefixIcon: Icons.person,
+                            validator: _validateFullName,
+                            keyboardType: TextInputType.name,
                           ),
                           const SizedBox(height: 16),
                           _buildTextField(
                             label: 'Address',
                             controller: _addressController,
+                            fieldKey: 'address',
                             prefixIcon: Icons.home,
+                            validator: _validateAddress,
+                            keyboardType: TextInputType.streetAddress,
                           ),
                           const SizedBox(height: 16),
                           _buildTextField(
                             label: 'Phone Number',
                             controller: _phoneController,
+                            fieldKey: 'phone',
                             prefixIcon: Icons.phone,
+                            validator: _validatePhone,
+                            keyboardType: TextInputType.phone,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(15),
+                            ],
                           ),
                           const SizedBox(height: 16),
                           _buildTextField(
                             label: 'Email',
                             controller: _emailController,
+                            fieldKey: 'email',
                             prefixIcon: Icons.email,
+                            validator: _validateEmail,
+                            keyboardType: TextInputType.emailAddress,
                           ),
                           const SizedBox(height: 30),
                           // Save Button
@@ -401,9 +530,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                         ],
                       ),
                     ),
-                  );
-                },
-              ),
+                  ),
     );
   }
 }

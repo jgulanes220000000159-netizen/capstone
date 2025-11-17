@@ -1548,6 +1548,31 @@ class _ProfilePageState extends State<ProfilePage> {
     final ValueNotifier<bool> hideCurrent = ValueNotifier<bool>(true);
     final ValueNotifier<bool> hideNew = ValueNotifier<bool>(true);
     final ValueNotifier<bool> hideConfirm = ValueNotifier<bool>(true);
+    
+    // Password strength tracking
+    final ValueNotifier<String> passwordStrength = ValueNotifier<String>('');
+    final ValueNotifier<Color> passwordStrengthColor = ValueNotifier<Color>(Colors.grey);
+    
+    void calculatePasswordStrength(String password) {
+      bool hasLength = password.length >= 8;
+      bool hasUppercase = password.contains(RegExp(r'[A-Z]'));
+      bool hasLowercase = password.contains(RegExp(r'[a-z]'));
+      bool hasNumber = password.contains(RegExp(r'[0-9]'));
+      bool hasSpecialChar = password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'));
+
+      bool meetsRequirements = hasLength && hasUppercase && hasLowercase && hasNumber;
+
+      if (!hasLength || (!hasUppercase && !hasLowercase && !hasNumber)) {
+        passwordStrength.value = 'Weak';
+        passwordStrengthColor.value = Colors.red;
+      } else if (!meetsRequirements) {
+        passwordStrength.value = 'Medium';
+        passwordStrengthColor.value = Colors.orange;
+      } else {
+        passwordStrength.value = hasSpecialChar ? 'Strong' : 'Good';
+        passwordStrengthColor.value = hasSpecialChar ? Colors.green : Colors.lightGreen;
+      }
+    }
 
     showDialog(
       context: context,
@@ -1556,12 +1581,13 @@ class _ProfilePageState extends State<ProfilePage> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -1607,6 +1633,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         (context, hidden, _) => TextField(
                           controller: newPasswordController,
                           obscureText: hidden,
+                          onChanged: (value) => calculatePasswordStrength(value),
                           decoration: InputDecoration(
                             labelText: tr('new_password'),
                             prefixIcon: const Icon(Icons.lock),
@@ -1621,6 +1648,45 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                           ),
                         ),
+                  ),
+                  // Password Strength Indicator
+                  ValueListenableBuilder<String>(
+                    valueListenable: passwordStrength,
+                    builder: (context, strength, _) {
+                      if (newPasswordController.text.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8, left: 12),
+                        child: Row(
+                          children: [
+                            Text(
+                              'Password Strength: ',
+                              style: TextStyle(color: Colors.grey[700], fontSize: 12),
+                            ),
+                            ValueListenableBuilder<Color>(
+                              valueListenable: passwordStrengthColor,
+                              builder: (context, color, _) => Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: color, width: 1),
+                                ),
+                                child: Text(
+                                  strength,
+                                  style: TextStyle(
+                                    color: color,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
                   ValueListenableBuilder<bool>(
@@ -1692,10 +1758,24 @@ class _ProfilePageState extends State<ProfilePage> {
                                         return;
                                       }
 
-                                      if (newPass.length < 6) {
-                                        errorNotifier.value = tr(
-                                          'new_password_min_length',
-                                        );
+                                      // Enhanced password validation
+                                      if (newPass.length < 8) {
+                                        errorNotifier.value = 'Password must be at least 8 characters';
+                                        return;
+                                      }
+                                      
+                                      if (!newPass.contains(RegExp(r'[A-Z]'))) {
+                                        errorNotifier.value = 'Password must contain at least one uppercase letter';
+                                        return;
+                                      }
+                                      
+                                      if (!newPass.contains(RegExp(r'[a-z]'))) {
+                                        errorNotifier.value = 'Password must contain at least one lowercase letter';
+                                        return;
+                                      }
+                                      
+                                      if (!newPass.contains(RegExp(r'[0-9]'))) {
+                                        errorNotifier.value = 'Password must contain at least one number';
                                         return;
                                       }
 
@@ -1793,6 +1873,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 ],
+                ),
               ),
             ),
           ),

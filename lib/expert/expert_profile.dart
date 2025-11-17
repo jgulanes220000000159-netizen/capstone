@@ -735,6 +735,166 @@ class _ExpertProfileState extends State<ExpertProfile> {
     final TextEditingController addressController = TextEditingController(
       text: _userAddress,
     );
+    
+    // Validation state
+    final ValueNotifier<bool> hasValidated = ValueNotifier<bool>(false);
+    final ValueNotifier<Map<String, String?>> fieldErrors = ValueNotifier<Map<String, String?>>({});
+    
+    // Validation functions
+    String? validateFullName(String? value) {
+      if (value == null || value.trim().isEmpty) {
+        return 'Please enter your full name';
+      }
+      if (value.trim().length < 2) {
+        return 'Name must be at least 2 characters';
+      }
+      return null;
+    }
+    
+    String? validateAddress(String? value) {
+      if (value == null || value.trim().isEmpty) {
+        return 'Please enter your address';
+      }
+      if (value.trim().length < 5) {
+        return 'Please enter a complete address';
+      }
+      return null;
+    }
+    
+    String? validatePhone(String? value) {
+      if (value == null || value.trim().isEmpty) {
+        return 'Please enter your phone number';
+      }
+      // Philippine phone number validation: 09XXXXXXXXX (11 digits starting with 09)
+      final phoneRegex = RegExp(r'^09\d{9}$');
+      String cleanNumber = value.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+      if (!phoneRegex.hasMatch(cleanNumber)) {
+        return 'Please enter a valid mobile number (09XXXXXXXXX)';
+      }
+      return null;
+    }
+    
+    String? validateEmail(String? value) {
+      if (value == null || value.trim().isEmpty) {
+        return 'Please enter your email';
+      }
+      final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+      if (!emailRegex.hasMatch(value)) {
+        return 'Please enter a valid email address';
+      }
+      return null;
+    }
+    
+    // Helper function to build validated text fields
+    Widget buildValidatedTextField({
+      required String label,
+      required TextEditingController controller,
+      required String fieldKey,
+      required String? Function(String?) validator,
+      IconData? prefixIcon,
+      TextInputType? keyboardType,
+      List<TextInputFormatter>? inputFormatters,
+    }) {
+      return ValueListenableBuilder<Map<String, String?>>(
+        valueListenable: fieldErrors,
+        builder: (context, errors, _) {
+          final errorText = hasValidated.value ? errors[fieldKey] : null;
+          final hasError = errorText != null && errorText.isNotEmpty;
+          
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: controller,
+                keyboardType: keyboardType,
+                inputFormatters: inputFormatters,
+                onChanged: (value) {
+                  if (hasValidated.value) {
+                    fieldErrors.value = {
+                      ...fieldErrors.value,
+                      fieldKey: validator(value),
+                    };
+                  }
+                },
+                decoration: InputDecoration(
+                  labelText: label,
+                  prefixIcon: prefixIcon != null ? Icon(prefixIcon) : null,
+                  filled: true,
+                  fillColor: hasError ? Colors.redAccent.withOpacity(0.1) : Colors.transparent,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: hasError ? Colors.redAccent : Colors.grey,
+                      width: hasError ? 1.5 : 1,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: hasError ? Colors.redAccent : Colors.grey,
+                      width: hasError ? 1.5 : 1,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: hasError ? Colors.redAccent : Colors.green,
+                      width: hasError ? 1.5 : 2,
+                    ),
+                  ),
+                  errorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(
+                      color: Colors.redAccent,
+                      width: 1.5,
+                    ),
+                  ),
+                  focusedErrorBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(
+                      color: Colors.redAccent,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+              if (hasError)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, top: 6, right: 12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            errorText,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      );
+    }
 
     showDialog(
       context: context,
@@ -767,54 +927,64 @@ class _ExpertProfileState extends State<ExpertProfile> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    TextField(
+                    buildValidatedTextField(
+                      label: 'Full Name',
                       controller: nameController,
-                      decoration: InputDecoration(
-                        labelText: 'Full Name',
-                        prefixIcon: const Icon(Icons.person),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
+                      fieldKey: 'fullName',
+                      validator: validateFullName,
+                      prefixIcon: Icons.person,
+                      keyboardType: TextInputType.name,
                     ),
                     const SizedBox(height: 12),
-                    TextField(
+                    buildValidatedTextField(
+                      label: 'Email',
                       controller: emailController,
-                      decoration: InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: const Icon(Icons.email),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
+                      fieldKey: 'email',
+                      validator: validateEmail,
+                      prefixIcon: Icons.email,
+                      keyboardType: TextInputType.emailAddress,
                     ),
                     const SizedBox(height: 12),
-                    TextField(
+                    buildValidatedTextField(
+                      label: 'Phone Number',
                       controller: phoneController,
-                      decoration: InputDecoration(
-                        labelText: 'Phone Number',
-                        prefixIcon: const Icon(Icons.phone),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
+                      fieldKey: 'phone',
+                      validator: validatePhone,
+                      prefixIcon: Icons.phone,
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        LengthLimitingTextInputFormatter(15),
+                      ],
                     ),
                     const SizedBox(height: 12),
-                    TextField(
+                    buildValidatedTextField(
+                      label: 'Address',
                       controller: addressController,
-                      decoration: InputDecoration(
-                        labelText: 'Address',
-                        prefixIcon: const Icon(Icons.location_on),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
+                      fieldKey: 'address',
+                      validator: validateAddress,
+                      prefixIcon: Icons.location_on,
+                      keyboardType: TextInputType.streetAddress,
                     ),
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
                         onPressed: () async {
+                          // Validate all fields
+                          hasValidated.value = true;
+                          fieldErrors.value = {
+                            'fullName': validateFullName(nameController.text),
+                            'email': validateEmail(emailController.text),
+                            'phone': validatePhone(phoneController.text),
+                            'address': validateAddress(addressController.text),
+                          };
+                          
+                          // Check if there are any errors
+                          if (fieldErrors.value.values.any((error) => error != null && error.isNotEmpty)) {
+                            return;
+                          }
+                          
                           try {
                             final user = FirebaseAuth.instance.currentUser;
                             if (user != null) {
@@ -823,6 +993,7 @@ class _ExpertProfileState extends State<ExpertProfile> {
                                   .doc(user.uid)
                                   .update({
                                     'fullName': nameController.text.trim(),
+                                    'email': emailController.text.trim(),
                                     'phoneNumber': phoneController.text.trim(),
                                     'address': addressController.text.trim(),
                                   });
@@ -830,6 +1001,7 @@ class _ExpertProfileState extends State<ExpertProfile> {
                               // Update local state
                               setState(() {
                                 _userName = nameController.text.trim();
+                                _userEmail = emailController.text.trim();
                                 _userPhone = phoneController.text.trim();
                                 _userAddress = addressController.text.trim();
                               });
@@ -887,6 +1059,31 @@ class _ExpertProfileState extends State<ExpertProfile> {
     final ValueNotifier<bool> hideCurrent = ValueNotifier<bool>(true);
     final ValueNotifier<bool> hideNew = ValueNotifier<bool>(true);
     final ValueNotifier<bool> hideConfirm = ValueNotifier<bool>(true);
+    
+    // Password strength tracking
+    final ValueNotifier<String> passwordStrength = ValueNotifier<String>('');
+    final ValueNotifier<Color> passwordStrengthColor = ValueNotifier<Color>(Colors.grey);
+    
+    void calculatePasswordStrength(String password) {
+      bool hasLength = password.length >= 8;
+      bool hasUppercase = password.contains(RegExp(r'[A-Z]'));
+      bool hasLowercase = password.contains(RegExp(r'[a-z]'));
+      bool hasNumber = password.contains(RegExp(r'[0-9]'));
+      bool hasSpecialChar = password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'));
+
+      bool meetsRequirements = hasLength && hasUppercase && hasLowercase && hasNumber;
+
+      if (!hasLength || (!hasUppercase && !hasLowercase && !hasNumber)) {
+        passwordStrength.value = 'Weak';
+        passwordStrengthColor.value = Colors.red;
+      } else if (!meetsRequirements) {
+        passwordStrength.value = 'Medium';
+        passwordStrengthColor.value = Colors.orange;
+      } else {
+        passwordStrength.value = hasSpecialChar ? 'Strong' : 'Good';
+        passwordStrengthColor.value = hasSpecialChar ? Colors.green : Colors.lightGreen;
+      }
+    }
 
     showDialog(
       context: context,
@@ -895,12 +1092,13 @@ class _ExpertProfileState extends State<ExpertProfile> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -946,6 +1144,7 @@ class _ExpertProfileState extends State<ExpertProfile> {
                         (context, hidden, _) => TextField(
                           controller: newPasswordController,
                           obscureText: hidden,
+                          onChanged: (value) => calculatePasswordStrength(value),
                           decoration: InputDecoration(
                             labelText: 'New Password',
                             prefixIcon: const Icon(Icons.lock),
@@ -960,6 +1159,45 @@ class _ExpertProfileState extends State<ExpertProfile> {
                             ),
                           ),
                         ),
+                  ),
+                  // Password Strength Indicator
+                  ValueListenableBuilder<String>(
+                    valueListenable: passwordStrength,
+                    builder: (context, strength, _) {
+                      if (newPasswordController.text.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8, left: 12),
+                        child: Row(
+                          children: [
+                            Text(
+                              'Password Strength: ',
+                              style: TextStyle(color: Colors.grey[700], fontSize: 12),
+                            ),
+                            ValueListenableBuilder<Color>(
+                              valueListenable: passwordStrengthColor,
+                              builder: (context, color, _) => Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: color, width: 1),
+                                ),
+                                child: Text(
+                                  strength,
+                                  style: TextStyle(
+                                    color: color,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
                   ValueListenableBuilder<bool>(
@@ -1018,9 +1256,24 @@ class _ExpertProfileState extends State<ExpertProfile> {
                           return;
                         }
 
-                        if (newPass.length < 6) {
-                          errorNotifier.value =
-                              'New password must be at least 6 characters.';
+                        // Enhanced password validation
+                        if (newPass.length < 8) {
+                          errorNotifier.value = 'Password must be at least 8 characters';
+                          return;
+                        }
+                        
+                        if (!newPass.contains(RegExp(r'[A-Z]'))) {
+                          errorNotifier.value = 'Password must contain at least one uppercase letter';
+                          return;
+                        }
+                        
+                        if (!newPass.contains(RegExp(r'[a-z]'))) {
+                          errorNotifier.value = 'Password must contain at least one lowercase letter';
+                          return;
+                        }
+                        
+                        if (!newPass.contains(RegExp(r'[0-9]'))) {
+                          errorNotifier.value = 'Password must contain at least one number';
                           return;
                         }
 
@@ -1078,6 +1331,7 @@ class _ExpertProfileState extends State<ExpertProfile> {
                     ),
                   ),
                 ],
+                ),
               ),
             ),
           ),
