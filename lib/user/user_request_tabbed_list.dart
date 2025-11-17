@@ -131,8 +131,21 @@ class _UserRequestTabbedListState extends State<UserRequestTabbedList>
     if (_searchQuery.isEmpty) return requests;
 
     return requests.where((request) {
-      final diseaseName =
-          request['diseaseSummary'][0]['name']?.toString().toLowerCase() ?? '';
+      // Safely get disease name with null and empty checks
+      String diseaseName = '';
+      try {
+        final diseaseSummary = request['diseaseSummary'];
+        if (diseaseSummary != null && 
+            diseaseSummary is List && 
+            diseaseSummary.isNotEmpty &&
+            diseaseSummary[0] != null) {
+          diseaseName = diseaseSummary[0]['name']?.toString().toLowerCase() ?? '';
+        }
+      } catch (e) {
+        // Silently handle any errors in accessing disease summary
+        diseaseName = '';
+      }
+      
       final status = request['status']?.toString().toLowerCase() ?? '';
       final submittedAt =
           request['submittedAt']?.toString().toLowerCase() ?? '';
