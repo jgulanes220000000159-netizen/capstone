@@ -116,17 +116,79 @@ class _LoginPageState extends State<LoginPage> {
           final status = data['status'];
 
           if (status != 'active') {
+            // Sign out from Firebase Auth and Google Sign-In
+            await FirebaseAuth.instance.signOut();
+            await _googleSignIn.signOut();
+            
             setState(() {
               _isLoading = false;
             });
+            
             String roleText = role == 'expert' ? 'expert' : 'farmer';
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Your $roleText account is currently ${status ?? 'inactive'}. Please contact support for assistance.',
+            String statusText = status ?? 'inactive';
+            String statusMessage = '';
+            
+            // Create friendly status messages
+            switch (statusText) {
+              case 'pending':
+                statusMessage = 'Your $roleText account is pending approval. You will receive an email notification once your account is approved by an administrator.';
+                break;
+              case 'rejected':
+              case 'declined':
+                statusMessage = 'Your $roleText account has been declined. Please contact support for more information.';
+                break;
+              case 'suspended':
+              case 'banned':
+                statusMessage = 'Your $roleText account has been suspended. Please contact support for assistance.';
+                break;
+              default:
+                statusMessage = 'Your $roleText account is currently $statusText. Please contact support for assistance.';
+            }
+            
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => AlertDialog(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 4),
+                title: Row(
+                  children: [
+                    Icon(
+                      statusText == 'pending' ? Icons.pending_outlined : Icons.warning_amber_rounded,
+                      color: statusText == 'pending' ? Colors.orange : Colors.red,
+                      size: 28,
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        statusText == 'pending' ? 'Account Pending Approval' : 'Account Not Active',
+                        style: TextStyle(
+                          color: statusText == 'pending' ? Colors.orange : Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                content: Text(
+                  statusMessage,
+                  style: TextStyle(fontSize: 16, height: 1.5),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                    },
+                    child: Text(
+                      'OK',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             );
             return;
@@ -170,55 +232,66 @@ class _LoginPageState extends State<LoginPage> {
             );
           }
         } else {
-          // New user, create account with Google info
-          final newUserData = {
-            'fullName': user.displayName ?? 'Google User',
-            'email': user.email ?? '',
-            'phoneNumber': user.phoneNumber ?? '',
-            'address': '',
-            'role': 'farmer', // Default role for new users
-            'imageProfile': user.photoURL ?? '',
-            'status': 'active',
-            'createdAt': DateTime.now().toIso8601String(),
-            'lastLogin': DateTime.now().toIso8601String(),
-          };
-
-          // Save to Firestore
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .set(newUserData);
-
-          // Save FCM token for new users
+          // User does not exist in Firestore - account not registered
+          // Delete the Firebase Auth account that was just created
           try {
-            final token = await FirebaseMessaging.instance.getToken();
-            if (token != null) {
-              await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(user.uid)
-                  .set({'fcmToken': token}, SetOptions(merge: true));
-            }
-          } catch (_) {}
-
-          // Save login state and user info to Hive
-          final userBox = await Hive.openBox('userBox');
-          await userBox.put('isLoggedIn', true);
-          await userBox.put('userProfile', {
-            'fullName': newUserData['fullName'],
-            'email': newUserData['email'],
-            'phoneNumber': newUserData['phoneNumber'],
-            'address': newUserData['address'],
-            'role': newUserData['role'],
-            'imageProfile': newUserData['imageProfile'],
-            'userId': user.uid,
+            await user.delete();
+          } catch (e) {
+            // If deletion fails, try to sign out as fallback
+            await FirebaseAuth.instance.signOut();
+          }
+          
+          // Sign out from Google Sign-In
+          await _googleSignIn.signOut();
+          
+          setState(() {
+            _isLoading = false;
           });
 
-          // Navigate to home page for new users
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (context) => const HomePage()),
-            (route) => false,
+          // Show professional message that account is not registered
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.orange, size: 28),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Account Not Registered',
+                      style: TextStyle(
+                        color: Colors.orange,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: Text(
+                'This Google account is not yet registered in our system. Please register first using the registration form before signing in with Google.',
+                style: TextStyle(fontSize: 16, height: 1.5),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: Text(
+                    'OK',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.green,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           );
+          return;
         }
       }
     } catch (e) {
