@@ -439,12 +439,12 @@ class CapstoneApp extends StatelessWidget {
   Widget build(BuildContext context) {
     _setupFCM(context);
     return MaterialApp(
-      title: 'Mango Detection',
+      title: 'OinkCheck - Pig Disease Detection',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
         appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.green,
+          backgroundColor: Colors.green, // Keep green header as in reference
           systemOverlayStyle: SystemUiOverlayStyle(
             statusBarColor: Colors.green,
             statusBarIconBrightness: Brightness.light,

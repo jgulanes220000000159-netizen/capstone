@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'login_page.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({Key? key}) : super(key: key);
@@ -25,6 +28,18 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _acceptedTerms = false;
   bool _hasValidated = false;
   Map<String, String?> _fieldErrors = {};
+
+  // Location state (Philippines: Province → City/Municipality → Barangay)
+  List<Map<String, String>> _provinces = [];
+  List<Map<String, String>> _cities = [];
+  List<Map<String, String>> _barangays = [];
+
+  String? _selectedProvinceCode;
+  String? _selectedCityCode;
+
+  String? _selectedProvinceName;
+  String? _selectedCityName;
+  String? _selectedBarangayName;
 
   // Password strength tracking
   String _passwordStrength = '';
@@ -56,6 +71,108 @@ class _RegisterPageState extends State<RegisterPage> {
             hasSpecialChar ? Colors.green : Colors.lightGreen;
       }
     });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProvinces();
+  }
+
+  // --- Location loading using PSGC API (Philippines) ---
+  Future<void> _loadProvinces() async {
+    try {
+      final response = await http
+          .get(Uri.parse('https://psgc.gitlab.io/api/provinces/'));
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        setState(() {
+          _provinces = data
+              .map<Map<String, String>>(
+                (p) => {
+                  'code': p['code']?.toString() ?? '',
+                  'name': p['name']?.toString() ?? '',
+                },
+              )
+              .where((p) => p['code']!.isNotEmpty && p['name']!.isNotEmpty)
+              .toList()
+            ..sort(
+              (a, b) => a['name']!.compareTo(b['name']!),
+            );
+        });
+      }
+    } catch (_) {
+      // Fail silently – user can still type full address
+    }
+  }
+
+  Future<void> _loadCitiesForProvince(String provinceCode) async {
+    setState(() {
+      _cities = [];
+      _barangays = [];
+      _selectedCityCode = null;
+      _selectedCityName = null;
+      _selectedBarangayName = null;
+    });
+    try {
+      final response = await http.get(
+        Uri.parse('https://psgc.gitlab.io/api/cities-municipalities/'),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        final filtered = data.where((c) {
+          final pCode = (c['provinceCode'] ?? c['province_code'])?.toString();
+          return pCode == provinceCode;
+        }).toList();
+        setState(() {
+          _cities = filtered
+              .map<Map<String, String>>(
+                (c) => {
+                  'code': c['code']?.toString() ?? '',
+                  'name': c['name']?.toString() ?? '',
+                },
+              )
+              .where((c) => c['code']!.isNotEmpty && c['name']!.isNotEmpty)
+              .toList()
+            ..sort(
+              (a, b) => a['name']!.compareTo(b['name']!),
+            );
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadBarangaysForCity(String cityCode) async {
+    setState(() {
+      _barangays = [];
+      _selectedBarangayName = null;
+    });
+    try {
+      final response = await http.get(
+        Uri.parse('https://psgc.gitlab.io/api/barangays/'),
+      );
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        final filtered = data.where((b) {
+          final cCode = (b['cityCode'] ?? b['city_code'])?.toString();
+          return cCode == cityCode;
+        }).toList();
+        setState(() {
+          _barangays = filtered
+              .map<Map<String, String>>(
+                (b) => {
+                  'code': b['code']?.toString() ?? '',
+                  'name': b['name']?.toString() ?? '',
+                },
+              )
+              .where((b) => b['code']!.isNotEmpty && b['name']!.isNotEmpty)
+              .toList()
+            ..sort(
+              (a, b) => a['name']!.compareTo(b['name']!),
+            );
+        });
+      }
+    } catch (_) {}
   }
 
   // Form validation
@@ -157,6 +274,16 @@ class _RegisterPageState extends State<RegisterPage> {
       return;
     }
 
+    // Ensure address selections are made
+    if (_selectedProvinceName == null ||
+        _selectedCityName == null ||
+        _selectedBarangayName == null) {
+      _showErrorDialog(
+        'Please select your Province, City/Municipality, and Barangay.',
+      );
+      return;
+    }
+
     setState(() {
       _isLoading = true;
     });
@@ -174,7 +301,14 @@ class _RegisterPageState extends State<RegisterPage> {
         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
           'userId': user.uid,
           'fullName': _fullNameController.text.trim(),
-          'address': _addressController.text.trim(),
+          // Street / Purok / House no.
+          'street': _addressController.text.trim(),
+          'province': _selectedProvinceName,
+          'cityMunicipality': _selectedCityName,
+          'barangay': _selectedBarangayName,
+          // Combined address for display/search
+          'address':
+              '${_addressController.text.trim()}, $_selectedBarangayName, $_selectedCityName, $_selectedProvinceName',
           'phoneNumber': _phoneController.text.trim(),
           'email': _emailController.text.trim(),
           'role': 'farmer',
@@ -313,7 +447,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'MangoSense Terms of Service',
+                    'OinkCheck Terms of Service',
                     style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                   SizedBox(height: 8),
@@ -323,11 +457,11 @@ class _RegisterPageState extends State<RegisterPage> {
                   ),
                   _buildTermsSection(
                     '1. Acceptance of Terms',
-                    'By registering for and using MangoSense, you agree to be bound by these Terms and Conditions. If you do not agree to these terms, please do not use this application.',
+                    'By registering for and using OinkCheck, you agree to be bound by these Terms and Conditions. If you do not agree to these terms, please do not use this application.',
                   ),
                   _buildTermsSection(
                     '2. Service Description',
-                    'MangoSense is an agricultural technology application designed to assist farmers in detecting and identifying mango plant diseases using artificial intelligence and machine learning technology. The application provides diagnostic suggestions based on image analysis.',
+                    'OinkCheck is an agricultural technology application designed to assist pig farmers in detecting and identifying pig diseases using artificial intelligence and machine learning technology. The application provides diagnostic suggestions based on image analysis.',
                   ),
                   _buildTermsSection(
                     '3. User Account and Registration',
@@ -351,18 +485,18 @@ class _RegisterPageState extends State<RegisterPage> {
                   ),
                   _buildTermsSection(
                     '6. Disclaimer of Warranties',
-                    '• MangoSense is provided "as is" without warranties of any kind.\n'
+                    '• OinkCheck is provided "as is" without warranties of any kind.\n'
                         '• We do not guarantee 100% accuracy in disease detection.\n'
-                        '• Results should be verified by qualified agricultural professionals.\n'
-                        '• We are not liable for crop losses or damages resulting from reliance on app recommendations.',
+                        '• Results should be verified by qualified veterinary professionals.\n'
+                        '• We are not liable for livestock losses or damages resulting from reliance on app recommendations.',
                   ),
                   _buildTermsSection(
                     '7. Limitation of Liability',
-                    'MangoSense, its developers, and administrators shall not be liable for any indirect, incidental, special, or consequential damages arising from the use or inability to use this service.',
+                    'OinkCheck, its developers, and administrators shall not be liable for any indirect, incidental, special, or consequential damages arising from the use or inability to use this service.',
                   ),
                   _buildTermsSection(
                     '8. Intellectual Property',
-                    'All content, features, and functionality of MangoSense are owned by the application developers and are protected by copyright and intellectual property laws.',
+                    'All content, features, and functionality of OinkCheck are owned by the application developers and are protected by copyright and intellectual property laws.',
                   ),
                   _buildTermsSection(
                     '9. Account Termination',
@@ -374,7 +508,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   ),
                   _buildTermsSection(
                     '11. Contact Information',
-                    'For questions, concerns, or support regarding these terms or the MangoSense service, please contact us through the application support channels.',
+                    'For questions, concerns, or support regarding these terms or the OinkCheck service, please contact us through the application support channels.',
                   ),
                   SizedBox(height: 12),
                   Container(
@@ -407,12 +541,12 @@ class _RegisterPageState extends State<RegisterPage> {
                   });
                   Navigator.of(context).pop();
                 },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
                 child: Text('I Accept', style: TextStyle(color: Colors.white)),
               ),
             ],
@@ -594,7 +728,7 @@ class _RegisterPageState extends State<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.green,
+      backgroundColor: Colors.green, // Keep green background
       body: SafeArea(
         child: SingleChildScrollView(
           child: Padding(
@@ -636,7 +770,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              'Mango',
+                              'Oink',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 28,
@@ -644,7 +778,7 @@ class _RegisterPageState extends State<RegisterPage> {
                               ),
                             ),
                             Text(
-                              'Sense',
+                              'Check',
                               style: TextStyle(
                                 color: Colors.yellow,
                                 fontSize: 28,
@@ -681,8 +815,151 @@ class _RegisterPageState extends State<RegisterPage> {
                     keyboardType: TextInputType.name,
                   ),
                   const SizedBox(height: 12),
+                  // Province / City / Barangay selectors
+                  const SizedBox(height: 12),
+                  Text(
+                    'Address',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    dropdownColor: Colors.green[700],
+                    decoration: InputDecoration(
+                      labelText: 'Province',
+                      labelStyle: const TextStyle(color: Colors.white70),
+                      filled: true,
+                      fillColor: Colors.green[600],
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: Colors.white70, width: 1),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: Colors.white, width: 1.5),
+                      ),
+                    ),
+                    iconEnabledColor: Colors.white,
+                    value: _selectedProvinceName,
+                    items: _provinces
+                        .map(
+                          (p) => DropdownMenuItem<String>(
+                            value: p['name'],
+                            child: Text(
+                              p['name']!,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedProvinceName = value;
+                        final match = _provinces.firstWhere(
+                          (p) => p['name'] == value,
+                          orElse: () => {'code': '', 'name': ''},
+                        );
+                        _selectedProvinceCode = match['code'];
+                      });
+                      if (_selectedProvinceCode != null &&
+                          _selectedProvinceCode!.isNotEmpty) {
+                        _loadCitiesForProvince(_selectedProvinceCode!);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    dropdownColor: Colors.green[700],
+                    decoration: InputDecoration(
+                      labelText: 'City / Municipality',
+                      labelStyle: const TextStyle(color: Colors.white70),
+                      filled: true,
+                      fillColor: Colors.green[600],
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: Colors.white70, width: 1),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: Colors.white, width: 1.5),
+                      ),
+                    ),
+                    iconEnabledColor: Colors.white,
+                    value: _selectedCityName,
+                    items: _cities
+                        .map(
+                          (c) => DropdownMenuItem<String>(
+                            value: c['name'],
+                            child: Text(
+                              c['name']!,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedCityName = value;
+                        final match = _cities.firstWhere(
+                          (c) => c['name'] == value,
+                          orElse: () => {'code': '', 'name': ''},
+                        );
+                        _selectedCityCode = match['code'];
+                      });
+                      if (_selectedCityCode != null &&
+                          _selectedCityCode!.isNotEmpty) {
+                        _loadBarangaysForCity(_selectedCityCode!);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    dropdownColor: Colors.green[700],
+                    decoration: InputDecoration(
+                      labelText: 'Barangay',
+                      labelStyle: const TextStyle(color: Colors.white70),
+                      filled: true,
+                      fillColor: Colors.green[600],
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: Colors.white70, width: 1),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: Colors.white, width: 1.5),
+                      ),
+                    ),
+                    iconEnabledColor: Colors.white,
+                    value: _selectedBarangayName,
+                    items: _barangays
+                        .map(
+                          (b) => DropdownMenuItem<String>(
+                            value: b['name'],
+                            child: Text(
+                              b['name']!,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedBarangayName = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
                   _buildTextField(
-                    label: 'Address',
+                    label: 'Street / Purok / House No.',
                     controller: _addressController,
                     fieldKey: 'address',
                     prefixIcon: Icons.home,
@@ -884,7 +1161,7 @@ class _RegisterPageState extends State<RegisterPage> {
                                   ),
                                 ),
                               )
-                              : const Text(
+                              :                               const Text(
                                 'Create Account',
                                 style: TextStyle(
                                   color: Colors.green,

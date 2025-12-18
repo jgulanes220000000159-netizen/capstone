@@ -35,6 +35,9 @@ dependencies:
   connectivity_plus: ^5.0.2
   month_year_picker: ^0.4.0
   lottie: ^3.0.0
+  http: ^1.2.0
+  flutter_map: ^6.1.0
+  latlong2: ^0.9.0
   flutter_local_notifications:
     git:
       url: https://github.com/SherwenCabanilla/flutter_local_notifications.git
@@ -73,6 +76,7 @@ flutter:
     - assets/lang/tl.json
     - assets/lang/bs.json
     - assets/animation.gif
+    - assets/ph_locations.json
     - .env
     # Add any other image or asset files here
     # - assets/images/your_image.jpg

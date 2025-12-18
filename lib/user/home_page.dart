@@ -20,6 +20,8 @@ import 'package:lottie/lottie.dart';
 import 'dart:async';
 import 'tracking_page.dart';
 import 'tracking_models.dart';
+import 'diseases_page.dart';
+import 'disease_map_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -132,7 +134,8 @@ class _HomePageState extends State<HomePage> {
       Container(),
       const ScanPage(),
       const UserRequestTabbedList(),
-      const TrackingPage(),
+      const DiseaseMapPage(),
+      const DiseasesPage(),
     ];
   }
 
@@ -385,6 +388,126 @@ class _HomePageState extends State<HomePage> {
     } catch (e) {
       print('Error fetching disease info: $e');
     }
+  }
+
+  Widget _buildQuickActionButtons() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Quick Actions',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.camera_alt,
+                  label: 'Scan Pig',
+                  color: Colors.green,
+                  onTap: () {
+                    setState(() {
+                      _selectedIndex = 1;
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.verified,
+                  label: 'Expert Validation',
+                  color: Colors.green,
+                  onTap: () {
+                    setState(() {
+                      _selectedIndex = 2;
+                    });
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.map,
+                  label: 'Disease Map',
+                  color: Colors.green,
+                  onTap: () {
+                    setState(() {
+                      _selectedIndex = 3;
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildActionButton(
+                  icon: Icons.medical_services,
+                  label: 'Treatments',
+                  color: Colors.green,
+                  onTap: () {
+                    setState(() {
+                      _selectedIndex = 4;
+                    });
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          color: Colors.grey[100],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 28),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: Colors.black87,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildQuickOverviewCard() {
@@ -1583,14 +1706,13 @@ class _HomePageState extends State<HomePage> {
         body: SafeArea(
           child: Column(
             children: [
-              // Green header
+              // Green header (keep original teal/green from reference)
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.green,
+                  color: Colors.green, // Keep green as in reference image
                   borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(20),
-                    bottomRight: Radius.circular(20),
+                    bottomRight: Radius.circular(50),
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -1601,162 +1723,117 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ],
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        GestureDetector(
-                          onTap: () {
-                            if (mounted) {
-                              setState(() {
-                                _selectedIndex = 0; // go to Home tab
-                              });
-                            }
-                          },
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.2),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            padding: const EdgeInsets.all(2),
-                            child: Image.asset(
-                              'assets/applogo_header.png',
-                              width: 37,
-                              height: 37,
-                            ),
+                        Text(
+                          _isLoading
+                              ? 'Hello - Loading...'
+                              : 'Hello - $_userName',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                        const SizedBox(width: 8),
                         GestureDetector(
                           onTap: () {
-                            if (mounted) {
-                              setState(() {
-                                _selectedIndex = 0; // go Home on title tap
-                              });
-                            }
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => const ProfilePage(),
+                              ),
+                            );
                           },
-                          child: Row(
-                            children: const [
-                              Text(
-                                'Mango',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  shadows: [
-                                    Shadow(
-                                      color: Colors.black26,
-                                      offset: Offset(0, 2),
-                                      blurRadius: 4,
+                          child: FutureBuilder<Map<String, dynamic>?>(
+                            future: _loadUserProfileForHeader(),
+                            builder: (context, snapshot) {
+                              final profileImageUrl =
+                                  snapshot.data?['imageProfile'] as String?;
+
+                              return Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.2),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
                                     ),
                                   ],
                                 ),
-                              ),
-                              Text(
-                                'Sense',
-                                style: TextStyle(
-                                  color: Colors.yellow,
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  shadows: [
-                                    Shadow(
-                                      color: Colors.black26,
-                                      offset: Offset(0, 2),
-                                      blurRadius: 4,
-                                    ),
-                                  ],
+                                child: ClipOval(
+                                  child:
+                                      profileImageUrl != null &&
+                                              profileImageUrl.isNotEmpty
+                                          ? CachedNetworkImage(
+                                            imageUrl: profileImageUrl,
+                                            width: 40,
+                                            height: 40,
+                                            fit: BoxFit.cover,
+                                            placeholder:
+                                                (context, url) => Container(
+                                                  width: 40,
+                                                  height: 40,
+                                                  color: Colors.white,
+                                                  child: const Center(
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                        ),
+                                                  ),
+                                                ),
+                                            errorWidget:
+                                                (context, url, error) =>
+                                                    Container(
+                                                      width: 40,
+                                                      height: 40,
+                                                      color: Colors.white,
+                                                      child: const Icon(
+                                                        Icons.person,
+                                                        color: Colors.green,
+                                                        size: 22,
+                                                      ),
+                                                    ),
+                                          )
+                                          : Container(
+                                            width: 40,
+                                            height: 40,
+                                            color: Colors.white,
+                                            child: const Icon(
+                                              Icons.person,
+                                              color: Colors.green,
+                                              size: 22,
+                                            ),
+                                          ),
                                 ),
-                              ),
-                            ],
+                              );
+                            },
                           ),
                         ),
                       ],
                     ),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const ProfilePage(),
+                    const SizedBox(height: 8),
+                    Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.favorite, color: Colors.white, size: 16),
+                          SizedBox(width: 6),
+                          Text(
+                            'Welcome to OinkCheck',
+                            style: TextStyle(color: Colors.white, fontSize: 14),
                           ),
-                        );
-                      },
-                      child: FutureBuilder<Map<String, dynamic>?>(
-                        future: _loadUserProfileForHeader(),
-                        builder: (context, snapshot) {
-                          final profileImageUrl =
-                              snapshot.data?['imageProfile'] as String?;
-
-                          return Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.white, width: 2),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.2),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: ClipOval(
-                              child:
-                                  profileImageUrl != null &&
-                                          profileImageUrl.isNotEmpty
-                                      ? CachedNetworkImage(
-                                        imageUrl: profileImageUrl,
-                                        width: 40,
-                                        height: 40,
-                                        fit: BoxFit.cover,
-                                        placeholder:
-                                            (context, url) => Container(
-                                              width: 40,
-                                              height: 40,
-                                              color: Colors.white,
-                                              child: const Center(
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                    ),
-                                              ),
-                                            ),
-                                        errorWidget:
-                                            (context, url, error) => Container(
-                                              width: 40,
-                                              height: 40,
-                                              color: Colors.white,
-                                              child: const Icon(
-                                                Icons.person,
-                                                color: Colors.green,
-                                                size: 22,
-                                              ),
-                                            ),
-                                      )
-                                      : Container(
-                                        width: 40,
-                                        height: 40,
-                                        color: Colors.white,
-                                        child: const Icon(
-                                          Icons.person,
-                                          color: Colors.green,
-                                          size: 22,
-                                        ),
-                                      ),
-                            ),
-                          );
-                        },
+                        ],
                       ),
                     ),
                   ],
@@ -1764,212 +1841,166 @@ class _HomePageState extends State<HomePage> {
               ),
               // Main content
               Expanded(
-                child:
-                    _selectedIndex == 0
-                        ? StreamBuilder<QuerySnapshot>(
-                          stream:
-                              FirebaseFirestore.instance
-                                  .collection('diseases')
-                                  .snapshots(),
-                          builder: (context, snapshot) {
-                            if (!snapshot.hasData) {
-                              return const Center(
-                                child: CircularProgressIndicator(),
-                              );
-                            }
-                            final diseaseDocs = snapshot.data!.docs;
-                            final diseaseNames =
-                                diseaseDocs
-                                    .map((doc) => doc['name'] as String)
-                                    .toList()
-                                  ..sort(
-                                    (a, b) => a.toLowerCase().compareTo(
-                                      b.toLowerCase(),
-                                    ),
-                                  );
-                            final Map<String, String> diseaseImageMap = {
-                              'anthracnose':
-                                  'assets/replace_disease/anthracnose_image.jpg',
-                              'backterial_blackspot':
-                                  'assets/replace_disease/bacterial_image.jpg',
-                              'dieback':
-                                  'assets/replace_disease/dieback_image.jpg',
-                              'powdery_mildew':
-                                  'assets/replace_disease/powdery_image.jpg',
-                              'healthy':
-                                  'assets/replace_disease/healthy_image.jpg',
-                            };
-                            return SingleChildScrollView(
-                              physics: const BouncingScrollPhysics(),
-                              child: Column(
-                                children: [
-                                  const SizedBox(height: 16),
-                                  // Welcome text
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                    ),
-                                    child: Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            tr(
-                                              'good_day',
-                                              namedArgs: {'name': _userName},
-                                            ),
-                                            style: TextStyle(
-                                              fontSize: 24,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.green[700],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                  // Quick Overview Card
-                                  _buildQuickOverviewCard(),
-                                  const SizedBox(height: 16),
-                                  // Recent Activity Section
-                                  _buildRecentActivitySection(),
-                                  const SizedBox(height: 16),
-                                  // Diseases section
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                    ),
-                                    child: Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        tr('diseases'),
-                                        style: TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.grey[800],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  // Disease cards (from Firestore) - match image by normalized name
-                                  for (final name in diseaseNames)
-                                    _buildDiseaseCard(
-                                      name,
-                                      diseaseImageMap[_normalizeDiseaseKey(
-                                            name,
-                                          )] ??
-                                          'assets/replace_disease/healthy_image.jpg',
-                                    ),
-                                  const SizedBox(height: 16),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                    ),
-                                    child: Align(
-                                      alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        tr('none_disease'),
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  _buildDiseaseCard(
-                                    'Healthy',
-                                    'assets/replace_disease/healthy_image.jpg',
-                                  ),
-                                  const SizedBox(height: 16),
-                                ],
-                              ),
-                            );
-                          },
-                        )
-                        : _pages[_selectedIndex],
+                child: IndexedStack(
+                  index: _selectedIndex,
+                  children: [
+                    // Home tab (index 0)
+                    SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 16),
+                          // Empty space (removed welcome text but keeping the gap)
+                          const SizedBox(height: 0),
+                          // Quick Overview Card
+                          _buildQuickOverviewCard(),
+                          const SizedBox(height: 16),
+                          // Quick Action Buttons
+                          _buildQuickActionButtons(),
+                          const SizedBox(height: 16),
+                          // Recent Activity Section
+                          _buildRecentActivitySection(),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
+                    // Scan tab (index 1)
+                    const ScanPage(),
+                    // My Requests tab (index 2)
+                    const UserRequestTabbedList(),
+                    // Disease Map tab (index 3)
+                    const DiseaseMapPage(),
+                    // Treatments tab (index 4)
+                    const DiseasesPage(),
+                  ],
+                ),
               ),
+              // Bottom navigation bar
               // Bottom navigation bar
               Container(
                 decoration: BoxDecoration(
+                  color: Colors.green[50],
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 12,
-                      offset: const Offset(0, -4),
+                      color: Colors.grey.withOpacity(0.3),
                       spreadRadius: 1,
+                      blurRadius: 5,
+                      offset: const Offset(0, -3),
                     ),
                   ],
                 ),
-                child: BottomNavigationBar(
-                  currentIndex: _selectedIndex,
-                  onTap: (index) {
-                    setState(() {
-                      _selectedIndex = index;
-                    });
-                  },
-                  type: BottomNavigationBarType.fixed,
-                  selectedItemColor: Colors.green,
-                  unselectedItemColor: Colors.grey,
-                  elevation: 0,
-                  items: [
-                    BottomNavigationBarItem(
-                      icon: const Icon(Icons.home),
-                      label: tr('home'),
+                child: SafeArea(
+                  child: Container(
+                    height: 60,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
                     ),
-                    BottomNavigationBarItem(
-                      icon: const Icon(Icons.camera_alt),
-                      label: tr('scan'),
-                    ),
-                    BottomNavigationBarItem(
-                      icon: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          const Icon(Icons.list_alt, size: 28),
-                          if (_unseenCompleted > 0)
-                            Positioned(
-                              right: -8,
-                              top: -8,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Left side - Back button (only show when not on home)
+                        if (_selectedIndex != 0)
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _selectedIndex = 0;
+                                });
+                              },
+                              borderRadius: BorderRadius.circular(25),
                               child: Container(
-                                padding: const EdgeInsets.all(0),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: Colors.red,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 2,
-                                  ),
-                                  shape: BoxShape.circle,
+                                  color: Colors.green,
+                                  borderRadius: BorderRadius.circular(25),
                                 ),
-                                constraints: const BoxConstraints(
-                                  minWidth: 22,
-                                  minHeight: 22,
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    _unseenCompleted > 9
-                                        ? '9+'
-                                        : '$_unseenCompleted',
-                                    style: const TextStyle(
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Icon(
+                                      Icons.arrow_back,
                                       color: Colors.white,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
+                                      size: 20,
                                     ),
-                                    textAlign: TextAlign.center,
-                                  ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'Back',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                        ],
-                      ),
-                      label: tr('my_requests'),
+                          )
+                        else
+                          const SizedBox(width: 80), // Spacer when on home
+                        // Right side - Notification button
+                        IconButton(
+                          icon: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              const Icon(
+                                Icons.notifications,
+                                size: 28,
+                                color: Colors.green,
+                              ),
+                              if (_unseenCompleted > 0)
+                                Positioned(
+                                  right: -2,
+                                  top: -2,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 2,
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    constraints: const BoxConstraints(
+                                      minWidth: 20,
+                                      minHeight: 20,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        _unseenCompleted > 9
+                                            ? '9+'
+                                            : '$_unseenCompleted',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          onPressed: () {
+                            // TODO: Navigate to notifications page
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Notifications coming soon!'),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
-                    BottomNavigationBarItem(
-                      icon: const Icon(Icons.show_chart),
-                      label: tr('tracking'),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ],

@@ -44,17 +44,17 @@ class _LoginPageState extends State<LoginPage> {
       // Create the email message
       final message =
           Message()
-            ..from = Address('your-email@gmail.com', 'MangoSense App')
+            ..from = Address('your-email@gmail.com', 'OinkCheck App')
             ..recipients.add(email)
             ..subject = 'Password Reset Verification Code'
             ..html = '''
           <h2>Password Reset Verification</h2>
-          <p>You requested a password reset for your MangoSense account.</p>
+          <p>You requested a password reset for your OinkCheck account.</p>
           <p>Your verification code is: <strong style="font-size: 24px; color: #4CAF50;">$code</strong></p>
           <p>This code will expire in 15 minutes.</p>
           <p>If you didn't request this, please ignore this email.</p>
           <br>
-          <p>Best regards,<br>MangoSense Team</p>
+          <p>Best regards,<br>OinkCheck Team</p>
         ''';
 
       // Send the email
@@ -606,7 +606,7 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.green,
+      backgroundColor: Colors.green, // Keep green background
       body: SafeArea(
         child: SingleChildScrollView(
           child: Center(
@@ -643,7 +643,7 @@ class _LoginPageState extends State<LoginPage> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                'Mango',
+                                'Oink',
                                 style: TextStyle(
                                   color: Color.fromARGB(255, 255, 255, 255),
                                   fontSize: 28,
@@ -651,7 +651,7 @@ class _LoginPageState extends State<LoginPage> {
                                 ),
                               ),
                               Text(
-                                'Sense',
+                                'Check',
                                 style: TextStyle(
                                   color: Colors.yellow,
                                   fontSize: 28,
